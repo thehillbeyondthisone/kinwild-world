@@ -8,15 +8,25 @@ import {
   makeGroundMarks,
 } from "../environment.js";
 
-// Instanced ground cover — grass / wildflowers / grove details / cloud
-// puffs / beachcomb / pebbles / ground marks. Extracted verbatim from the
-// tail of generateWorld's flora phase (QA-008); `yieldIfNeeded` calls below
-// sit at the exact positions they did before the split, since this function
-// is awaited at that same point. `floraPlacementBlocks` (built during flora
-// placement) supplies the landmark/portal exclusion zones and grass-shorten
-// radii so ground cover doesn't grow through fairy rings or portal pads.
 const GRASS_SHORTEN_MIN_HEIGHT = 0.14;
 
+/**
+ * Build and place instanced ground cover — grass / wildflowers / grove
+ * details / cloud puffs / beachcomb / pebbles / ground marks. Extracted
+ * verbatim from the tail of `generateWorld`'s flora phase (QA-008);
+ * `yieldIfNeeded` calls below sit at the exact positions they did before the
+ * split, since this function is awaited at that same point.
+ *
+ * @param {Object} args
+ * @param {Object} args.worldState - shared mutable state (mutated in place)
+ * @param {Object} args.biome - resolved BIOMES entry
+ * @param {Array<{kind: string, x: number, z: number, r: number, grassRadius?: number}>} args.floraPlacementBlocks -
+ *   built during flora placement; supplies the landmark/portal exclusion zones and grass-shorten radii so ground
+ *   cover doesn't grow through fairy rings or portal pads
+ * @param {(object: THREE.Object3D) => void} args.attachCatalogMetadata - tags a built object with its Field Guide subject
+ * @param {(force?: boolean) => Promise<void>} args.yieldIfNeeded - determinism-safe async yield
+ * @returns {Promise<void>}
+ */
 export async function placeGroundCover({
   worldState,
   biome,

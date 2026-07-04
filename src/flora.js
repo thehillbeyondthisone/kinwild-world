@@ -9,9 +9,17 @@
 //                       (owned by src/flora/_shared.js).
 //   - jitterGeo       : re-exported helper (defined in src/util.js).
 import { jitterGeo } from "./util.js";
+/**
+ * Re-exported from src/util.js so flora consumers don't need a second import
+ * path. See src/util.js for the full contract (geometry weld + perturb).
+ */
 export { jitterGeo };
 
 import { resetFloraPool, withIsolatedFloraPool } from "./flora/_shared.js";
+/**
+ * Re-exported from src/flora/_shared.js, which owns the actual pool instance
+ * and implementation. See that module for the full contract.
+ */
 export { resetFloraPool, withIsolatedFloraPool };
 
 import * as trees from "./flora/trees.js";
@@ -23,6 +31,14 @@ import * as volcanic from "./flora/volcanic.js";
 
 // Assemble the registry in the original FLORA_BUILDERS key order so that any
 // code iterating keys (e.g. inspect-mode flora cycling) keeps a stable order.
+/**
+ * The open/closed registry of flora builders, keyed by the flora kind string
+ * a biome's `flora` array references (see src/biomes.js). Each value is a
+ * `(biome) => THREE.Group` factory. To add a new flora kind: implement the
+ * builder in the appropriate src/flora/*.js family module, then add one entry
+ * here — biomes never reference builders directly, only by this string key.
+ * @type {Object<string, (biome: object) => import("three").Group>}
+ */
 export const FLORA_BUILDERS = {
   tree: trees.tree,
   leafballtree: trees.leafballtree,

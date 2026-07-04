@@ -60,13 +60,20 @@ function spawnZ(c) {
   c.zSprites.push(s);
 }
 
-// Sleepiness target — driven by the global night factor and the personality
-// threshold. Sleepy creatures yawn earlier; bold ones tough it out until
-// it's properly dark. Walkers apply a smoothstep on/off so the body curl
-// animates rather than snapping; fliers skip the smoothstep (they only get
-// drowsy + descend toward rest). The alert window after being woken forces
-// the target to 0 so a freshly-woken creature doesn't immediately re-curl.
-// (QA-010: dedupes the previously copy-pasted walker/flier sleepiness curves.)
+/**
+ * Compute the target sleepiness (0..1) for a creature given the current
+ * night factor. Sleepy creatures yawn earlier; bold ones tough it out until
+ * it's properly dark. Walkers apply a smoothstep on/off so the body curl
+ * animates rather than snapping; fliers skip the smoothstep (they only get
+ * drowsy + descend toward rest). The alert window after being woken forces
+ * the target to 0 so a freshly-woken creature doesn't immediately re-curl.
+ * Shared by {@link updateSleepiness} for both walker and flier curves
+ * (QA-010: dedupes the previously copy-pasted walker/flier sleepiness curves).
+ * @param {object} c - creature state.
+ * @param {number} nf - current night factor (0..1, from state.nightFactor).
+ * @param {boolean} smoothstep - apply smoothstep easing (walkers) vs linear (fliers).
+ * @returns {number} target sleepiness in 0..1.
+ */
 function sleepinessTarget(c, nf, smoothstep) {
   const a = c.nightThresh - 0.08;
   const b = c.nightThresh + 0.08;
@@ -79,9 +86,15 @@ function sleepinessTarget(c, nf, smoothstep) {
   return target;
 }
 
-// Ease each creature's sleepiness toward the current night-driven target at
-// ~0.6/s so dawn/dusk transitions are smooth. Walkers smoothstep; fliers
-// (except fish) don't. Extracted from stepCreature's per-frame head.
+/**
+ * Ease a creature's `c.sleepiness` toward the current night-driven target at
+ * ~0.6/s so dawn/dusk transitions are smooth. Walkers smoothstep; fliers
+ * (except fish) don't; sleepers (already asleep) and fish are untouched.
+ * Extracted from stepCreature's per-frame head — call once per creature per frame.
+ * @param {object} c - creature state; mutates `c.sleepiness` in place.
+ * @param {number} dt - frame delta time in seconds.
+ * @param {number} nightFactor - global night factor, 0 (day)..1 (full night).
+ */
 export function updateSleepiness(c, dt, nightFactor) {
   if (!c.isSleeper && !c.flies) {
     const target = sleepinessTarget(c, nightFactor, true);
@@ -92,10 +105,15 @@ export function updateSleepiness(c, dt, nightFactor) {
   }
 }
 
-// Rising-z particle stream. Spawn while actively sleeping (either a spawned-
-// asleep isSleeper or a walker that's curled up at night); existing particles
-// always tick so they finish their fade after wake. Extracted from
-// stepCreature's per-frame head.
+/**
+ * Advance the rising-"z" sprite stream for a sleeping creature. Spawns new
+ * z's while actively sleeping (either a spawned-asleep `c.isSleeper` or a
+ * walker curled up at night via `c.sleepiness`); existing particles always
+ * tick so they finish their fade-out after the creature wakes. Extracted
+ * from stepCreature's per-frame head — call once per creature per frame.
+ * @param {object} c - creature state; reads/pushes/splices `c.zSprites`.
+ * @param {number} dt - frame delta time in seconds.
+ */
 export function stepZParticles(c, dt) {
   const sleepStrength = c.isSleeper ? 1 : c.sleepiness;
   if (!c.flies && sleepStrength > 0.6) {
@@ -128,10 +146,16 @@ export function stepZParticles(c, dt) {
   }
 }
 
-// Rotate a walker/sleeper group to lie flat on the terrain underfoot. Samples
-// the slope along the creature's heading + perpendicular and writes pitch/roll
-// into rotation.x/.z (YXZ order — these resolve in the body frame after yaw).
-// (QA-010: dedupes the sleeper + night-sleep slope-pose blocks.)
+/**
+ * Rotate a walker/sleeper group to lie flat on the terrain underfoot. Samples
+ * the slope along the creature's heading + perpendicular and writes pitch/roll
+ * into `rotation.x`/`.z` (relies on the group's YXZ Euler order — see
+ * `makeCreature` — so these resolve in the body frame after yaw). Shared by
+ * both {@link stepSleeper} and {@link stepNightSleep}'s fully-curled branch
+ * (QA-010: dedupes the sleeper + night-sleep slope-pose blocks).
+ * @param {object} c - creature state.
+ * @param {(x: number, z: number) => number} heightFn - world-space terrain height sampler.
+ */
 function plantOnSlope(c, heightFn) {
   const p = c.group.position;
   const ds = 0.25 * c.scale;
@@ -141,10 +165,19 @@ function plantOnSlope(c, heightFn) {
   c.group.rotation.z = slopes.rollTarget;
 }
 
-// ── sleeper mode ──────────────────────────────────────────────────────────
-// A creature spawned asleep (isSleeper). Curled, eyes closed, no motion — owns
-// its full frame (slow breath + slope pose) and always early-exits the
-// dispatcher. Extracted from stepCreature (QA-001).
+/**
+ * ── sleeper mode ──────────────────────────────────────────────────────────
+ * Run the full per-frame pose for a creature spawned asleep (`c.isSleeper`).
+ * Curled, eyes closed, no motion — owns its whole frame (slow breath + slope
+ * pose) and the caller (stepCreature's dispatcher) always early-exits after
+ * calling this; no further motion/animation runs that frame.
+ * Extracted from stepCreature (QA-001).
+ * @param {object} c - creature state (walker only; must not be a flier).
+ * @param {number} dt - frame delta time in seconds (unused directly here but
+ *   kept for signature symmetry with the other dispatch targets).
+ * @param {number} t - simulation time in seconds (frozen while paused).
+ * @param {(x: number, z: number) => number} heightFn - world-space terrain height sampler.
+ */
 export function stepSleeper(c, dt, t, heightFn) {
   // slow "breathing" — body bob on y axis, very small amplitude
   const breath = Math.sin(t * 1.1 + c.flapPhase) * 0.03;
@@ -170,10 +203,20 @@ export function stepSleeper(c, dt, t, heightFn) {
   plantOnSlope(c, heightFn);
 }
 
-// ── night-sleep mode (walkers only) ───────────────────────────────────────
-// High sleepiness curls a walker down on the spot. Returns true once fully
-// curled (s > 0.6) — that state owns the slope pose and the dispatcher must
-// skip the trailing motion/animation. Extracted from stepCreature (QA-001).
+/**
+ * ── night-sleep mode (walkers only) ───────────────────────────────────────
+ * High `c.sleepiness` curls a walker down on the spot, easing eyes/body/legs/
+ * belly/antennae toward the curled pose as `s` rises past 0 up to the s=0.6
+ * full-curl threshold. Extracted from stepCreature (QA-001).
+ * @param {object} c - creature state (walker only).
+ * @param {number} dt - frame delta time in seconds (unused before full curl;
+ *   kept for signature symmetry).
+ * @param {number} t - simulation time in seconds (frozen while paused).
+ * @param {(x: number, z: number) => number} heightFn - world-space terrain height sampler.
+ * @returns {boolean} true once fully curled (`c.sleepiness > 0.6`) — that
+ *   state owns the slope pose, and the caller (stepCreature's dispatcher)
+ *   must skip the trailing motion/animation for the frame.
+ */
 export function stepNightSleep(c, dt, t, heightFn) {
   const s = c.sleepiness;
   // Curl reaches full posture at s=0.6 (the same threshold the zZz sprite

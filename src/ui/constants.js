@@ -3,9 +3,12 @@
 // `window`, so it can be imported and exercised directly under plain node —
 // unlike ui.js itself, whose DOM wiring lives inside initUi().
 
-// Ground-cover flora variants hidden from the locator panel and from the
-// current-biome Field Guide catalog (both want to only surface "findable"
-// subjects, not the ambient ground cover every biome has).
+/**
+ * Ground-cover flora variants hidden from the locator panel and from the
+ * current-biome Field Guide catalog (both want to only surface "findable"
+ * subjects, not the ambient ground cover every biome has).
+ * @type {Set<string>}
+ */
 export const LOCATOR_HIDDEN_FLORA_VARIANTS = new Set([
   "grassfield", "wildflower", "pebble", "grassblade",
   "cloudpuff", "shell", "starfish", "water",
@@ -28,8 +31,11 @@ export function nextEnabledBiomeIdFrom(enabledBiomes, currentBiomeId) {
   return enabledBiomes[nextIdx].id;
 }
 
-// Photo review 3D dim-plane overlay: rendered behind the postcard mesh in the
-// review group (not a DOM overlay, which would also darken the postcard
-// preview itself — see tests/photo-review-dimming.test.mjs).
+/**
+ * Photo review 3D dim-plane overlay: rendered behind the postcard mesh in the
+ * review group (not a DOM overlay, which would also darken the postcard
+ * preview itself — see tests/photo-review-dimming.test.mjs).
+ */
 export const PHOTO_REVIEW_DIM_RENDER_ORDER = 998;
+/** Opacity of the photo-review dim plane, see `PHOTO_REVIEW_DIM_RENDER_ORDER`. */
 export const PHOTO_REVIEW_DIM_OPACITY = 0.45;

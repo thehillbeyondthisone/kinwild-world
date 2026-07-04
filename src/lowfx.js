@@ -27,6 +27,13 @@ function _autoLowfx() {
   const weakHardware = dpr < 1.5 && shortSide > 0 && shortSide < 768;
   return weakHardware;
 }
+/**
+ * Low-effects mode flag, resolved once at module load. Drops pixel ratio,
+ * particle count, and instanced ground-cover density for slow devices.
+ * `?lowfx=1` forces on, `?lowfx=0` forces off, otherwise auto-detected from
+ * low DPR (< 1.5) combined with a small screen (< 768px short side).
+ * @type {boolean}
+ */
 export const LOWFX =
   _forceLowfx === "1" ? true :
   _forceLowfx === "0" ? false :
@@ -48,11 +55,27 @@ function _autoMidfx() {
   const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
   return coarsePointer && dpr >= 1.5;
 }
+/**
+ * Mid-tier mobile profile flag, resolved once at module load. Never true
+ * when `LOWFX` is true. Flips the `outline`/`ao`/`depthFog` FX-panel
+ * *defaults* off (saved user settings still override), shrinks the water
+ * reflection RT, and caps pixel ratio at 1.5 — bloom stays on.
+ * `?midfx=1` forces on, `?midfx=0` forces off, otherwise auto-detected from
+ * a coarse pointer plus DPR >= 1.5.
+ * @type {boolean}
+ */
 export const MIDFX =
   _forceMidfx === "1" ? true :
   _forceMidfx === "0" ? false :
   _autoMidfx();
 
+/**
+ * Detect a mobile/touch viewport for hard pixel-ratio capping purposes.
+ * `?mobile=1`/`?mobile=0` override; otherwise true when the pointer is
+ * coarse and the short viewport side is <= 900px.
+ *
+ * @returns {boolean}
+ */
 export function isMobileViewport() {
   if (typeof window === "undefined") return false;
   const forced = new URLSearchParams(window.location.search).get("mobile");
@@ -63,6 +86,12 @@ export function isMobileViewport() {
   return coarsePointer && shortSide > 0 && shortSide <= 900;
 }
 
+/**
+ * Resolve the pixel-ratio cap to apply to the renderer, tightest tier wins:
+ * mobile viewport (1) > LOWFX (1) > MIDFX (1.5) > default (2).
+ *
+ * @returns {number} max device pixel ratio to use
+ */
 export function rendererPixelRatioCap() {
   if (isMobileViewport()) return 1;
   if (LOWFX) return 1;
@@ -70,6 +99,10 @@ export function rendererPixelRatioCap() {
   return 2;
 }
 
-// Multiplier applied to particle counts and ground-cover instance counts when
-// LOWFX is on. ~40% keeps the world readable while halving most per-frame work.
+/**
+ * Multiplier applied to particle counts and ground-cover instance counts
+ * when `LOWFX` is on. ~40% keeps the world readable while halving most
+ * per-frame work.
+ * @type {number}
+ */
 export const LOWFX_DENSITY = 0.4;

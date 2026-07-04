@@ -25,12 +25,24 @@ import {
 } from "../sky.js";
 import { makeWaterReflection } from "../reflection.js";
 
-// Biome-switch atmosphere (music, postfx tint, scene background/fog, lights,
-// sky backdrop, day/night palette snapshot) plus terrain + optional water
-// plane. Extracted verbatim from generateWorld's atmosphere/terrain/water
-// section (QA-008) — the two `yieldIfNeeded(true)` calls inside preserve the
-// exact seeded-PRNG-window positions generateWorld awaited at before the
-// split, since this function is itself awaited at that same point.
+/**
+ * Build biome-switch atmosphere (music, postfx tint, scene background/fog,
+ * lights, sky backdrop, day/night palette snapshot) plus terrain and the
+ * optional water plane. Extracted verbatim from `generateWorld`'s
+ * atmosphere/terrain/water section (QA-008) — the two `yieldIfNeeded(true)`
+ * calls inside preserve the exact seeded-PRNG-window positions
+ * `generateWorld` awaited at before the split, since this function is itself
+ * awaited at that same point in `generateWorld`.
+ *
+ * @param {Object} args
+ * @param {Object} args.worldState - shared mutable state (mutated in place)
+ * @param {THREE.Scene} args.worldScene - scene to set background/fog on
+ * @param {Object} args.biome - resolved BIOMES entry
+ * @param {number} args.seed - 16-bit world seed (for terrain noise)
+ * @param {Object} args.layout - layout as returned by `pickLayout()`
+ * @param {(force?: boolean) => Promise<void>} args.yieldIfNeeded - determinism-safe async yield
+ * @returns {Promise<void>}
+ */
 export async function buildAtmosphereAndTerrain({ worldState, worldScene, biome, seed, layout, yieldIfNeeded }) {
   worldState.currentBiome = biome;
   worldState.currentSeed = seed;

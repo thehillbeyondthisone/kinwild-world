@@ -119,6 +119,13 @@ function coerceSettingValue(key, value) {
   return value;
 }
 
+/**
+ * Decide whether to use the mobile HUD layout: `?mobile=1`/`?mobile=0` override;
+ * otherwise true when the device has touch and either the viewport or the
+ * physical screen's short side is under 768px.
+ *
+ * @returns {boolean}
+ */
 function shouldUseMobileHud() {
   const mobileParam = new URLSearchParams(window.location.search).get("mobile");
   if (mobileParam === "1") return true;
@@ -130,6 +137,15 @@ function shouldUseMobileHud() {
   return hasTouch && (shortViewport < 768 || shortScreen < 768);
 }
 
+/**
+ * Restore persisted settings from localStorage into `state.userSettings`.
+ * SEC-004: coerces/clamps each value via `coerceSettingValue` so a
+ * corrupted/hand-edited localStorage entry can't push out-of-range numbers
+ * into live state; unrecognized keys are ignored. Also rebases a saved
+ * `grassDensity` against the current `GRASS_DENSITY_BASE` if that constant's
+ * value has changed since the settings were saved. No-op (falls back to
+ * defaults) if localStorage is empty, unavailable, or unparseable.
+ */
 export function loadSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -150,6 +166,10 @@ export function loadSettings() {
   }
 }
 
+/**
+ * Persist the allowlisted `PERSISTED_KEYS` subset of `state.userSettings` to
+ * localStorage. Silently no-ops if localStorage throws (quota/private mode).
+ */
 export function saveSettings() {
   try {
     const out = {};
@@ -160,6 +180,12 @@ export function saveSettings() {
   }
 }
 
+/**
+ * Whether the help panel should auto-open because this is the user's first
+ * visit. Marks the flag as seen (side effect) so subsequent calls return false.
+ *
+ * @returns {boolean}
+ */
 function shouldShowFirstVisitHelp() {
   try {
     if (localStorage.getItem(HELP_SEEN_KEY)) return false;
@@ -170,6 +196,11 @@ function shouldShowFirstVisitHelp() {
   }
 }
 
+/**
+ * Load the user's saved seed bookmarks list from localStorage.
+ *
+ * @returns {Array} bookmark entries, or `[]` if empty/unparseable
+ */
 function loadBookmarks() {
   try {
     const raw = localStorage.getItem(BOOKMARKS_KEY);
@@ -181,6 +212,11 @@ function loadBookmarks() {
   }
 }
 
+/**
+ * Persist the seed bookmarks list to localStorage. Silently ignores quota/private-mode errors.
+ *
+ * @param {Array} list - bookmark entries to persist
+ */
 function saveBookmarks(list) {
   try {
     localStorage.setItem(BOOKMARKS_KEY, JSON.stringify(list));
@@ -189,8 +225,13 @@ function saveBookmarks(list) {
   }
 }
 
+/**
+ * Load the user's biome-filter chip selection from localStorage. Default (no
+ * saved filter, or an empty/invalid one): all biomes enabled.
+ *
+ * @returns {Set<string>} enabled biome ids
+ */
 function loadBiomeFilter() {
-  // Default: all biomes enabled. Returns a Set for quick membership checks.
   try {
     const raw = localStorage.getItem(BIOME_FILTER_KEY);
     if (!raw) return new Set(BIOMES.map((b) => b.id));
@@ -203,6 +244,11 @@ function loadBiomeFilter() {
   }
 }
 
+/**
+ * Persist the biome-filter chip selection to localStorage. Silently ignores quota/private-mode errors.
+ *
+ * @param {Set<string>} set - enabled biome ids
+ */
 function saveBiomeFilter(set) {
   try {
     localStorage.setItem(BIOME_FILTER_KEY, JSON.stringify([...set]));

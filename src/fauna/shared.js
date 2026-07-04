@@ -3,9 +3,11 @@ import { state } from "../state.js";
 import { BLOOM_LAYER } from "../postfx.js";
 import { nearestCenter } from "../terrain.js";
 
-// Terrain Y below which ground creatures are considered underwater. The water
-// plane sits a touch below 0 and oscillates ~±0.08; clamping walkers to
-// ground above 0 keeps them clear of waves and out of the shallow draft.
+/**
+ * Terrain Y below which ground creatures are considered underwater. The water
+ * plane sits a touch below 0 and oscillates ~±0.08; clamping walkers to
+ * ground above 0 keeps them clear of waves and out of the shallow draft.
+ */
 export const WATER_AVOID_Y = 0.0;
 
 // ── Terrain helpers ──────────────────────────────────────────────────────
@@ -15,6 +17,12 @@ export const WATER_AVOID_Y = 0.0;
  * Sample terrain normal at (x, z) via central finite differences.
  * Returns a unit Vector3 — a shared module-scope scratch, overwritten on the
  * next call. Consume (or copy) it before calling again.
+ *
+ * @param {number} x - world-space X.
+ * @param {number} z - world-space Z.
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ * @param {number} [eps=0.1] - finite-difference sample offset.
+ * @returns {THREE.Vector3} shared scratch normal — copy before the next call.
  */
 const _terrainNormal = new THREE.Vector3();
 export function sampleTerrainNormal(x, z, heightFn, eps = 0.1) {
@@ -32,6 +40,12 @@ const clampSlope = (v) => Math.max(-SLOPE_LIMIT, Math.min(SLOPE_LIMIT, v));
  * Convert cached world-space terrain gradients into heading-local pitch/roll.
  * Returns a shared module-scope scratch object, overwritten on the next call
  * (including via sampleSlopes) — consume the fields before calling again.
+ *
+ * @param {number} gradientX - world-space terrain height gradient along X.
+ * @param {number} gradientZ - world-space terrain height gradient along Z.
+ * @param {number} heading - facing angle in radians.
+ * @returns {{pitchTarget: number, rollTarget: number, slopeFwd: number, slopeRight: number}}
+ *   shared scratch object — consume before calling again.
  */
 const _slopeTargets = { pitchTarget: 0, rollTarget: 0, slopeFwd: 0, slopeRight: 0 };
 export function slopeTargetsFromGradient(gradientX, gradientZ, heading) {
@@ -52,6 +66,15 @@ export function slopeTargetsFromGradient(gradientX, gradientZ, heading) {
  * with group.rotation.x (pitch) and group.rotation.z (roll).
  * World-space gradients are included for callers that cache slopes across
  * heading changes.
+ *
+ * @param {number} x - world-space X.
+ * @param {number} z - world-space Z.
+ * @param {number} heading - facing angle in radians.
+ * @param {number} ds - forward/perpendicular sample offset.
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ * @returns {{pitchTarget: number, rollTarget: number, slopeFwd: number, slopeRight: number, gradientX: number, gradientZ: number}}
+ *   shared module-scope scratch — overwritten on the next call (including via
+ *   slopeTargetsFromGradient); consume or copy the fields before re-calling.
  */
 const _slopeSample = {
   pitchTarget: 0, rollTarget: 0, slopeFwd: 0, slopeRight: 0, gradientX: 0, gradientZ: 0,
@@ -83,6 +106,15 @@ export function sampleSlopes(x, z, heading, ds, heightFn) {
  * Create a pair of antennae (stalk + emissive tip) parented to `parent`.
  * Used by both blob creatures and caterpillars. Returns the stalk meshes
  * (for sleep/wake scale animation in blob creatures).
+ *
+ * @param {THREE.Object3D} parent - mesh/group the antennae are added to as children.
+ * @param {Object} biome - biome config; `biome.accent` colors the emissive tip.
+ * @param {THREE.Color} bodyColor - base color the stalk is darkened from.
+ * @param {Object} [opts] - stalk/tip dimension and appearance overrides (radius,
+ *   height, offsets, tilt angles, tip color darken amount, emissive strength,
+ *   and whether the tip glows at all).
+ * @returns {THREE.Mesh[]} the two stalk meshes (one per side), each with the
+ *   glow tip attached as a child.
  */
 export function addAntennae(parent, biome, bodyColor, opts = {}) {
   const {
@@ -138,6 +170,15 @@ let _gridObs = null;    // reference to the obstacles array the grid was built f
 
 function cellKey(cx, cz) { return cx + ',' + cz; }
 
+/**
+ * Build (or rebuild) the module-scope spatial hash of static obstacles used by
+ * `avoidObstacles` and `pushOutOfObstacles`. Must be called once per world-gen
+ * (typically from `finalizeWorldHud`) after `state.obstacles` is finalized —
+ * a stale grid (one built from a different array reference) is detected and
+ * ignored via the `_gridObs !== state.obstacles` check in the query helper.
+ *
+ * @param {Array<{x: number, z: number, r?: number}>} obstacles - `state.obstacles`.
+ */
 export function buildObstacleGrid(obstacles) {
   _gridObs = obstacles;
   _grid = new Map();
@@ -192,8 +233,14 @@ const _candidateScratch = [];
 const _wedgeScratch = [];
 const _pushScratch = [];
 
-// Color similarity test for the herding check. Cheap RGB distance — fine for
-// the small biome palettes used here.
+/**
+ * Color similarity test for the herding check. Cheap RGB distance — fine for
+ * the small biome palettes used here.
+ *
+ * @param {{r: number, g: number, b: number}} a
+ * @param {{r: number, g: number, b: number}} b
+ * @returns {boolean} true when squared RGB distance is below the fixed threshold.
+ */
 export function colorsClose(a, b) {
   const dr = a.r - b.r;
   const dg = a.g - b.g;
@@ -204,10 +251,12 @@ export function colorsClose(a, b) {
 const STATIC_AVOID_LOOKAHEAD = 1.25;
 const STATIC_AVOID_MAX_TURN = 0.22;
 
-// Vertical margin above an obstacle's canopy top within which a flier is
-// still considered "passing over" rather than colliding with it. Shared by
-// every obstacle height-filter check below (static + dynamic phases of
-// avoidObstacles, and pushOutOfObstacles).
+/**
+ * Vertical margin above an obstacle's canopy top within which a flier is
+ * still considered "passing over" rather than colliding with it. Shared by
+ * every obstacle height-filter check below (static + dynamic phases of
+ * avoidObstacles, and pushOutOfObstacles).
+ */
 export const CANOPY_PASS_MARGIN = 0.15;
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -215,32 +264,57 @@ const smoothstep01 = (v) => {
   const t = clamp01(v);
   return t * t * (3 - 2 * t);
 };
-// Wrap an angle (or angle difference) to [-π, π) for shortest-arc turns.
+/**
+ * Wrap an angle (or angle difference) to [-π, π) for shortest-arc turns.
+ *
+ * @param {number} a - angle or angle difference in radians.
+ * @returns {number} equivalent angle wrapped to [-π, π).
+ */
 export const wrapAngle = (a) =>
   ((a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
 
-// Combined obstacle avoidance for grounded movers (walkers + caterpillars).
-//
-// Static phase (state.obstacles — trunks, mushrooms): a smooth approach
-// buffer starts bending heading before contact. If the candidate step still
-// penetrates an obstacle, tangent-slide projects motion onto the perimeter
-// tangent that best matches the current heading. If the slid candidate is
-// itself wedged into another obstacle, the mover stays put with a heading
-// pointing outward. Result of this phase becomes the "current candidate"
-// position fed to the dynamic phase.
-//
-// Dynamic phase (state.dynamicObstacles — other movers): soft separation.
-// Any overlap with another mover applies a small radial push to the
-// candidate position, keeping heading intact. This reads as a gentle nudge
-// — far less twitchy than a hard tangent snap, which is important for the
-// project vibe (cute, easeful motion). selfOwner is matched against each
-// dyn entry's `owner` so a caterpillar's segments don't collide with each
-// other and a walker doesn't push itself.
-//
-// Returns null when both phases pass cleanly — caller commits the straight
-// step. opts.staticResponse controls static flora hits: "slide" preserves the
-// walker/flier tangent-slide behavior; "turn" only retargets heading and keeps
-// the current position for crawlers whose body should follow a head-led path.
+/**
+ * Combined obstacle avoidance for grounded movers (walkers + caterpillars).
+ *
+ * Static phase (state.obstacles — trunks, mushrooms): a smooth approach
+ * buffer starts bending heading before contact. If the candidate step still
+ * penetrates an obstacle, tangent-slide projects motion onto the perimeter
+ * tangent that best matches the current heading. If the slid candidate is
+ * itself wedged into another obstacle, the mover stays put with a heading
+ * pointing outward. Result of this phase becomes the "current candidate"
+ * position fed to the dynamic phase.
+ *
+ * Dynamic phase (state.dynamicObstacles — other movers): soft separation.
+ * Any overlap with another mover applies a small radial push to the
+ * candidate position, keeping heading intact. This reads as a gentle nudge
+ * — far less twitchy than a hard tangent snap, which is important for the
+ * project vibe (cute, easeful motion). selfOwner is matched against each
+ * dyn entry's `owner` so a caterpillar's segments don't collide with each
+ * other and a walker doesn't push itself.
+ *
+ * @param {number} px - current position X (world/mesh-local, matching heightFn's frame).
+ * @param {number} pz - current position Z.
+ * @param {number} nx - candidate next-step position X.
+ * @param {number} nz - candidate next-step position Z.
+ * @param {number} heading - current facing angle in radians.
+ * @param {number} step - step length used to re-derive a slid candidate position.
+ * @param {number} cr - mover's collision radius.
+ * @param {number} [y] - mover's world-space Y; when set, obstacles whose canopy
+ *   top (`o.top`) is more than CANOPY_PASS_MARGIN below `y` are skipped, letting
+ *   fliers above the canopy pass over freely.
+ * @param {number} [skipX] - X of one specific obstacle to ignore (e.g. the perch
+ *   a flier is landing on), paired with `skipZ`.
+ * @param {number} [skipZ] - Z of the obstacle to ignore, paired with `skipX`.
+ * @param {*} [selfOwner] - matched against each dynamic-obstacle entry's `owner`
+ *   so a caterpillar's own segments (or a walker itself) aren't avoided.
+ * @param {{staticResponse?: "slide"|"turn"}} [opts] - `"slide"` (default) preserves
+ *   the walker/flier tangent-slide behavior; `"turn"` only retargets heading and
+ *   keeps the current position, for crawlers whose body should follow a
+ *   head-led path.
+ * @returns {{nx: number, nz: number, heading: number}|null} the corrected
+ *   candidate, or null when both phases pass cleanly and the caller should
+ *   commit the straight step.
+ */
 export function avoidObstacles(
   px, pz, nx, nz, heading, step, cr, y, skipX, skipZ, selfOwner, opts
 ) {
@@ -366,10 +440,16 @@ export function avoidObstacles(
   return result;
 }
 
-// Velocity-based obstacle push for fliers that steer via velocity rather
-// than heading (butterflies, bees). Mutates pos + vel in place: nudges the
-// position outside any trunk it has entered, and damps the velocity
-// component pointing into the trunk so it glances off instead of stalling.
+/**
+ * Velocity-based obstacle push for fliers that steer via velocity rather
+ * than heading (butterflies, bees). Mutates pos + vel in place: nudges the
+ * position outside any trunk it has entered, and damps the velocity
+ * component pointing into the trunk so it glances off instead of stalling.
+ *
+ * @param {THREE.Vector3} pos - position (mutated).
+ * @param {THREE.Vector3} vel - velocity (mutated).
+ * @param {number} bodyR - collision radius used against each obstacle's radius.
+ */
 export function pushOutOfObstacles(pos, vel, bodyR) {
   const obs = state.obstacles;
   if (!obs || obs.length === 0) return;
@@ -410,14 +490,15 @@ export function pushOutOfObstacles(pos, vel, bodyR) {
  * Enforce a minimum Y floor for a flying insect and steer toward the
  * nearest island center if over open water. Mutates `pos` and `vel` in place.
  *
- * @param {Object} pos - position Vector3 (mutated)
- * @param {Object} vel - velocity Vector3 (mutated)
- * @param {number} ground - heightFn(pos.x, pos.z)
- * @param {number} minLandY - Y offset above terrain when over land
- * @param {number} minWaterY - Y offset above terrain when over water
- * @param {number} steerStrength - acceleration toward island center
- * @param {number} bounceVy - upward velocity when hitting the floor
- * @param {number} dt
+ * @param {THREE.Vector3} pos - position (mutated).
+ * @param {THREE.Vector3} vel - velocity (mutated).
+ * @param {number} ground - heightFn(pos.x, pos.z).
+ * @param {Object} [opts]
+ * @param {number} [opts.minLandY=0.12] - Y offset above terrain when over land.
+ * @param {number} [opts.minWaterY=0.45] - Y offset above terrain when over water.
+ * @param {number} [opts.steerStrength=3.2] - acceleration toward island center.
+ * @param {number} [opts.bounceVy=0.2] - upward velocity applied when hitting the floor.
+ * @param {number} dt - elapsed time in seconds.
  */
 export function applyWaterFloorAndSteer(pos, vel, ground, opts, dt) {
   const {
@@ -449,14 +530,26 @@ export function applyWaterFloorAndSteer(pos, vel, ground, opts, dt) {
 // Tuning constants (damp base, speed caps, orientation thresholds) stay at
 // each call site — only the repeated math is centralized here.
 
-/** Advance `pos` by `vel * dt`. Mutates pos in place. */
+/**
+ * Advance `pos` by `vel * dt`. Mutates pos in place.
+ *
+ * @param {THREE.Vector3} pos - position (mutated).
+ * @param {THREE.Vector3} vel - velocity, units/second.
+ * @param {number} dt - elapsed time in seconds.
+ */
 export function integrateVelocity(pos, vel, dt) {
   pos.x += vel.x * dt;
   pos.y += vel.y * dt;
   pos.z += vel.z * dt;
 }
 
-/** Exponential per-axis velocity damping: vel *= dampBase^(dt*60). Mutates vel. */
+/**
+ * Exponential per-axis velocity damping: vel *= dampBase^(dt*60). Mutates vel.
+ *
+ * @param {THREE.Vector3} vel - velocity (mutated).
+ * @param {number} dampBase - per-frame-at-60fps damping factor (0..1; lower damps harder).
+ * @param {number} dt - elapsed time in seconds.
+ */
 export function dampVelocity(vel, dampBase, dt) {
   const damp = Math.pow(dampBase, dt * 60);
   vel.x *= damp;
@@ -467,6 +560,10 @@ export function dampVelocity(vel, dampBase, dt) {
 /**
  * Clamp vel's magnitude to at most maxSpeed, and (when minSpeed > 0) at least
  * minSpeed. Mutates vel in place.
+ *
+ * @param {THREE.Vector3} vel - velocity (mutated).
+ * @param {number} maxSpeed - upper speed bound.
+ * @param {number} [minSpeed=0] - lower speed bound; 0 disables the floor.
  */
 export function capVelocitySpeed(vel, maxSpeed, minSpeed = 0) {
   const sp = vel.length();
@@ -479,6 +576,12 @@ export function capVelocitySpeed(vel, maxSpeed, minSpeed = 0) {
  * Skipped when vel.lengthSq() < minLengthSq (pass 0, the default, to always
  * orient). `scratch` is a caller-owned Vector3 — reused every call, never
  * allocated here, so hot per-frame callers stay allocation-free.
+ *
+ * @param {THREE.Object3D} group - object reoriented via lookAt.
+ * @param {THREE.Vector3} pos - current position.
+ * @param {THREE.Vector3} vel - current velocity.
+ * @param {THREE.Vector3} scratch - caller-owned scratch Vector3, overwritten each call.
+ * @param {number} [minLengthSq=0] - skip reorienting when vel.lengthSq() is below this.
  */
 export function orientToVelocity(group, pos, vel, scratch, minLengthSq = 0) {
   if (vel.lengthSq() < minLengthSq) return;

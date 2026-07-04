@@ -16,6 +16,12 @@ import { makePool } from "../pool.js";
 // allocating its own copies. Caterpillars are never built by the portal
 // preview (only makeCreature is), so no isolated-pool variant is needed here.
 const _caterpillarPool = makePool();
+/**
+ * Reset the shared per-regen caterpillar/snail resource pool (pooled eye and
+ * pupil geometries/materials). Must be called once at the top of every
+ * `generateWorld` — the previous world's pooled handles were just disposed
+ * along with `state.world`, so a stale `get` would return disposed objects.
+ */
 export const resetCaterpillarPool = _caterpillarPool.reset;
 const pooled = (key, factory) => _caterpillarPool.get(key, factory);
 
@@ -24,6 +30,12 @@ const pooled = (key, factory) => _caterpillarPool.get(key, factory);
 // individual-reject placement paths (world.js's placeCrawler) so rejecting
 // one caterpillar never disposes a geometry/material other already-placed
 // caterpillars still share via the pool.
+/**
+ * Snapshot of the caterpillar pool's currently cached resources.
+ *
+ * @returns {Set<*>} the pool's live geometries/materials, for use as
+ *   `disposeGroup`'s `skip` set on individual-reject placement paths.
+ */
 export function caterpillarPoolResources() {
   return new Set(_caterpillarPool.values());
 }
@@ -48,6 +60,18 @@ const _backScratch = { x: 0, y: 0, z: 0 };
 // from head (index 0). Head is at index 0, tail at index len-1.
 const RING_INITIAL_CAP = 512;
 
+/**
+ * Build a fixed-size ring-buffer trail seeded from `initialPoints`. The head
+ * (most recent point) always lives at index 0; the tail (oldest retained
+ * point) at index `len - 1`. `arc[i]` is the cumulative arc length from the
+ * head to point `i`, used by `ringFindAt` for arc-length-based body-segment
+ * following. Re-exported as `makeRingTrail` for callers outside this module.
+ *
+ * @param {Array<{x: number, y?: number, z: number}>} initialPoints - seed points,
+ *   head-first (index 0 = most recent).
+ * @returns {{buf: Float32Array, arc: Float32Array, cap: number, len: number}}
+ *   the ring-trail state, consumed by `ringPushHead`/`ringTrimByDistance`/`ringFindAt`.
+ */
 function makeRingTrail(initialPoints) {
   const cap = Math.max(RING_INITIAL_CAP, initialPoints.length * 2);
   const buf = new Float32Array(cap * 3); // x, y, z per point
@@ -75,8 +99,15 @@ function makeRingTrail(initialPoints) {
   };
 }
 
-// Get point at logical index i (0 = head, len-1 = tail). Writes into the
-// caller-supplied `out` object to avoid a per-call allocation.
+/**
+ * Get point at logical index i (0 = head, len-1 = tail). Writes into the
+ * caller-supplied `out` object to avoid a per-call allocation.
+ *
+ * @param {{buf: Float32Array}} tr - ring-trail state from `makeRingTrail`.
+ * @param {number} i - logical index (0 = head).
+ * @param {{x: number, y: number, z: number}} out - written in place.
+ * @returns {{x: number, y: number, z: number}} `out`.
+ */
 function ringGet(tr, i, out) {
   const off = i * 3;
   out.x = tr.buf[off];
@@ -85,7 +116,17 @@ function ringGet(tr, i, out) {
   return out;
 }
 
-// Push a new head point. Returns true if pushed, false if duplicate (updated in-place).
+/**
+ * Push a new head point onto the ring trail, growing the backing arrays if
+ * the trail is at capacity. Duplicate points (within `TRAIL_MIN_POINT_DISTANCE`
+ * of the current head, in XZ) update Y in place instead of pushing.
+ *
+ * @param {{buf: Float32Array, arc: Float32Array, cap: number, len: number}} tr - mutated in place.
+ * @param {number} x
+ * @param {number} y
+ * @param {number} z
+ * @returns {boolean} true if a new point was pushed, false if it updated the existing head in place.
+ */
 function ringPushHead(tr, x, y, z) {
   // Check duplicate
   if (tr.len > 0) {
@@ -138,6 +179,14 @@ function ringPushHead(tr, x, y, z) {
 // exceeds it) and only ever assigns tr.len its own current value, a no-op.
 // Keep the first index past maxDistance (rather than the last one under it)
 // as one extra trailing point for ringFindAt's interpolation.
+/**
+ * Trim the trail's logical length so it retains only points within
+ * `maxDistance` arc length of the head (plus one extra trailing point for
+ * `ringFindAt`'s interpolation). Mutates `tr.len`; does not touch the backing arrays.
+ *
+ * @param {{arc: Float32Array, len: number}} tr - mutated in place (`len` only).
+ * @param {number} maxDistance - retained arc length from the head.
+ */
 function ringTrimByDistance(tr, maxDistance) {
   if (tr.len < 2) return;
   for (let i = 1; i < tr.len; i++) {
@@ -153,6 +202,16 @@ function ringTrimByDistance(tr, maxDistance) {
 // object to avoid a per-call allocation (called up to 3x per body segment
 // per frame). Always populates y (the interpolated branch previously
 // omitted it).
+/**
+ * Find the point at a given arc-length distance from the head, interpolating
+ * between the two nearest samples via binary search. Writes into the
+ * caller-supplied `out` object to avoid a per-call allocation.
+ *
+ * @param {{buf: Float32Array, arc: Float32Array, len: number}} tr - ring-trail state.
+ * @param {number} distance - arc length from the head.
+ * @param {{x: number, y: number, z: number}} out - written in place.
+ * @returns {{x: number, y: number, z: number}|null} `out`, or null when the trail is empty.
+ */
 function ringFindAt(tr, distance, out) {
   if (tr.len === 0) return null;
   if (distance <= 0) {
@@ -185,6 +244,30 @@ function ringFindAt(tr, distance, out) {
 // and a fat shell parented to the last body segment.
 export { makeRingTrail };
 
+/**
+ * Build one caterpillar (or, with `opts.kind === "snail"`, a snail) entity:
+ * a head + 2-8 body segments that follow the head's trail, with a
+ * pre-seeded trail so segments aren't stacked at frame 0.
+ *
+ * Positional gotcha: unlike walker creatures (whose `group.position` moves),
+ * the returned `group` stays at the world origin — the head and body segment
+ * *meshes* inside it are individually repositioned in world space by
+ * `stepCaterpillar`, so trail-following math can work in world space. Any
+ * follow-camera or locator code must read `segments[0].position`, not `group.position`.
+ *
+ * @param {Object} biome - biome config; supplies `creatureColors`, `furProbability`,
+ *   and (for snails) `snailAntennaGlow`.
+ * @param {Object} [opts]
+ * @param {"snail"} [opts.kind] - when set, builds a slow, short-bodied snail with a shell.
+ * @param {THREE.Color} [opts.color] - forces the base body color instead of rolling from the palette.
+ * @param {boolean} [opts.furry] - forces the fur roll instead of rolling against `biome.furProbability`.
+ * @returns {{type: "snail"|"caterpillar", group: THREE.Group, segments: THREE.Mesh[],
+ *   eyeParts: THREE.Mesh[], segRadius: number, trail: Object, segSpacing: number,
+ *   trailMaxDistance: number, scale: number, heading: number, headingTarget: number,
+ *   turnRate: number, speed: number, nextThink: number, age: number,
+ *   furShells: THREE.Mesh[]|null}} caterpillar state consumed by `stepCaterpillar`.
+ *   `segments[0]` is the head; positions are mesh-local under state.world.
+ */
 export function makeCaterpillar(biome, opts = {}) {
   const isSnail = opts.kind === "snail";
   const group = new THREE.Group();
@@ -469,6 +552,18 @@ function emitCrawlerGroundMark(c, x, z, heading, heightFn) {
   c.lastGroundMarkZ = z;
 }
 
+/**
+ * Per-frame update for one caterpillar/snail: random-think heading target with
+ * slewed turning, edge/water avoidance, obstacle avoidance (head turns in
+ * place rather than tangent-sliding the whole trail), ground marks, slope-based
+ * head tilt, and arc-length trail recording/following for the body segments.
+ *
+ * @param {Object} c - caterpillar state returned by `makeCaterpillar`.
+ * @param {number} dt - elapsed time in seconds; 0 freezes the sim (the trail is
+ *   left untouched rather than filling with duplicate stationary points).
+ * @param {number} t - simulation time in seconds (frozen while paused).
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ */
 export function stepCaterpillar(c, dt, t, heightFn) {
   // Photo mode passes dt=0 to freeze the sim. Returning early matters here
   // because the trail is unshifted unconditionally below — without this, the

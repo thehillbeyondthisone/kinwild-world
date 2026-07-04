@@ -6,6 +6,12 @@ import {
 } from "../pbr.js";
 import { pooled, addPillarSurfaceMarks, makePlainRockGeometry } from "./_shared.js";
 
+/**
+ * Builds a small boulder with 2 chipped "shoulder" fragments clustered around it.
+ * Registered in `FLORA_BUILDERS` under the `"rock"` key.
+ * @param {object} biome - Biome config; reads `biome.cliff` for the base rock tint.
+ * @returns {THREE.Group} Mesh-local group (main rock + shoulder chips), no userData.
+ */
 export function rock(biome) {
     const g = new THREE.Group();
     const r = 0.18 + Math.random() * 0.35;
@@ -45,6 +51,12 @@ export function rock(biome) {
 
     return g;
 }
+/**
+ * Builds a single squashed, cream-tinted limestone boulder.
+ * Registered in `FLORA_BUILDERS` under the `"limestonerock"` key.
+ * @param {object} biome - Biome config; reads `biome.ground[0]` as the base tint before lerping toward cream.
+ * @returns {THREE.Group} Mesh-local group containing one flattened icosahedron mesh, no userData.
+ */
 export function limestonerock(biome) {
     const g = new THREE.Group();
     const r = 0.2 + Math.random() * 0.32;
@@ -66,6 +78,13 @@ export function limestonerock(biome) {
     g.add(mesh);
     return g;
 }
+/**
+ * Builds a small bleached skull decoration (no biome-driven coloring).
+ * Registered in `FLORA_BUILDERS` under the `"skull"` key. Geometry/materials are
+ * pulled from the shared per-regen pool (`pooled()` in `_shared.js`) since none of
+ * its parameters depend on random rolls or the biome.
+ * @returns {THREE.Group} Mesh-local group (skull dome + two eye sockets), no userData.
+ */
 export function skull() {
     const g = new THREE.Group();
     const mat = pooled("skull.mat", () =>
@@ -88,6 +107,17 @@ export function skull() {
     });
     return g;
 }
+/**
+ * Builds a stack of 2-4 stone drum segments (an ancient broken pillar), topped
+ * with a jittered cap ~70% of the time.
+ * Registered in `FLORA_BUILDERS` under the `"pillar"` key.
+ * @param {object} biome - Biome config; reads `biome.cliff`/`biome.ground[0]` for stone/lichen tint
+ *   and widens the pillar on `biome.id === "desert"`.
+ * @returns {THREE.Group} Mesh-local group (drum segments + optional cap). `userData.capTopY`
+ *   is the local-Y of the top surface (cap top if present, else the last drum's top) and
+ *   `userData.nestHostRadius` is the cap's horizontal radius — both consumed by world.js
+ *   for perch/obstacle placement.
+ */
 export function pillar(biome) {
     const g = new THREE.Group();
     const stoneCol = new THREE.Color(biome.cliff).offsetHSL(
@@ -145,6 +175,13 @@ export function pillar(biome) {
     g.userData.nestHostRadius = capRadius;
     return g;
 }
+/**
+ * Builds a two-pillar stone arch with a partial-torus lintel, occasionally
+ * broken by a fallen fragment at its base.
+ * Registered in `FLORA_BUILDERS` under the `"archstone"` key.
+ * @param {object} biome - Biome config; reads `biome.cliff` for the stone tint.
+ * @returns {THREE.Group} Mesh-local group (two pillars + arch + optional fragment), no userData.
+ */
 export function archstone(biome) {
     const g = new THREE.Group();
     const stoneCol = new THREE.Color(biome.cliff).offsetHSL(

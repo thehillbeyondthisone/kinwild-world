@@ -121,14 +121,16 @@ const _bloomUpsampleShader = {
   `,
 };
 
-// Selective bloom render layer. Meshes opted-in to bloom (glow eyes, glow
-// flowers, crystal cores, lantern orbs, obsidian shards) call
-// `mesh.layers.enable(BLOOM_LAYER)` at construction time. The post-fx pipeline
-// then runs a second scene render with the camera limited to this layer; the
-// bloom pass operates on that bloom-only image, and the result is added back
-// onto the main render. This decouples bloom from luminance — lit
-// cream/pastel creature bodies can be as bright as they like and still won't
-// bloom because they don't carry this layer flag.
+/**
+ * Selective bloom render layer. Meshes opted-in to bloom (glow eyes, glow
+ * flowers, crystal cores, lantern orbs, obsidian shards) call
+ * `mesh.layers.enable(BLOOM_LAYER)` at construction time. The post-fx pipeline
+ * then runs a second scene render with the camera limited to this layer; the
+ * bloom pass operates on that bloom-only image, and the result is added back
+ * onto the main render. This decouples bloom from luminance — lit
+ * cream/pastel creature bodies can be as bright as they like and still won't
+ * bloom because they don't carry this layer flag.
+ */
 export const BLOOM_LAYER = 1;
 
 // Custom output pass: ACES tone-mapping + exposure, then sRGB OETF.
@@ -436,9 +438,14 @@ const _copyShader = {
   `,
 };
 
-// Replacement for RenderPass in the main composer chain. It copies an
-// external color target into the EffectComposer ping-pong buffers.
+/**
+ * Replacement for `RenderPass` in the main composer chain. Instead of
+ * re-rendering the scene, it copies an already-rendered external color
+ * target (the depth pre-pass RT) into the EffectComposer ping-pong buffers —
+ * cutting scene renders from 2 to 1 when any depth-dependent FX is active.
+ */
 export class InputPass extends Pass {
+  /** @param {THREE.Texture} sourceTexture - color texture to copy each render call; change it later via {@link InputPass#setSourceTexture}. */
   constructor(sourceTexture) {
     super();
     this._sourceTexture = sourceTexture;
@@ -453,10 +460,11 @@ export class InputPass extends Pass {
     this._quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.material);
     this._scene.add(this._quad);
   }
+  /** Swap the external texture copied on the next {@link InputPass#render} call. @param {THREE.Texture} sourceTexture */
   setSourceTexture(sourceTexture) {
     this._sourceTexture = sourceTexture;
   }
-  // Ignores readBuffer — always reads from the external source texture.
+  /** Ignores readBuffer — always reads from the external source texture set via the constructor or {@link InputPass#setSourceTexture}. */
   render(renderer, writeBuffer /* , readBuffer */) {
     this.uniforms.tDiffuse.value = this._sourceTexture;
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
@@ -464,6 +472,42 @@ export class InputPass extends Pass {
   }
 }
 
+/**
+ * Build the post-processing pipeline: an `EffectComposer` chain (input copy
+ * → combined depth-FX pass → bloom composite → tilt-shift → sRGB output)
+ * plus a separate depth pre-pass render target kept OUTSIDE the composer's
+ * ping-pong buffers. Keeping the depth attachment off the composer's own
+ * ping-pong RTs avoids a WebGL feedback loop (sampling a depth texture while
+ * writing to the FBO that owns it gives undefined/all-black output). Bloom
+ * is layer-gated (see {@link BLOOM_LAYER}) and runs as a hand-rolled mip-chain
+ * pipeline (Jimenez, SIGGRAPH 2014) outside any composer, sharing its depth
+ * attachment with the depth pre-pass so emissives behind opaque geometry are
+ * culled naturally instead of shining through.
+ *
+ * Returns a stub under LOWFX: no composer, no depth pre-pass, and
+ * `state.depthTexture` set to null; `render` falls back to a direct
+ * `renderer.render(scene, camera)` call (skipping the composer's neutral-gray
+ * studio backdrop, which would otherwise tonemap to black in inspect mode).
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {THREE.Scene} scene
+ * @param {THREE.PerspectiveCamera} camera
+ * @returns {{
+ *   isActive: () => boolean,
+ *   render: (s: THREE.Scene, cam: THREE.Camera) => void,
+ *   onResize: (w: number, h: number) => void,
+ *   setBloom: (on: boolean) => void,
+ *   setBloomRadius: (sliderUnit: number) => void,
+ *   setTiltShift: (on: boolean) => void,
+ *   setOutline: (on: boolean) => void,
+ *   setAo: (on: boolean) => void,
+ *   setDepthFog: (on: boolean) => void,
+ *   setDepthFogColor: (color: THREE.Color) => void,
+ *   setUnderwaterTint: (color: THREE.Color, strength: number) => void,
+ *   updateTiltShiftFocus: (focusY: number, focusZ?: number) => void,
+ *   dispose?: () => void,
+ * }} `dispose` is present on the real pipeline (absent on the LOWFX stub);
+ *   must be called before any future re-init to avoid leaking RTs/materials.
+ */
 export function initPostFX(renderer, scene, camera) {
   // LOWFX never builds a composer — returns a stub that always reports off.
   if (LOWFX) {

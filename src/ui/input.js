@@ -35,6 +35,14 @@ function setManualPaused(on) {
   }
 }
 
+/**
+ * Wire up global input and lifecycle glue: manual pause, the regenerate
+ * buttons, the 250ms seed-change watcher, canvas click-to-pick /
+ * portal-entry / shift-click-inspect, hover-to-wake, resize, popstate, the
+ * mobile header fade, and the master keyboard handler that routes shortcuts
+ * to every other panel/mode via `ctx`. This is the cross-cutting glue that
+ * ties the sub-modules together, so `initUi` calls it last.
+ */
 export function initInput() {
   const { camera, canvas, renderer } = ctx;
   ctx.setManualPaused = setManualPaused;

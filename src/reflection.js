@@ -8,6 +8,16 @@ import { LOWFX, MIDFX } from "./lowfx.js";
 // share references with the live materials' uniforms, so day/night updates
 // flow through naturally without any extra wiring.
 
+/**
+ * Build a sky-only reflection scene by cloning the live sky dome / starfield
+ * / aurora / clouds (materials re-bound to the live refs so day/night
+ * updates flow through) and rendering into a dedicated render target — only
+ * constructed on biomes with `water` set. Call {@link updateWaterReflection}
+ * each frame to render into it, and {@link disposeWaterReflection} on regen.
+ * @param {object} _biome - unused; kept for call-site symmetry with other `makeX(biome)` factories.
+ * @returns {{rt: THREE.WebGLRenderTarget, scene: THREE.Scene, camera: THREE.PerspectiveCamera, domeClone: THREE.Mesh|null, starfieldClone: THREE.Points|null, auroraClone: THREE.Group|null, cloudsClone: THREE.Group|null, cloudPairs: Array<[THREE.Sprite, THREE.Sprite]>|null}}
+ *   RT is 256x256 (128x128 under LOWFX/MIDFX).
+ */
 export function makeWaterReflection(_biome) {
   const rt = new THREE.WebGLRenderTarget(
     LOWFX || MIDFX ? 128 : 256,
@@ -99,6 +109,14 @@ export function makeWaterReflection(_biome) {
 // the hazard structural rather than ordering-dependent — any stray future
 // `updateWaterReflection` call against the disposed reflection becomes a
 // no-op draw of an empty scene instead of a GPU read of disposed resources.
+/**
+ * Tear down a reflection target built by {@link makeWaterReflection}. Must
+ * run before the live sky materials it references are disposed at regen
+ * time — clearing the scene and dropping clone refs makes any stray future
+ * `updateWaterReflection` call a no-op instead of a GPU read of disposed
+ * resources.
+ * @param {ReturnType<typeof makeWaterReflection>|null} refl
+ */
 export function disposeWaterReflection(refl) {
   if (!refl) return;
   // domeClone.material is a genuine clone (side: DoubleSide, see
@@ -123,6 +141,17 @@ export function disposeWaterReflection(refl) {
 // frame. Static — never mutated after construction.
 const _reflectMat = new THREE.Matrix4().makeScale(1, -1, 1);
 
+/**
+ * Mirror `mainCamera` across y=0 and render the reflection scene into
+ * `refl.rt`. Must run once per frame, before the main scene render, on
+ * biomes with a water plane. Syncs the cloned sky-element positions to
+ * their live counterparts first (they follow the live camera each frame in
+ * main.js) so the reflection doesn't sample a stale sky position.
+ * @param {ReturnType<typeof makeWaterReflection>|null} refl
+ * @param {THREE.WebGLRenderer} renderer
+ * @param {THREE.PerspectiveCamera} mainCamera
+ * @param {unknown} controls - unused; kept in the signature for call-site compatibility.
+ */
 export function updateWaterReflection(refl, renderer, mainCamera, controls) {
   if (!refl) return;
   // Mirror across y=0 by composing the main camera's world matrix with an

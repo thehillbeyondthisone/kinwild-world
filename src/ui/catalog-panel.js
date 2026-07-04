@@ -12,6 +12,14 @@ import { ctx } from "./context.js";
 
 const catalogStore = makeCatalogStore();
 
+/**
+ * Wire up the Field Guide catalog panel: the per-biome checklist of
+ * photographed fauna/flora subjects, its IndexedDB/localStorage-backed store
+ * (`makeCatalogStore`), and object-URL bookkeeping for rendered photo
+ * thumbnails. Attaches `ctx.catalogStore`/`ctx.renderCatalogPanel`/
+ * `ctx.toggleCatalogPanel`/`ctx.setCatalogOpen` so photo mode can save shots
+ * and refresh the panel after a save.
+ */
 export function initCatalogPanel() {
   const catalogPanel = document.getElementById("catalog-panel");
   const catalogToggle = document.getElementById("catalog-toggle");

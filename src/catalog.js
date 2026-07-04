@@ -43,10 +43,30 @@ function normalizeCategory(category) {
   return category === "creature" ? "fauna" : category;
 }
 
+/**
+ * Build the storage key for a Field Guide catalog subject.
+ * `category: "creature"` normalizes to `"fauna"` for storage.
+ *
+ * @param {Object} args
+ * @param {string} args.category - "flora" | "fauna" | "creature" (normalized to "fauna")
+ * @param {string} args.variant - flora/fauna variant string (e.g. "leafballtree", "walker")
+ * @param {string} args.biomeId - owning biome id
+ * @returns {string} key of the form `"<category>:<variant>:<biomeId>"`
+ */
 export function buildCatalogKey({ category, variant, biomeId }) {
   return `${normalizeCategory(category)}:${variant}:${biomeId}`;
 }
 
+/**
+ * Build a full catalog subject descriptor from category/variant/biome.
+ *
+ * @param {Object} args
+ * @param {string} args.category - "flora" | "fauna" | "creature" (normalized to "fauna")
+ * @param {string} args.variant - flora/fauna variant string
+ * @param {string} args.biomeId - owning biome id
+ * @param {string|null} [args.label] - display label override; defaults to a title-cased variant name (with `LABEL_OVERRIDES` applied)
+ * @returns {{key: string, category: string, variant: string, biomeId: string, label: string}}
+ */
 export function buildCatalogSubject({ category, variant, biomeId, label = null }) {
   const normalizedCategory = normalizeCategory(category);
   return {
@@ -58,6 +78,15 @@ export function buildCatalogSubject({ category, variant, biomeId, label = null }
   };
 }
 
+/**
+ * Reconstruct a catalog subject from an object's `userData.inspect` tag
+ * (`{category, variant}`) plus the current biome. Returns null for water
+ * (not a catalog subject) or when either input is missing.
+ *
+ * @param {{category: string, variant: string}|null|undefined} inspect - object's inspect tag
+ * @param {{id: string}|null|undefined} biome - current biome
+ * @returns {Object|null} catalog subject, or null if not applicable
+ */
 export function catalogSubjectFromInspect(inspect, biome) {
   if (!inspect?.variant || !biome?.id) return null;
   if (inspect.variant === "water") return null;
@@ -78,6 +107,15 @@ function nectarCanExist(biome) {
   return flowerDensity > 0 || biome.flora.includes("berrybush") || biome.flora.includes("dandylion");
 }
 
+/**
+ * Enumerate every fauna/flora subject a biome can offer in the Field Guide,
+ * derived from its config flags (flora list, `creatureKind`, `anglerFish`,
+ * `flyerVariants`, `noCaterpillars`/`noButterflies`, `hasWillowisps`, ground
+ * cover density tables, etc.) rather than an actual generated world.
+ *
+ * @param {Object} biome - resolved BIOMES entry
+ * @returns {Object[]} catalog subjects, sorted by category then label
+ */
 export function getBiomeCatalogEntries(biome) {
   const entries = new Map();
 
@@ -139,6 +177,18 @@ export function getBiomeCatalogEntries(biome) {
   );
 }
 
+/**
+ * Narrow a biome's full catalog entry list down to what the *current*
+ * generated world actually contains, so the panel never offers a subject the
+ * loaded world lacks. Already-saved subjects are always kept, even if the
+ * current world doesn't have one, so past discoveries stay visible.
+ *
+ * @param {Object[]} entries - full entry list, e.g. from `getBiomeCatalogEntries`
+ * @param {Object} args
+ * @param {Set<string>} args.availableKeys - keys present in the current generated world
+ * @param {Set<string>} [args.savedKeys] - keys the user has already discovered
+ * @returns {Object[]} filtered entries (or `entries` unchanged if `availableKeys` is empty)
+ */
 export function filterCatalogEntriesForWorld(entries, { availableKeys, savedKeys = new Set() }) {
   if (!availableKeys?.size) return entries;
   return entries.filter((entry) => availableKeys.has(entry.key) || savedKeys.has(entry.key));
@@ -255,6 +305,24 @@ function makeEntry({ subject, seed, now, previous = null }) {
   };
 }
 
+/**
+ * Build the Field Guide catalog store, wrapping two persistence layers:
+ * entry metadata (seed, timestamp, label) in `metadataStorage` (localStorage
+ * by default, under `smallworld:catalog:v1`), and photo blobs in
+ * `blobStorage` (an IndexedDB `smallworld-catalog`/`photos` object store by
+ * default, so large binary thumbnails don't bloat localStorage) — falls back
+ * to an in-memory Map if IndexedDB is unavailable.
+ *
+ * @param {Object} [opts]
+ * @param {() => number} [opts.now] - clock override, for tests
+ * @param {Storage|Map} [opts.metadataStorage] - metadata backing store
+ * @param {Map|null} [opts.blobStorage] - photo blob backing store override (defaults to IndexedDB)
+ * @returns {{listEntries: () => Object[], getEntry: (key: string) => Object|null,
+ *   getPhotoBlob: (key: string) => Promise<Blob|null>,
+ *   savePhoto: (args: {subject: Object, seed: number, blob: Blob}) => Promise<{status: string, entry: Object}>,
+ *   replacePhoto: (args: {subject: Object, seed: number, blob: Blob, now?: number}) => Promise<{status: string, entry: Object}>,
+ *   keepCurrent: (key: string) => Promise<Object|null>}}
+ */
 export function makeCatalogStore({
   now = () => Date.now(),
   metadataStorage = typeof localStorage === "undefined" ? new Map() : localStorage,

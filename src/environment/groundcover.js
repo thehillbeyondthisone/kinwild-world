@@ -13,6 +13,31 @@ import { BLOOM_LAYER } from "../postfx.js";
 import { coverScale as _coverScale } from "./_shared.js";
 
 // ─── ground cover ───
+/**
+ * Rejection-sample ground positions via `pickGroundPoint` and build an
+ * `InstancedMesh` of `geo`/`mat` scattered across them, skipping points that
+ * fall outside the given height range, inside excluded circles, or too close
+ * to obstacles of the given kinds. Gives up on a given slot after 5×`count`
+ * total attempts, so `mesh.count` may end up below the requested `count`.
+ * @param {THREE.BufferGeometry} geo - instance geometry.
+ * @param {THREE.Material} mat - instance material.
+ * @param {number} count - requested instance count (upper bound; see above).
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ * @param {object} [opts]
+ * @param {number} [opts.yOffset=0] - vertical offset added to the sampled ground height.
+ * @param {number} [opts.maxRadiusFrac=0.88] - max placement radius as a fraction of the island radius.
+ * @param {number} [opts.minScale=0.6] - min per-instance uniform scale.
+ * @param {number} [opts.maxScale=1.3] - max per-instance uniform scale.
+ * @param {number} [opts.minHeight=-0.15] - reject points with ground height below this.
+ * @param {number} [opts.maxHeight=Infinity] - reject points with ground height above this.
+ * @param {number} [opts.tilt=0.25] - max random tilt (radians) on X/Z rotation.
+ * @param {boolean} [opts.fullRotation=true] - randomize full 0..2π Y rotation (vs. leaving it 0).
+ * @param {Array<string>|Set<string>} [opts.avoidObstacleKinds=null] - obstacle kinds to keep clear of.
+ * @param {number} [opts.avoidRadius=0] - extra clearance (world units) added to an obstacle's own radius.
+ * @param {boolean} [opts.visualRadius=false] - passed through to `pickGroundPoint`.
+ * @param {Array<{x:number,z:number,r:number}>} [opts.excludedCircles=[]] - circles to keep clear of (e.g. fairy rings, portal pads).
+ * @returns {THREE.InstancedMesh} the placed mesh; `mesh.userData.positions` holds the `{x,y,z}` of each placed instance.
+ */
 export function placeInstanced(geo, mat, count, heightFn, opts = {}) {
   const {
     yOffset = 0,
@@ -282,6 +307,17 @@ function _pickWildflowerPos(heightFn, opts) {
   return null;
 }
 
+/**
+ * Build clustered wildflower instances (stems, leaves, pistils, per-colour
+ * petals) for a biome, batched into a handful of `InstancedMesh`es for
+ * performance. Applies `biome.glowFlowers` emissive + bloom-layer tagging when set.
+ * @param {object} biome - biome config (uses `id`, `glowFlowers`).
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ * @param {Array<{x:number,z:number,r:number}>} [excludedCircles=[]] - zones to keep clear of.
+ * @returns {THREE.InstancedMesh[]} the batched meshes; the first mesh with
+ *   petals carries `userData.positions` — the flower spot list consumed by
+ *   `state.flowerSpots` for butterfly targeting.
+ */
 export function makeWildflowerField(biome, heightFn, excludedCircles = []) {
   const palette = WILDFLOWER_PALETTES[biome.id] ?? ["#ffffff"];
   const total = _coverScale(FLOWER_DENSITY[biome.id] ?? 100, 1.6);
@@ -441,6 +477,14 @@ export function makeWildflowerField(biome, heightFn, excludedCircles = []) {
   return meshes;
 }
 
+/**
+ * Build the verdant-grove-only dew-bead ground cover, gated on
+ * `biome.groveDetails.groundCover`.
+ * @param {object} biome - biome config (uses `groveDetails.groundCover`).
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ * @param {Array<{x:number,z:number,r:number}>} [excludedCircles=[]] - zones to keep clear of.
+ * @returns {THREE.Group|null} the dew-bead group, or `null` if the biome doesn't opt in.
+ */
 export function makeVerdantGroveDetails(biome, heightFn, excludedCircles = []) {
   if (!biome.groveDetails?.groundCover) return null;
 
@@ -475,6 +519,13 @@ export function makeVerdantGroveDetails(biome, heightFn, excludedCircles = []) {
   return group;
 }
 
+/**
+ * Build floating cloudlet ground cover for `biome.cloudlike` biomes.
+ * @param {object} biome - biome config (uses `cloudlike`, `fog`, `sky`).
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ * @param {Array<{x:number,z:number,r:number}>} [excludedCircles=[]] - zones to keep clear of.
+ * @returns {THREE.Group|null} the cloud-puff group, or `null` if the biome isn't `cloudlike`.
+ */
 export function makeCloudPuffField(biome, heightFn, excludedCircles = []) {
   if (!biome.cloudlike) return null;
 
@@ -507,6 +558,13 @@ export function makeCloudPuffField(biome, heightFn, excludedCircles = []) {
   return group;
 }
 
+/**
+ * Build scattered pebble ground cover, density-tuned per biome via `PEBBLE_DENSITY`.
+ * @param {object} biome - biome config (uses `id`, `cliff`).
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ * @param {Array<{x:number,z:number,r:number}>} [excludedCircles=[]] - zones to keep clear of.
+ * @returns {THREE.InstancedMesh|null} the pebble mesh, or `null` if the biome's density is 0.
+ */
 export function makePebbleField(biome, heightFn, excludedCircles = []) {
   const count = _coverScale(PEBBLE_DENSITY[biome.id] ?? 80);
   if (count <= 0) return null;
@@ -550,6 +608,14 @@ function makeStarfishGeometry() {
   return geo;
 }
 
+/**
+ * Build beachcombed shell + starfish ground cover, density-tuned per biome
+ * via `BEACHCOMB_DENSITY` (split ~78% shells / ~22% starfish).
+ * @param {object} biome - biome config (uses `id`, `ground`, `accent`).
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ * @param {Array<{x:number,z:number,r:number}>} [excludedCircles=[]] - zones to keep clear of.
+ * @returns {THREE.Group|null} the shell/starfish group, or `null` if the biome's density is 0.
+ */
 export function makeBeachcombField(biome, heightFn, excludedCircles = []) {
   const total = BEACHCOMB_DENSITY[biome.id] ?? 0;
   if (total <= 0) return null;

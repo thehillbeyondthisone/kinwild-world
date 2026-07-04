@@ -25,6 +25,7 @@ function waitForFrame() {
 
 let activeProbe = null;
 
+/** Start a new per-phase CPU timing frame. No-op unless a probe is actively collecting. */
 export function beginPerfFrame() {
   if (!activeProbe?.collecting) return;
   activeProbe.currentFrame = {
@@ -33,6 +34,17 @@ export function beginPerfFrame() {
   };
 }
 
+/**
+ * Time a labeled phase of the current perf-probe frame and accumulate it.
+ * NB: accumulates elapsed time by `name`, so two phases sharing a label
+ * silently merge — keep labels unique. Transparent passthrough (still calls
+ * `fn()` and returns its result) when no probe is collecting.
+ *
+ * @template T
+ * @param {string} name - phase label (must be unique per frame to avoid merging)
+ * @param {() => T} fn - work to time
+ * @returns {T} `fn()`'s return value
+ */
 export function measurePerfPhase(name, fn) {
   if (!activeProbe?.collecting || !activeProbe.currentFrame) return fn();
   const startedAt = performance.now();
@@ -45,6 +57,7 @@ export function measurePerfPhase(name, fn) {
   }
 }
 
+/** Close out the current perf-probe frame and push it onto the sample list. No-op unless collecting. */
 export function endPerfFrame() {
   if (!activeProbe?.collecting || !activeProbe.currentFrame) return;
   activeProbe.currentFrame.totalCpuMs = performance.now() - activeProbe.currentFrame.startedAt;
@@ -199,6 +212,19 @@ function buildReport({ state, scene, renderer, timings, phaseFrames }) {
   };
 }
 
+/**
+ * Kick off the `?perf=1` performance probe: waits for the world to settle
+ * (`?perfSettle` frames, default 60), samples `?perfFrames` frame timings
+ * (default 240) plus per-phase CPU breakdowns wired in by main.js via
+ * `beginPerfFrame`/`measurePerfPhase`/`endPerfFrame`, then publishes the
+ * result on `window.__swPerf.report` and logs it as `[small-world:perf]`
+ * JSON. Entirely a no-op unless `?perf=1` is set.
+ *
+ * @param {Object} args
+ * @param {Object} args.state - shared app state (read for entity/grass/fx counts)
+ * @param {THREE.Scene} args.scene - scene to count objects/shadow-casters in
+ * @param {THREE.WebGLRenderer} args.renderer - renderer to read pixel ratio/size from
+ */
 export function startPerfProbe({ state, scene, renderer }) {
   if (!isPerfProbeEnabled()) return;
 

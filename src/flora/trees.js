@@ -6,6 +6,13 @@ import {
 } from "../pbr.js";
 import { pooled, applyLeafPlateWind, applyLeafPlateGradient, makeInstancedLeafBatch, shouldUseLeafballCanopyShadowProxy, makeLeafballCanopyShadowProxy, getLeafballTreePalette } from "./_shared.js";
 
+/**
+ * Builds a simple low-poly tree: a trunk cylinder and a single jittered
+ * icosahedron canopy with wind sway applied.
+ * Registered in `FLORA_BUILDERS` under the `"tree"` key.
+ * @param {object} biome - Biome config; reads `biome.ground[0]` for the canopy tint.
+ * @returns {THREE.Group} Mesh-local group (trunk + canopy), no userData.
+ */
 export function tree(biome) {
     const g = new THREE.Group();
     const trunkGeo = pooled("tree.trunk.geo", () =>
@@ -42,6 +49,19 @@ export function tree(biome) {
     g.add(leaves);
     return g;
 }
+/**
+ * Builds a large rounded canopy tree assembled from hundreds of individually
+ * oriented, instanced leaf plates (plus matching outline plates and 5 support
+ * branches) arranged in concentric rings over a hemisphere, shingled so upper
+ * rows overlap lower ones.
+ * Registered in `FLORA_BUILDERS` under the `"leafballtree"` key.
+ * @param {object} biome - Biome config; passed to `getLeafballTreePalette` for
+ *   trunk/leaf/outline tints, and to `shouldUseLeafballCanopyShadowProxy` to decide
+ *   whether the per-leaf instances cast shadows or a single low-cost proxy volume does.
+ * @returns {THREE.Group} Mesh-local group (trunk + branches + instanced leaf/outline
+ *   batches, one per leaf-material bucket). `userData.obstacleTopY` is the canopy's
+ *   top world-Y offset above ground, consumed by the air-passing obstacle filter.
+ */
 export function leafballtree(biome) {
     const g = new THREE.Group();
     const palette = getLeafballTreePalette(biome);
@@ -289,6 +309,12 @@ export function leafballtree(biome) {
     g.userData.obstacleTopY = 2.25 + canopyYOffset;
     return g;
 }
+/**
+ * Builds a simple stacked-cone pine tree (trunk + 3-4 tapering cone tiers).
+ * Registered in `FLORA_BUILDERS` under the `"pine"` key.
+ * @param {object} biome - Biome config; reads `biome.accent` for the cone tint.
+ * @returns {THREE.Group} Mesh-local group (trunk + cone tiers), no userData.
+ */
 export function pine(biome) {
     const g = new THREE.Group();
     // Pine is built so every piece's local y matches its height above ground:
@@ -330,6 +356,16 @@ export function pine(biome) {
     }
     return g;
 }
+/**
+ * Builds a snow-covered pine using stacked low-poly bough "skirts" (custom
+ * BufferGeometry with a scalloped snow rim) rather than simple cones, with an
+ * `aSnow` vertex attribute driving a snow-mask shader patched into each bough
+ * material's `onBeforeCompile`.
+ * Registered in `FLORA_BUILDERS` under the `"snowpine"` key.
+ * @param {object} biome - Biome config; reads `biome.accent` for the bough green tint.
+ * @returns {THREE.Group} Mesh-local group (trunk + 4 bough tiers). `userData.obstacleTopY`
+ *   is the tree's collision-top height above ground.
+ */
 export function snowpine(biome) {
     const g = new THREE.Group();
     // Snow-covered pine — stacked low-poly bough skirts with scalloped snow

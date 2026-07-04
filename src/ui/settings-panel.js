@@ -35,6 +35,13 @@ function disposeStatePortals() {
   buildObstacleGrid(state.obstacles);
 }
 
+/**
+ * Wire up the settings panel: atmosphere (world scale, auto-rotate, day/night,
+ * fog, ambient), the reset-camera button, wind, grass, ground-mark lifetime,
+ * portal preview, post-FX, music, FPS, auto-regenerate, and share/copy-link.
+ * Also owns the ARC-005 "world-ready" re-baseline of the wind/grass shader
+ * uniforms after every regen (via `state._reapplyWindSettings`/`state._reapplyGrassSettings`).
+ */
 export function initSettingsPanel() {
   const { controls } = ctx;
   const settingsPanel = document.getElementById("settings-panel");

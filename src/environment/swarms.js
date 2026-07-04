@@ -8,6 +8,17 @@ import { lowfxScale as _lowfxScale } from "./_shared.js";
 // adds them to the scene at spawn; stepDirtPuffs removes them at expiry.
 const PUFF_PARTICLES = 24;
 const PUFF_LIFE = 1.7; // seconds
+/**
+ * Build a burst of dirt specks that fly outward from a point, fall under
+ * gravity, and fade out — used for burrower emerge/sink events. Self-contained:
+ * the caller adds the returned `Points` to the scene at spawn, and
+ * `stepDirtPuffs` disposes it once its life expires.
+ * @param {number} x - world-space spawn X.
+ * @param {number} y - world-space spawn Y (ground height).
+ * @param {number} z - world-space spawn Z.
+ * @param {THREE.ColorRepresentation} baseColor - tint, offset toward a dirtier hue for the specks.
+ * @returns {THREE.Points} the puff, with `userData = { velocities, age }`.
+ */
 export function makeDirtPuff(x, y, z, baseColor) {
   const positions = new Float32Array(PUFF_PARTICLES * 3);
   const velocities = new Float32Array(PUFF_PARTICLES * 3);
@@ -38,6 +49,12 @@ export function makeDirtPuff(x, y, z, baseColor) {
   return points;
 }
 
+/**
+ * Advance and age every active dirt puff in place; disposes and splices out
+ * (from `puffs`, in place) any puff whose age has passed `PUFF_LIFE`.
+ * @param {THREE.Points[]} puffs - live puffs, mutated in place (array and each puff's `userData.age`).
+ * @param {number} dt - elapsed time in seconds since the last call.
+ */
 export function stepDirtPuffs(puffs, dt) {
   if (!puffs || !puffs.length) return;
   for (let p = puffs.length - 1; p >= 0; p--) {
@@ -69,6 +86,23 @@ export function stepDirtPuffs(puffs, dt) {
 // ─── footstep dust kicks ───
 const KICK_PARTICLES = 4;
 const KICK_LIFE = 0.5;
+/**
+ * Build a small burst of dust specks for a footstep, weaker/shorter-lived
+ * than `makeDirtPuff`. Self-contained: the caller adds it to the scene and
+ * `stepDustKicks` disposes it once its life expires.
+ * @param {number} x - world-space spawn X.
+ * @param {number} y - world-space spawn Y (ground height).
+ * @param {number} z - world-space spawn Z.
+ * @param {THREE.ColorRepresentation} baseColor - tint, darkened slightly for the specks.
+ * @param {object} [opts]
+ * @param {number} [opts.count=4] - number of specks.
+ * @param {number} [opts.velocityScale=1] - multiplier on outward/upward launch speed.
+ * @param {number} [opts.size=0.08] - point size.
+ * @param {number} [opts.opacity=0.7] - starting opacity.
+ * @param {number} [opts.life=0.5] - seconds until fully faded and removed.
+ * @param {boolean} [opts.poof=false] - caller-side flag (not consumed here) marking this as a "poof" style kick.
+ * @returns {THREE.Points} the kick, with `userData = { velocities, age, count, life, opacity, poof }`.
+ */
 export function makeDustKick(x, y, z, baseColor, opts = {}) {
   const count = opts.count ?? KICK_PARTICLES;
   const positions = new Float32Array(count * 3);
@@ -108,6 +142,12 @@ export function makeDustKick(x, y, z, baseColor, opts = {}) {
   return points;
 }
 
+/**
+ * Advance and age every active dust kick in place; disposes and splices out
+ * (from `kicks`, in place) any kick whose age has passed its own `userData.life`.
+ * @param {THREE.Points[]} kicks - live kicks, mutated in place (array and each kick's `userData.age`).
+ * @param {number} dt - elapsed time in seconds since the last call.
+ */
 export function stepDustKicks(kicks, dt) {
   if (!kicks || !kicks.length) return;
   for (let p = kicks.length - 1; p >= 0; p--) {
@@ -145,6 +185,16 @@ export function stepDustKicks(kicks, dt) {
 // so the motion reads as jittery, insect-like buzzing rather than smooth flight.
 // Used for the skull flies in the desert biome.
 const FLY_COUNT = 9;
+/**
+ * Build a small cloud of dark specks that orbit and jitter around a fixed
+ * point (e.g. flies over a skull prop in the desert biome). Unlike the burst
+ * effects above, this is a persistent, non-expiring system — the caller keeps
+ * it parented at `(centerX, centerY, centerZ)` for the prop's lifetime.
+ * @param {number} centerX - world-space orbit center X.
+ * @param {number} centerY - world-space orbit center Y.
+ * @param {number} centerZ - world-space orbit center Z.
+ * @returns {THREE.Points} the swarm, with `userData = { centerX, centerY, centerZ, seeds, count }`.
+ */
 export function makeFlySwarm(centerX, centerY, centerZ) {
   const count = _lowfxScale(FLY_COUNT);
   const positions = new Float32Array(count * 3);
@@ -172,6 +222,13 @@ export function makeFlySwarm(centerX, centerY, centerZ) {
   return points;
 }
 
+/**
+ * Advance every fly swarm's per-speck orbit position for one frame using a
+ * layered sin/cos jitter around each swarm's fixed center, so the motion
+ * reads as darting, insect-like buzzing rather than smooth flight.
+ * @param {THREE.Points[]} swarms - swarms returned by `makeFlySwarm`.
+ * @param {number} t - total elapsed simulation time in seconds.
+ */
 export function stepFlySwarms(swarms, t) {
   if (!swarms || !swarms.length) return;
   for (const sw of swarms) {

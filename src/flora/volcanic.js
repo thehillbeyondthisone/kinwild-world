@@ -4,6 +4,19 @@ import { BLOOM_LAYER } from "../postfx.js";
 import { pooled, applyBalloonPuffWisps } from "./_shared.js";
 import { GLSL_HASH_FLOAT } from "../shaders/noise.js";
 
+/**
+ * Builds a whimsical "balloon tree" — a thin trunk topped with clustered puff
+ * spheres. Under `biome.cloudlike`, swaps to pale ribbon-decorated trunk styling
+ * and adds extra tethered detail puffs plus loose satellite puffs for a
+ * cloud-forest look.
+ * Registered in `FLORA_BUILDERS` under the `"balloontree"` key.
+ * @param {object} biome - Biome config; reads `biome.cloudlike` (styling switch),
+ *   `biome.cliff` (non-cloudlike trunk tint), and `biome.ground[2]` (puff tint).
+ * @returns {THREE.Group} Mesh-local group (trunk + puffs + optional ribbons/tethers/
+ *   detail puffs). `userData.capTopY` and `userData.obstacleTopY` are the local-Y
+ *   heights consumed by perch/obstacle placement (obstacleTopY is taller under
+ *   `cloudlike` to account for the extra puff spread).
+ */
 export function balloontree(biome) {
     const g = new THREE.Group();
     const trunkH = 1.1 + Math.random() * 0.5;
@@ -164,6 +177,19 @@ export function balloontree(biome) {
     g.userData.obstacleTopY = trunkH + (biome.cloudlike ? 1.08 : 0.95);
     return g;
 }
+/**
+ * Builds a ground-hugging lava ribbon: a wandering strip mesh with custom
+ * per-vertex `aAcross`/`aAlong`/`aHeat` attributes feeding a hand-written
+ * ShaderMaterial (rim-to-core glow with per-segment flicker).
+ * Registered in `FLORA_BUILDERS` under the `"lavafissure"` key.
+ * @param {object} biome - Biome config; reads `biome.accent` as the base ember tint
+ *   lerped toward a hot core color.
+ * @returns {THREE.Group} Mesh-local group containing the ribbon mesh, enrolled in
+ *   the bloom layer. `ribbon.userData.surfaceLift`/`surfaceConformVertices` tell the
+ *   placement code to conform the ribbon to ground height with a small lift.
+ *   `g.userData.fissureObstaclePoints` is an array of `{x, z, r}` centerline points
+ *   (mesh-local) other placement/collision code can test against.
+ */
 export function lavafissure(biome) {
     const g = new THREE.Group();
     const ember = new THREE.Color(biome.accent);
@@ -292,6 +318,13 @@ export function lavafissure(biome) {
     g.add(ribbon);
     return g;
 }
+/**
+ * Builds a cluster of glossy black glass "fins" (a physically-based clearcoat
+ * material) fanned around a squashed base — no biome-driven coloring.
+ * Registered in `FLORA_BUILDERS` under the `"obsidianglass"` key.
+ * @returns {THREE.Group} Mesh-local group (fins + base). `userData.inspect` tags
+ *   the group for the `?inspect=1` specimen-viewer's category/variant cycling.
+ */
 export function obsidianglass() {
     const g = new THREE.Group();
     const glassGeo = pooled("obsidianglass.fin.geo", () => {
@@ -341,6 +374,13 @@ export function obsidianglass() {
     g.userData.inspect = { category: "flora", variant: "obsidianglass" };
     return g;
 }
+/**
+ * Builds a cluster of 3-5 tall emissive-glass shards (bloom-enrolled) with a warm
+ * additive halo near the base reading as crack-light.
+ * Registered in `FLORA_BUILDERS` under the `"obsidianshard"` key.
+ * @param {object} biome - Biome config; reads `biome.accent` for the emissive/halo tint.
+ * @returns {THREE.Group} Mesh-local group (shards + halo), no userData.
+ */
 export function obsidianshard(biome) {
     const g = new THREE.Group();
     const ember = new THREE.Color(biome.accent);

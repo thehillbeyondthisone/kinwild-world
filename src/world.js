@@ -59,12 +59,15 @@ function setWorldLoading(active) {
   el.setAttribute("aria-hidden", active ? "false" : "true");
 }
 
+/** Register the THREE.Scene used by `generateWorld`/`updateDayNight`. Called once from main.js on boot. */
 export function setSceneRef(scene) {
   _scene = scene;
 }
+/** Register the OrbitControls instance whose `autoRotate` is restored after each regen. */
 export function setControlsRef(controls) {
   _controls = controls;
 }
+/** Register the callback that releases any currently-followed creature before a regen. */
 export function setFollowReleaseCallback(fn) {
   _releaseFollow = fn;
 }
@@ -106,6 +109,16 @@ function disposeWorldPortals(worldState) {
   worldState.portals = [];
 }
 
+/**
+ * Build the context object threaded through `generateWorld` and its
+ * `src/world/*.js` phase helpers, defaulting each field to the live module
+ * refs (`_scene`/`_controls`/`_releaseFollow`) or a real DOM/URL side effect.
+ * Tests override individual fields to run world-gen headless.
+ *
+ * @param {Object} [overrides] - fields to override; unset fields fall back to live defaults
+ * @returns {Object} context with `state`, `scene`, `controls`, `releaseFollow`,
+ *   `setLoading`, `dispatchWorldReady`, `writeSeed`, `portalTargetBiomeId`
+ */
 export function createWorldBuildContext(overrides = {}) {
   return {
     state: overrides.state ?? state,
@@ -136,6 +149,18 @@ function blendPalette(out, day, dusk, night, f) {
   return out.copy(night).lerp(dusk, f * 2);
 }
 
+/**
+ * Per-frame day/night update: lerps scene background/fog, sun/hemi light
+ * colors and intensities, sky dome/mountain tint, and star/aurora opacity
+ * between the current biome's day/dusk/night palettes, plus arcs the sun
+ * across the sky. Driven by either `userSettings.autoCycle` (a
+ * `DAY_NIGHT_PERIOD_S`-second cycle) or `userSettings.manualDayFactor`. Also
+ * updates `state.nightFactor` (read by fauna sleep-cycle logic) and applies
+ * the post-regen fog "reveal" ease-out via `state.revealStart`. No-op until
+ * `state.dayNight`/`sunLight`/`hemiLight` and the scene ref are all set.
+ *
+ * @param {number} t - simulation time in seconds (frozen while paused)
+ */
 export function updateDayNight(t) {
   if (!state.dayNight || !state.sunLight || !state.hemiLight || !_scene) return;
   let dayFactor;
@@ -220,6 +245,26 @@ export function updateDayNight(t) {
   }
 }
 
+/**
+ * Orchestrate a full world regen: disposes the previous `worldState.world`
+ * and portals/reflection, installs a seeded `Math.random` (via `mulberry32`)
+ * for the duration of deterministic construction, rolls biome + layout
+ * (`rollBiomeAndLayout`), then builds atmosphere/terrain, flora/ground cover,
+ * fauna, bird flocks, particles, and shadow discs before handing off to
+ * `finalizeWorldHud`. Superseded regen requests (a newer `generateWorld` call
+ * started before this one finished) abort cleanly via the `STALE_GENERATION`
+ * sentinel without touching shared loading/generating flags the newer run owns.
+ * Async yields inside the deterministic window (`yieldIfNeeded`) restore the
+ * real `Math.random` for the yielded frame and reinstall the seeded stream on
+ * resume, so per-frame animation and the loading UI never consume seeded rolls.
+ *
+ * @param {number} seed - 16-bit world seed
+ * @param {Object} [context] - world-build context, see `createWorldBuildContext`
+ * @param {Object} [options]
+ * @param {string} [options.biomeId] - force a specific biome (e.g. Field Guide catalog navigation);
+ *   the seed's own biome roll is still consumed first so the rest of the seed's random stream is preserved
+ * @returns {Promise<void>}
+ */
 export async function generateWorld(seed, context = createWorldBuildContext(), options = {}) {
   const worldState = context.state;
   const worldScene = context.scene;

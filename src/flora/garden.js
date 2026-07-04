@@ -7,6 +7,15 @@ import {
 } from "../pbr.js";
 import { addCapsuleNeedles, pooled, applyLeafPlateWind, applyLeafPlateGradient, applyDandylionHeadWind, makeInstancedLeafBatch, shouldCastMicroFloraShadow, getDandylionFloraPalette, makeMushroomStemGeometry, makeMushroomUndersideGeometry, enableMushroomCapShadowUnderside, addGroveMushroomFamily } from "./_shared.js";
 
+/**
+ * Builds a dandylion flora specimen: a curved wind-swayable stem, a ring of
+ * base leaves, a fuzzy seed-head core, and three layered particle systems
+ * (fuzz filament lines, attached spores, and slowly detaching drifting
+ * spores) that together read as a dandelion puff. Glows if
+ * `biome.glowFlowers` is set.
+ * @param {object} biome
+ * @returns {THREE.Group} tagged `userData.flowerSpotY` (local Y of the seed head, consumed by butterfly targeting via `state.flowerSpots`).
+ */
 export function dandylion(biome) {
     const g = new THREE.Group();
     const castMicroShadow = shouldCastMicroFloraShadow(biome);
@@ -347,6 +356,12 @@ export function dandylion(biome) {
     g.userData.flowerSpotY = DANDYLION_STEM_H;
     return g;
 }
+/**
+ * Builds a cactus flora specimen: a capsule body with needle instances
+ * (`addCapsuleNeedles`) plus 0–2 randomly-rolled angled arms, each also
+ * needled.
+ * @returns {THREE.Group}
+ */
 export function cactus() {
     const g = new THREE.Group();
     const m = pooled("cactus.mat", () =>
@@ -378,6 +393,14 @@ export function cactus() {
     }
     return g;
 }
+/**
+ * Builds a mushroom flora specimen: a curved wind-swayable stem, a hemisphere
+ * cap (accent-colored with per-instance hue/light/sat jitter) and a matching
+ * underside disc, plus an optional cluster of baby mushrooms/spores via
+ * `addGroveMushroomFamily`.
+ * @param {object} biome
+ * @returns {THREE.Group} tagged `userData.capTopY` (local Y of the cap apex — consumed by world.js to register an accurate flier perch spot) and `userData.perchWind` (`{ strength, localY }`, the wind-sway params a perched flier should inherit).
+ */
 export function mushroom(biome) {
     const g = new THREE.Group();
     // Stem geo is shifted so its base sits at y=0 (mesh at the origin) — that
@@ -438,6 +461,13 @@ export function mushroom(biome) {
     addGroveMushroomFamily(g, biome, { radius: 0.42, count: 2, capY: g.userData.capTopY });
     return g;
 }
+/**
+ * Builds a fern flora specimen: several angled fronds (thin cylinder stems)
+ * radiating from the base, each carrying paired leaflets along its length
+ * plus a tip leaflet, all wind-swayable.
+ * @param {object} biome
+ * @returns {THREE.Group}
+ */
 export function fern(biome) {
     const g = new THREE.Group();
     const castMicroShadow = shouldCastMicroFloraShadow(biome);
@@ -534,6 +564,11 @@ export function fern(biome) {
     }
     return g;
 }
+/**
+ * Builds a reed flora specimen: a small cluster of tapered wind-swayable
+ * cylinder blades at random heights and lean.
+ * @returns {THREE.Group}
+ */
 export function reed() {
     const g = new THREE.Group();
     const mat = pooled("reed.mat", () =>
@@ -559,6 +594,13 @@ export function reed() {
     }
     return g;
 }
+/**
+ * Builds a seaweed flora specimen: a cluster of bowed plane-geometry blades
+ * (alternating two accent-derived colors) swaying with an exaggerated wind
+ * strength suited to underwater sway.
+ * @param {object} biome
+ * @returns {THREE.Group} tagged `userData.surfaceReachRange` (`[min, max]` fraction of `baseHeight` a blade tip may reach toward the water surface) and `userData.baseHeight` (nominal untapered blade height, local units).
+ */
 export function seaweed(biome) {
     const g = new THREE.Group();
     const SEAWEED_BASE_HEIGHT = 0.8;
@@ -615,6 +657,13 @@ export function seaweed(biome) {
     g.userData.baseHeight = SEAWEED_BASE_HEIGHT;
     return g;
 }
+/**
+ * Builds a small non-instanced grass-tuft flora specimen (distinct from the
+ * biome-wide instanced grass field in src/grass.js): a handful of tapered
+ * wind-swayable cone blades scattered near the origin.
+ * @param {object} biome
+ * @returns {THREE.Group}
+ */
 export function grass(biome) {
     const g = new THREE.Group();
     const mat = pooled("grass.mat", () =>
@@ -642,6 +691,13 @@ export function grass(biome) {
     }
     return g;
 }
+/**
+ * Builds a beach-succulent flora specimen: a ring of squashed jittered
+ * icosahedron "leaf" blobs (wind-swayable) around a central bud, colored from
+ * the biome's underside/fog and accent colors.
+ * @param {object} biome
+ * @returns {THREE.Group}
+ */
 export function beachsucculent(biome) {
     const g = new THREE.Group();
     const leafMat = pooled("beachsucculent.leaf.mat", () =>
@@ -683,6 +739,16 @@ export function beachsucculent(biome) {
     g.add(bud);
     return g;
 }
+/**
+ * Builds a berry bush flora specimen: a domed hemisphere of instanced leaf
+ * plates (three shade variants plus matching dark outline shells, wind-swept
+ * and gradient-shaded via `applyLeafPlateWind`/`applyLeafPlateGradient`) with
+ * a random per-bush berry color variant scattered as small glossy spheres
+ * poking through the foliage (rejecting placements too close to an existing
+ * berry).
+ * @param {object} biome
+ * @returns {THREE.Group}
+ */
 export function berrybush(biome) {
     const g = new THREE.Group();
     const castMicroShadow = shouldCastMicroFloraShadow(biome);

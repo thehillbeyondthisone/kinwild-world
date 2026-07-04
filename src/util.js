@@ -2,8 +2,20 @@ import * as THREE from "three";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import { state } from "./state.js";
 
+/** Shared brown trunk/wood color used across flora builders. */
 export const TRUNK = new THREE.Color("#3a2818");
 
+/**
+ * Weld a geometry's coincident vertices, then perturb each welded vertex by a
+ * random amount and recompute normals — gives flora/rock geometry its chunky,
+ * hand-jittered look instead of a perfect primitive. Disposes the input `geo`.
+ *
+ * @param {THREE.BufferGeometry} geo - source geometry (disposed by this call)
+ * @param {number} [amount=0.05] - max per-axis jitter magnitude (world units)
+ * @param {Object} [opts]
+ * @param {boolean} [opts.sphericalUvs=false] - recompute UVs from normalized position (for spherical/blob shapes) instead of keeping welded UVs
+ * @returns {THREE.BufferGeometry} new welded, jittered, re-normaled geometry
+ */
 export function jitterGeo(geo, amount = 0.05, { sphericalUvs = false } = {}) {
   // IcosahedronGeometry stores 3 different UVs and normals per face-corner
   // even when positions coincide. mergeVertices hashes all attributes, so
@@ -33,6 +45,18 @@ export function jitterGeo(geo, amount = 0.05, { sphericalUvs = false } = {}) {
   return welded;
 }
 
+/**
+ * Patch a `MeshStandardMaterial`'s vertex shader (via `onBeforeCompile`) so
+ * geometry sways more the higher its local Y — trunks near y≈0 stay put,
+ * leaves/tips bend. Shares `state.windUniforms.uTime` across all instances,
+ * so wind stays synced world-wide. Works on both regular meshes and
+ * `InstancedMesh` (branches on `USE_INSTANCING`). Chains any previously
+ * installed `onBeforeCompile` so multiple patches on one material compose.
+ *
+ * @param {THREE.Material} material - material to patch in place
+ * @param {number} [strength=1.0] - per-material wind sway multiplier
+ * @returns {THREE.Material} the same `material`, mutated
+ */
 export function applyWindSway(material, strength = 1.0) {
   // Chain any prior onBeforeCompile so multiple patches on the same material
   // compose cleanly. `prev` is the previous handler captured before reassign;
@@ -85,6 +109,14 @@ export function applyWindSway(material, strength = 1.0) {
   return material;
 }
 
+/**
+ * Random integer in an inclusive range, drawn from the ambient `Math.random`
+ * (seeded when called inside the world-gen determinism window).
+ *
+ * @param {number} lo - inclusive lower bound
+ * @param {number} hi - inclusive upper bound
+ * @returns {number} integer in [lo, hi]
+ */
 export function randInt(lo, hi) {
   return lo + Math.floor(Math.random() * (hi - lo + 1));
 }

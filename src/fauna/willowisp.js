@@ -37,6 +37,23 @@ function makeSparklePool() {
 }
 
 // ── factory ──
+/**
+ * Build one will-o'-wisp entity: a glowing orb + point light that wanders
+ * within `wanderRadius` of its home point, occasionally darting in a random
+ * direction, and leaves a fading sparkle trail. Instances live in
+ * `state.willowisps` and are stepped in their own `animate()` phase.
+ *
+ * @param {number} homeX - wander-center X (mesh-local under state.world).
+ * @param {number} homeY - wander-center Y.
+ * @param {number} homeZ - wander-center Z.
+ * @param {number} wanderRadius - max XZ distance from home the wisp will target.
+ * @param {Object|null} [biome=null] - when provided, `biome.id` is used to build
+ *   the catalog subject; omitted for wisps that shouldn't be catalog-trackable.
+ * @returns {Object} wisp state consumed by `stepWillOWisp`, including `group`,
+ *   `orb`, `light`, `sparkles` (a pre-allocated trail pool), avoidance-sphere
+ *   fields (`avoidX/Y/Z/R`, set externally by callers that need the wisp to
+ *   steer clear of something), and the dart-state fields (`darting`, `dartTimer`, etc).
+ */
 export function makeWillOWisp(homeX, homeY, homeZ, wanderRadius, biome = null) {
   const group = new THREE.Group();
   group.position.set(homeX, homeY + 0.3, homeZ);
@@ -108,6 +125,18 @@ export function makeWillOWisp(homeX, homeY, homeZ, wanderRadius, biome = null) {
 }
 
 // ── per-frame step ──
+/**
+ * Per-frame update for one will-o'-wisp: dart/wander state machine, optional
+ * avoidance-sphere deflection (soft steer plus a hard safety clamp), a gentle
+ * bob, a terrain-height floor, glow pulse, and sparkle-trail spawn/fade.
+ *
+ * @param {Object} w - wisp state returned by `makeWillOWisp`.
+ * @param {number} dt - elapsed time in seconds; 0 freezes bob/trail spawn/fade
+ *   (movement and the safety clamp still run so a paused wisp can't be pushed
+ *   through an obstacle by external avoidance-sphere changes).
+ * @param {number} t - simulation time in seconds (frozen while paused).
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ */
 export function stepWillOWisp(w, dt, t, heightFn) {
   const { group, homeX, homeY, homeZ, wanderRadius, seed, speed, sparkles } = w;
   const pos = group.position;

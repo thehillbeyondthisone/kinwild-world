@@ -131,12 +131,14 @@ void main() {
 }
 `;
 
-// Shared uniforms (one object reference, mutated each frame). uLayers is
-// intentionally NOT here — it's a per-creature shell count (LOWFX vs. full
-// fidelity), and a single shared value would ratchet up via Math.max and
-// never reset, leaving stale (too-large) denominators for creatures built
-// after a higher-layer-count world. Only uLightDir is truly global (updated
-// once per frame in main.js).
+/**
+ * Shared uniforms (one object reference, mutated each frame). `uLayers` is
+ * intentionally NOT here — it's a per-creature shell count (LOWFX vs. full
+ * fidelity), and a single shared value would ratchet up via Math.max and
+ * never reset, leaving stale (too-large) denominators for creatures built
+ * after a higher-layer-count world. Only `uLightDir` is truly global (updated
+ * once per frame in main.js).
+ */
 export const sharedFurUniforms = {
   uLightDir: { value: new THREE.Vector3(1, 1, 1) },
 };
@@ -169,9 +171,22 @@ function makeFurTemplate(baseColor, tipColor, furLength, layers) {
   });
 }
 
-// Attach `layers` shell meshes as children of `body`. Returns the array of
-// shells so the caller can store them (disposeGroup handles cleanup when
-// state.world is rebuilt, since shells parent into the world via body).
+/**
+ * Add a stack of shell meshes (8, or 4 under LOWFX) as children of `body`,
+ * each sharing its geometry and displacing along the normal by an
+ * increasing fraction of `uFurLength` to fake volumetric fur. Every shell's
+ * material is a clone of one template differing only by `uShellLayer`;
+ * `uLightDir` is re-bound to the shared, once-per-frame-updated ref.
+ * @param {THREE.Mesh} body - target mesh; shells become its children and
+ *   inherit its animated scale/rotation/squash.
+ * @param {object} biome - biome config (used for `furLength`/`furTip`/`accent` fallbacks).
+ * @param {object} [opts] - overrides: `layers`, `length`, `baseColor`,
+ *   `tipColor`, `patternColor`/`stripeColor`, `patternType`, `patternScale`,
+ *   `stripeBandCount`, `stripeBandWidth`, `stripeOffset`.
+ * @returns {THREE.Mesh[]} the created shell meshes, for the caller to store
+ *   (disposeGroup handles cleanup when state.world is rebuilt, since shells
+ *   parent into the world via body).
+ */
 export function applyShellFur(body, biome, opts = {}) {
   // Keep fur visible in LOWFX, but use a cheaper, shorter stack. The inspector
   // is often viewed full-size while the live world may auto-enter LOWFX on

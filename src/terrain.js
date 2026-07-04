@@ -4,14 +4,29 @@ import { makeTerrainPBRMaterial } from "./pbr.js";
 
 // Terrain height function — one or more shaped islands with smoothstep falloff
 
+/**
+ * Classic smoothstep interpolation, clamped to [0, 1].
+ *
+ * @param {number} e0 - lower edge (maps to 0)
+ * @param {number} e1 - upper edge (maps to 1)
+ * @param {number} x - input value
+ * @returns {number} eased value in [0, 1]
+ */
 export function smoothstep(e0, e1, x) {
   const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
   return t * t * (3 - 2 * t);
 }
 
-// Per-center falloff: 1 at the centre of an island, 0 in the void around it.
-// `shape.kind` is "round", "oblong" (stretched along an axis), or "kidney"
-// (a circular bite carved from one side).
+/**
+ * Per-center island falloff: 1 at the centre of an island, 0 in the void
+ * around it, smoothstepped across the boundary.
+ *
+ * @param {{cx: number, cz: number, radius: number, visualRadius?: number, shape?: {kind: string, orient?: number, stretch?: number, strength?: number}}} center - one layout center
+ * @param {number} x - world X coordinate to sample
+ * @param {number} z - world Z coordinate to sample
+ * @returns {number} falloff factor in [0, 1]; `shape.kind` is "round",
+ *   "oblong" (stretched along an axis), or "kidney" (a circular bite carved from one side)
+ */
 export function islandFalloff(center, x, z) {
   const sh = center.shape || { kind: "round" };
   const dx = x - center.cx;
@@ -47,9 +62,19 @@ const EDGE_RIM_Y = 0.0;
 // Below this the noise amplitude fades and height converges to a flat rim.
 const RIM_LEVEL_START = 0.35;
 
-// `layout` is captured by reference at call time — mutating layout.centers
-// after this call has no effect on the returned closure. Re-enable-archipelago
-// work that adds/removes centers must rebuild the height function.
+/**
+ * Build the terrain height closure: three simplex-noise octaves combined with
+ * per-center smoothstep island falloff and edge-rim leveling so each island
+ * has a defined edge that plunges into void past its radius.
+ * `layout` is captured by reference at call time — mutating `layout.centers`
+ * after this call has no effect on the returned closure; re-enable-archipelago
+ * work that adds/removes centers must rebuild the height function.
+ *
+ * @param {(x: number, z: number) => number} noise2D - simplex-noise 2D sampler
+ * @param {{centers: Array}} layout - layout as returned by `pickLayout()`
+ * @param {number} [amp=3.0] - base noise amplitude (world units)
+ * @returns {(x: number, z: number) => number} heightFn — world Y at (x, z)
+ */
 export function makeHeightFn(noise2D, layout, amp = 3.0) {
   return (x, z) => {
     let falloff = 0;
@@ -75,9 +100,19 @@ export function makeHeightFn(noise2D, layout, amp = 3.0) {
   };
 }
 
-// Sample a random point on the layout, weighted by island area. Used for
-// flora/creature/instance placement so multi-island worlds get coverage of
-// every island and the void in between is skipped automatically.
+/**
+ * Sample a random point on the layout, weighted by island area. Used for
+ * flora/creature/instance placement so multi-island worlds get coverage of
+ * every island and the void in between is skipped automatically. Anything
+ * that needs to place objects on solid ground must go through this rather
+ * than raw `Math.random()` over XZ.
+ *
+ * @param {number} [maxRadiusFrac=0.88] - fraction of each island's radius to sample within
+ * @param {Object} [opts]
+ * @param {Object} [opts.layout] - layout to sample from (defaults to `state.currentLayout`)
+ * @param {boolean} [opts.visualRadius] - sample within `visualRadius` instead of the physical `radius`
+ * @returns {{x: number, z: number}} world XZ coordinates
+ */
 export function pickGroundPoint(maxRadiusFrac = 0.88, opts = {}) {
   const centers = (opts.layout ?? state.currentLayout).centers;
   const radiusFor = (c) => opts.visualRadius ? (c.visualRadius ?? c.radius) : c.radius;
@@ -120,9 +155,15 @@ export function pickGroundPoint(maxRadiusFrac = 0.88, opts = {}) {
   };
 }
 
-// Nearest island center to (x, z). Used by entity edge-avoidance so creatures
-// in multi-island worlds steer back to their own island rather than the world
-// origin (which usually sits in the void between islands).
+/**
+ * Find the nearest island center to (x, z). Used by entity edge-avoidance so
+ * creatures in multi-island worlds steer back to their own island rather than
+ * the world origin (which usually sits in the void between islands).
+ *
+ * @param {number} x - world X coordinate
+ * @param {number} z - world Z coordinate
+ * @returns {Object} the closest entry from `state.currentLayout.centers`
+ */
 export function nearestCenter(x, z) {
   const centers = state.currentLayout.centers;
   let best = centers[0];
@@ -136,11 +177,18 @@ export function nearestCenter(x, z) {
   return best;
 }
 
-// Pick a layout for a freshly seeded world. Called inside `generateWorld`
-// while `Math.random` is the seeded PRNG so the choice is deterministic.
-//
-// Always a single island. (Archipelagos were tried but the creature roaming
-// + visual silhouette didn't read well across multiple disconnected chunks.)
+/**
+ * Pick a layout for a freshly seeded world. Must be called inside
+ * `generateWorld` (or the portal-preview equivalent) while `Math.random` is
+ * the seeded PRNG, immediately after the biome roll, so the choice is
+ * deterministic — see "Seed → biome → layout coupling" in CLAUDE.md.
+ * Always produces a single round island; archipelagos were tried but the
+ * creature roaming and silhouette didn't read well across disconnected chunks.
+ * The `centers` array infrastructure remains multi-center-capable for future use.
+ *
+ * @returns {{centers: Array, planeSize: number, boundRadius: number, kind: string}}
+ *   layout shape consumed by `makeHeightFn`/`pickGroundPoint`/`nearestCenter`
+ */
 export function pickLayout() {
   const sizeRoll = Math.random();
   const sizeMult = sizeRoll < 0.27 ? 0.78 : sizeRoll < 0.78 ? 1.0 : 1.15;
@@ -158,6 +206,13 @@ export function pickLayout() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Terrain mesh
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Pick the round-shaped layout center to clip the terrain mesh against
+ * (falls back to the first center if none are round).
+ *
+ * @param {Object} [worldState=state] - state-like object with `currentLayout.centers`
+ * @returns {Object|null} the chosen center, or null if the layout has no centers
+ */
 export function clipCenter(worldState = state) {
   const centers = worldState.currentLayout?.centers ?? [];
   return centers.find((c) => (c.shape?.kind ?? "round") === "round") ?? centers[0] ?? null;
@@ -206,6 +261,14 @@ function patchTerrainClipShader(shader, center) {
     );
 }
 
+/**
+ * Patch a material's `onBeforeCompile` to discard fragments outside the given
+ * island center's shape, chaining any previously installed handler. No-op if
+ * `center` is falsy.
+ *
+ * @param {THREE.Material} mat - material to patch in place
+ * @param {Object|null} center - layout center to clip against, or null to skip
+ */
 export function applyTerrainClip(mat, center) {
   if (!center) return;
   const prev = mat.onBeforeCompile;
@@ -224,6 +287,17 @@ function makeTerrainDepthMaterial(center) {
   return mat;
 }
 
+/**
+ * Build the vertex-colored terrain mesh: bakes `heightFn` into a
+ * `PlaneGeometry`, height/slope-bands the vertex colors from the biome
+ * palette, applies terrain clipping to the island shape, and (when a clip
+ * center exists) attaches a matching `customDepthMaterial` for shadows.
+ *
+ * @param {Object} biome - biome config (reads `ground`, `cliff`, `cloudlike`)
+ * @param {(x: number, z: number) => number} heightFn - as returned by `makeHeightFn`
+ * @param {Object} [worldState=state] - state-like object for `ISLAND_SIZE`/`currentLayout`
+ * @returns {THREE.Mesh} the terrain mesh, shadow-casting and -receiving
+ */
 export function makeTerrain(biome, heightFn, worldState = state) {
   // segment density scales with size so larger worlds keep similar fidelity
   const segs = Math.round(140 * (worldState.ISLAND_SIZE / ISLAND_SIZE_BASE));

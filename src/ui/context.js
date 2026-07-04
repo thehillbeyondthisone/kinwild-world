@@ -14,6 +14,17 @@
 // functions onto `ctx` so sibling modules can invoke them as `ctx.fn()`. The
 // no-op defaults below keep an accidental early call harmless before the owning
 // module's init has run.
+/**
+ * Shared mutable UI context (ARC-001/QA-006 god-module split). Holds the
+ * renderer refs injected once by `initUi()`, cross-cutting mode/selection
+ * state (mirrors the old module-scope `let`s from the pre-split `ui.js`),
+ * DOM element refs needed by module-scope exported functions, and
+ * cross-module functions attached during each panel's init — sibling panel
+ * modules call these as `ctx.fn()` rather than importing each other, which
+ * would create import cycles. No-op defaults keep an accidental early call
+ * harmless before the owning module's init has run.
+ * @type {Object}
+ */
 export const ctx = {
   // Injected once by initUi().
   camera: null,

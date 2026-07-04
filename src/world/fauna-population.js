@@ -11,13 +11,24 @@ import {
 } from "../fauna.js";
 import { disposeGroup } from "../state.js";
 
-// Creature/caterpillar/snail/butterfly/bee population. Extracted verbatim
-// from generateWorld's fauna section (QA-008) — `yieldIfNeeded` calls below
-// sit at the exact positions they did inside generateWorld, since this
-// function is awaited at that same point. `blocksPlacement`,
-// `GROUND_CREATURE_BLOCK_KINDS`, and `placeFlyerNest` are the flora-placement
-// phase's helpers, reused here for ground-creature collision checks and the
-// post-creature flyer-nest top-up.
+/**
+ * Populate creatures, caterpillars/snails, butterflies, and bee swarms for
+ * the current world. Extracted verbatim from `generateWorld`'s fauna section
+ * (QA-008) — `yieldIfNeeded` calls below sit at the exact positions they did
+ * inside `generateWorld`, since this function is awaited at that same point,
+ * so the seeded-PRNG-window ordering is preserved.
+ *
+ * @param {Object} args
+ * @param {Object} args.worldState - shared mutable state (mutated in place; pushes to `creatures`/`caterpillars`/`butterflies`/`bees`)
+ * @param {Object} args.biome - resolved BIOMES entry
+ * @param {number} args.densityScale - `ISLAND_SIZE / DENSITY_BASE` scale applied to biome creature counts
+ * @param {(maxRadiusFrac?: number, opts?: Object) => {x: number, z: number}} args.pickWorldGroundPoint - layout-bound ground-point sampler
+ * @param {(x: number, z: number, r: number, kinds?: Set<string>) => boolean} args.blocksPlacement - from the flora-placement phase; used for ground-creature collision checks
+ * @param {Set<string>} args.GROUND_CREATURE_BLOCK_KINDS - flora-placement phase's block-kind set for ground creatures
+ * @param {() => boolean} args.placeFlyerNest - flora-placement phase's nest placer, reused here for the post-creature flyer-nest top-up
+ * @param {(force?: boolean) => Promise<void>} args.yieldIfNeeded - determinism-safe async yield
+ * @returns {Promise<void>}
+ */
 export async function populateFauna({
   worldState,
   biome,

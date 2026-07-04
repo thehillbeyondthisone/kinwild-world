@@ -2,6 +2,13 @@ import * as THREE from "three";
 import { jitterGeo } from "../util.js";
 import { pooled } from "./_shared.js";
 
+/**
+ * Builds a branching coral flora specimen: a squashed base blob with several
+ * tilted branch groups, each a stalk plus a tip polyp and small side knobs,
+ * colored from an alternating base/hue-shifted accent pair.
+ * @param {object} biome
+ * @returns {THREE.Group}
+ */
 export function coral(biome) {
     const g = new THREE.Group();
     const baseCol = new THREE.Color(biome.accent);
@@ -75,6 +82,13 @@ export function coral(biome) {
     }
     return g;
 }
+/**
+ * Builds a brain-coral flora specimen: a ring of jittered lobes around a
+ * central lobe plus concentric flattened torus "groove" ridges, colored as a
+ * warm blend of the biome accent.
+ * @param {object} biome
+ * @returns {THREE.Group}
+ */
 export function braincoral(biome) {
     const g = new THREE.Group();
     const baseCol = new THREE.Color(biome.accent).lerp(new THREE.Color("#fff0a8"), 0.28);
@@ -108,6 +122,13 @@ export function braincoral(biome) {
     }
     return g;
 }
+/**
+ * Builds a cup-coral flora specimen: several tilted, tapered cylinder "cups"
+ * each rimmed with a thin torus lip, arranged in a ring, colored from a
+ * hue-shifted variant of the biome accent.
+ * @param {object} biome
+ * @returns {THREE.Group}
+ */
 export function cupcoral(biome) {
     const g = new THREE.Group();
     const baseCol = new THREE.Color(biome.accent).offsetHSL(-0.05, -0.08, 0.08);

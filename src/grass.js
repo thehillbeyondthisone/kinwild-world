@@ -20,11 +20,15 @@ import { GLSL_HASH2_G, GLSL_VALUE_NOISE_G } from "./shaders/noise.js";
 const MAX_PUSHERS = 40;
 const PUSH_RADIUS_SCALE = 0.9;
 
-// Upper bound on the user's grass-density slider. Sets how much headroom
-// makeGrassField pre-allocates so the slider can go past 100% without
-// needing a regen. The slider labels 100% as the user's preferred lush
-// look (internally a 25× multiplier on biome stock); slider max 300%
-// corresponds to a 75× internal multiplier, so the cap here matches.
+/**
+ * Upper bound on the user's grass-density slider, expressed as a multiplier
+ * on a biome's stock instance count. Sets how much headroom `makeGrassField`
+ * pre-allocates so the density slider can go past 100% without a regen. The
+ * slider labels 100% as the preferred lush look (internally a 25× multiplier
+ * on biome stock); slider max 300% corresponds to a 75× internal multiplier,
+ * so this constant matches that.
+ * @type {number}
+ */
 export const MAX_DENSITY_MULTIPLIER = 75;
 
 const _lowfxScale = (n) => (LOWFX ? Math.max(1, Math.round(n * LOWFX_DENSITY)) : n);
@@ -36,6 +40,14 @@ function _circleCellKey(cx, cz) {
   return `${cx},${cz}`;
 }
 
+/**
+ * Build a coarse spatial-hash index over circular "shorten grass here" zones
+ * (e.g. around flora footprints) for fast lookup by `grassHeightScaleAt`.
+ * @param {Array<{x: number, z: number, r: number, shortenTo?: number}>} [circles=[]]
+ *   world-space circles; `r <= 0` and `shortenTo >= 1` entries are skipped (no-op).
+ * @returns {{cellSize: number, cells: Map<string, object[]>}} the index, keyed
+ *   by `"cellX,cellZ"` grid cells of size `SHORT_GRASS_CELL_SIZE`.
+ */
 export function makeFloraShortGrassIndex(circles = []) {
   const cells = new Map();
   for (const circle of circles) {
@@ -66,6 +78,15 @@ export function makeFloraShortGrassIndex(circles = []) {
   return { cellSize: SHORT_GRASS_CELL_SIZE, cells };
 }
 
+/**
+ * Look up the grass-height multiplier at a world-space point from a
+ * `makeFloraShortGrassIndex` index, smoothly blending toward each circle's
+ * `shortenTo` factor near its edge (the minimum across overlapping circles wins).
+ * @param {number} x - world-space X.
+ * @param {number} z - world-space Z.
+ * @param {{cellSize: number, cells: Map<string, object[]>}} index - an index from `makeFloraShortGrassIndex`.
+ * @returns {number} a 0..1 height multiplier (1 = full height, unaffected).
+ */
 export function grassHeightScaleAt(x, z, index) {
   if (!index?.cells?.size) return 1;
   const cx = Math.floor(x / index.cellSize);
@@ -87,11 +108,20 @@ export function grassHeightScaleAt(x, z, index) {
   return heightScale;
 }
 
-// Build the blade geometry + grass shader material. Shared between the
-// production world field (placed by pickGroundPoint across an island) and
-// the inspect-mode disc fill (placed by rejection-sampling a unit disc).
-// `opts.disableFade = true` zeroes the uFadeEnabled uniform so all blades
-// stay full-height regardless of camera distance (inspect mode).
+/**
+ * Build the crossed-plane blade geometry + grass shader material, shared
+ * between the production world field (placed by `pickGroundPoint` across an
+ * island) and the inspect-mode disc fill (placed by rejection-sampling a unit
+ * disc). The shader implements wind sway, the creature-push bend (see
+ * "Grass push system" in CLAUDE.md), camera-distance fade, and tip-color tinting.
+ * @param {object} biome - biome config; uses `ground[1]` for the base blade color.
+ * @param {object} [opts]
+ * @param {boolean} [opts.disableFade=false] - zero the `uFadeEnabled` uniform so all
+ *   blades stay full-height regardless of camera distance (used by inspect mode).
+ * @returns {{blade: THREE.BufferGeometry, material: THREE.MeshStandardMaterial, uniforms: object, baseCol: THREE.Color}}
+ *   `uniforms` includes `uWindStrength`/`uWindScale`, `uPushers`/`uPusherCount`
+ *   (creature-push array, see `stepGrass`), `uHeightMul`, and camera-fade controls.
+ */
 export function makeGrassMaterial(biome, opts = {}) {
   const { disableFade = false } = opts;
 
@@ -297,6 +327,24 @@ function pointInExcludedCapsule(x, z, c) {
   return sx * sx + sz * sz < c.r * c.r;
 }
 
+/**
+ * Build the per-biome instanced grass field. Over-allocates slots up to
+ * `MAX_DENSITY_MULTIPLIER × biome stock` so the live density slider can raise
+ * `mesh.count` past 100% without a regen (see "Live grass density" in
+ * CLAUDE.md), and records the placement bounds on `state.grass`.
+ * @param {object} biome - biome config; uses `id` (via `GRASS_DENSITY`/`GRASS_HEIGHT`/`BALD_THRESHOLD`), `ground`.
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ * @param {Array<{x:number,z:number,r:number}>} [excludedCircles=[]] - zones with no grass at all (e.g. fairy rings, portal pads).
+ * @param {Array<{x:number,z:number,r:number,shortenTo?:number}>} [shortGrassCircles=[]] - zones where grass is shortened, not excluded (fed to `makeFloraShortGrassIndex`).
+ * @param {Array<{x:number,z:number,nx:number,nz:number,halfLength:number,r:number}>} [excludedCapsules=[]] - capsule-shaped no-grass zones (e.g. portal sightlines).
+ * @param {object} [opts]
+ * @param {number} [opts.overshoot] - candidate-density multiplier before rejection sampling; defaults to 55 (22 under LOWFX).
+ * @param {number} [opts.maxDensityMultiplier=MAX_DENSITY_MULTIPLIER] - slot headroom multiplier over the biome's nominal stock count.
+ * @param {number} [opts.initialDensity] - starting `mesh.count` fraction of stock; defaults to `state.userSettings.grassDensity` or 1.0.
+ * @returns {THREE.InstancedMesh|null} the grass mesh, or `null` if the biome's density is 0.
+ *   Also sets `state.grass = { mesh, uniforms, stockCount, maxPlaced }` — `stockCount` is the
+ *   100%-slider instance count, `maxPlaced` is the allocated slot ceiling the slider can reach.
+ */
 export function makeGrassField(
   biome,
   heightFn,
@@ -440,6 +488,16 @@ export function makeGrassField(
   return mesh;
 }
 
+/**
+ * Per-frame grass upkeep: updates the camera-distance fade center, and
+ * rebuilds the creature → grass push-pusher array from `state.creatures`
+ * (skipping airborne fliers) and every `state.caterpillars` segment. Creature/
+ * segment positions are mesh-local under `state.world`; both position and
+ * push radius are scaled by `state.userSettings.worldScale` to match the
+ * grass shader's world-space XZ comparison frame.
+ * @param {THREE.Camera} camera - active camera; no-op if falsy or `state.grass` is unset.
+ * @param {THREE.Vector3} [fadeCenter=camera?.position] - world-space point the distance fade is measured from.
+ */
 export function stepGrass(camera, fadeCenter = camera?.position) {
   if (!state.grass || !camera || !fadeCenter) return;
   const u = state.grass.uniforms.uCameraXZ.value;

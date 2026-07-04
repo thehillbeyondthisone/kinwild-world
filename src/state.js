@@ -1,24 +1,48 @@
 import * as THREE from "three";
 import { MIDFX } from "./lowfx.js";
 
-// App version — injected by Vite at build time from package.json.
-// In dev mode, reads from the env var; in production, inlined by define.
+/**
+ * App version — injected by Vite at build time from `package.json`.
+ * In dev mode, reads from the env var; in production, inlined by `define`.
+ * @type {string}
+ */
 export const APP_VERSION = __APP_VERSION__;
 
+/** Default island plane size (world units) before any layout stretch. */
 export const ISLAND_SIZE_BASE = 100;
+/** Default island bounding radius, derived from `ISLAND_SIZE_BASE`. */
 export const ISLAND_RADIUS_BASE = ISLAND_SIZE_BASE * 0.462;
-// Density anchor for biome flora/creature counts and ground cover. The biome
-// tables were tuned against this 76-unit base, but the current island radius
-// is intentionally doubled for more breathing room. Keep this doubled too so
-// the absolute spawn counts stay near the old world size instead of doubling.
+/**
+ * Density anchor for biome flora/creature counts and ground cover. The biome
+ * tables were tuned against this 76-unit base, but the current island radius
+ * is intentionally doubled for more breathing room. Keep this doubled too so
+ * the absolute spawn counts stay near the old world size instead of doubling.
+ * `world.js` scales target counts by `state.ISLAND_SIZE / DENSITY_BASE`.
+ */
 export const DENSITY_BASE = 76;
 
-// Canonical baselines for the grass density/height settings sliders (100% on
-// each slider maps to these internal units). Single source of truth for
-// src/state.js, src/ui/storage.js, and src/ui.js — see ARC-007 in AUDIT.md.
+/**
+ * Canonical baseline for the grass density settings slider (100% on the
+ * slider maps to this internal multiplier unit). Single source of truth for
+ * `src/state.js`, `src/ui/storage.js`, and `src/ui.js` — see ARC-007 in AUDIT.md.
+ */
 export const GRASS_DENSITY_BASE = 25;
+/** Canonical baseline for the grass height settings slider, same contract as `GRASS_DENSITY_BASE`. */
 export const GRASS_HEIGHT_BASE = 0.96;
 
+/**
+ * Shared module-scope singleton — the app's one mutable state object. Holds
+ * `world` (the THREE.Group disposed/rebuilt every regen), all entity arrays
+ * (`creatures`, `caterpillars`, `butterflies`, `bees`, `flocks`, `dirtPuffs`,
+ * `dustKicks`, `flowerSpots`, `willowisps`, `portals`), `heightFn`,
+ * `currentBiome`/`currentLayout`, `ISLAND_SIZE`/`ISLAND_RADIUS`,
+ * `windUniforms`, `userSettings` (persisted via `src/ui/storage.js`), and refs
+ * for the visual-polish modules (`shadowDisks`, `waterReflection`,
+ * `mountainBasePos`, `postfx`, `renderer`, `depthTexture`). Every module
+ * imports from here rather than passing values around; see individual field
+ * comments below for narrower per-field contracts.
+ * @type {Object}
+ */
 export const state = {
   ISLAND_SIZE: ISLAND_SIZE_BASE,
   ISLAND_RADIUS: ISLAND_RADIUS_BASE,
@@ -165,10 +189,15 @@ export const state = {
   depthTexture: null,
 };
 
+/** Night-palette sky color, lerped toward from the biome's day palette by `updateDayNight`. */
 export const NIGHT_SKY = new THREE.Color("#0a0d24");
+/** Night-palette fog color, see `NIGHT_SKY`. */
 export const NIGHT_FOG = new THREE.Color("#070a1f");
+/** Night-palette sun light color, see `NIGHT_SKY`. */
 export const NIGHT_SUN = new THREE.Color("#7a89b8");
+/** Night-palette hemisphere-light ground color, see `NIGHT_SKY`. */
 export const NIGHT_HEMI_GROUND = new THREE.Color("#06070d");
+/** Full auto day/night cycle duration in seconds, used when `userSettings.autoCycle` is on. */
 export const DAY_NIGHT_PERIOD_S = 120;
 
 const MATERIAL_TEXTURE_KEYS = [
@@ -209,13 +238,20 @@ function disposeMaterial(material, disposedMaterials, disposedTextures) {
   material.dispose();
 }
 
-// ARC-004: `skip` is an optional Set of geometries/materials to leave alone.
-// Individual-reject placement paths (world.js placeOnGround/placeCrawler/etc.)
-// pass a live snapshot of the relevant pool's cached resources so rejecting
-// one creature doesn't dispose a geometry/material another already-placed
-// creature (or the pool map itself) still references. Full-regen teardown
-// (disposeGroup(worldState.world) with no skip set) is unaffected — pools are
-// reset separately every regen, so disposing everything there is correct.
+/**
+ * Traverse a THREE.Group and dispose every geometry/material found, dedup'd
+ * via internal Sets. Used to tear down `state.world` (and other groups) on
+ * every regen.
+ *
+ * @param {THREE.Object3D} g - group/object subtree to walk and dispose
+ * @param {Object} [opts]
+ * @param {Set<Object>} [opts.skip] - geometries/materials to leave undisposed (ARC-004).
+ *   Individual-reject placement paths (`world.js` `placeOnGround`/`placeCrawler`/etc.)
+ *   pass a live snapshot of the relevant pool's cached resources so rejecting one
+ *   creature doesn't dispose a geometry/material another already-placed creature
+ *   (or the pool map itself) still references. Full-regen teardown (no `skip`) is
+ *   unaffected — pools are reset separately every regen, so disposing everything is correct.
+ */
 export function disposeGroup(g, { skip } = {}) {
   const disposedMaterials = new Set();
   const disposedTextures = new Set();
@@ -231,10 +267,14 @@ export function disposeGroup(g, { skip } = {}) {
   });
 }
 
-// Disposes every geometry/material currently cached in a src/pool.js pool
-// instance. Used to tear down an isolated portal-preview pool (QA-001/QA-002)
-// once its preview build finishes — nothing outside that build references
-// the pool's contents, so bulk disposal is safe and needs no scene traversal.
+/**
+ * Dispose every geometry/material currently cached in a `src/pool.js` pool
+ * instance. Used to tear down an isolated portal-preview pool (QA-001/QA-002)
+ * once its preview build finishes — nothing outside that build references
+ * the pool's contents, so bulk disposal is safe and needs no scene traversal.
+ *
+ * @param {{values: () => IterableIterator<any>}} pool - a `makePool()` instance
+ */
 export function disposePoolResources(pool) {
   const disposedMaterials = new Set();
   const disposedTextures = new Set();

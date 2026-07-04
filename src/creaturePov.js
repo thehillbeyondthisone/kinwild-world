@@ -8,6 +8,7 @@
 import * as THREE from "three";
 import { state } from "./state.js";
 
+/** World-units the POV camera lifts above the eye-center anchor before framing the shot. */
 export const POV_EYE_LIFT = 0.35;
 const POV_LOOK_DISTANCE = 8;
 
@@ -37,6 +38,20 @@ function getEyeCenter(creature, out) {
   return true;
 }
 
+/**
+ * Place the camera at a followed creature's eye center (midpoint of
+ * `eyeParts[0]`/`eyeParts[2]`, falling back to a forward-axis offset when eye
+ * parts are absent) looking along its facing. Uses `segments[0]` as the
+ * anchor when present (the caterpillar/snail pattern where meshes move
+ * inside a static group), matching the follow-camera gotcha in main.js;
+ * otherwise anchors to `group`. No-op (returns false) if the creature has
+ * been detached from the scene.
+ *
+ * @param {THREE.Camera} camera - camera to reposition in place
+ * @param {Object|null} controls - OrbitControls-like object; its `target` is synced too, if present
+ * @param {Object} followedCreature - creature/caterpillar struct to view from
+ * @returns {boolean} true if the camera was repositioned, false if the anchor was unavailable
+ */
 export function syncCreaturePovCamera(camera, controls, followedCreature) {
   const anchor = getCreaturePovAnchor(followedCreature);
   if (!camera || !anchor || !followedCreature?.group?.parent) return false;
@@ -64,12 +79,20 @@ export function syncCreaturePovCamera(camera, controls, followedCreature) {
   return true;
 }
 
+/** Restore the last hidden-for-POV creature's original `group.visible`, then clear the tracked ref. */
 export function restoreCreaturePovRenderHidden() {
   if (!_hiddenCreature) return;
   if (_hiddenCreature.group) _hiddenCreature.group.visible = _hiddenWasVisible;
   _hiddenCreature = null;
 }
 
+/**
+ * Hide a followed creature's own group so its POV camera doesn't render its
+ * own body between it and the view. Restores any previously-hidden creature
+ * first if the target has changed.
+ *
+ * @param {Object|null} followedCreature - creature to hide, or null/undefined to just restore
+ */
 export function setCreaturePovRenderHidden(followedCreature) {
   if (!followedCreature?.group) {
     restoreCreaturePovRenderHidden();

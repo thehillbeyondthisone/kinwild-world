@@ -27,6 +27,15 @@ import {
 const NEEDLE_TIP_COLOR = new THREE.Color("#f5ead0");
 const NEEDLE_LENGTH = 0.085;
 const NEEDLE_DENSITY = 95; // needles per local-unit² of capsule surface area
+/**
+ * Builds and parents an InstancedMesh of small cone "needles" scattered over
+ * a capsule's surface (cactus body/arms). Needle count scales with capsule
+ * surface area so thicker/longer capsules read proportionally spikier.
+ * @param {THREE.Object3D} parent - capsule mesh to parent the needle instances to (mesh-local space).
+ * @param {number} radius - capsule radius, local units.
+ * @param {number} length - capsule cylinder run length (between hemispherical caps), local units.
+ * @returns {THREE.InstancedMesh} the needle instance mesh, already added as a child of `parent`.
+ */
 export function addCapsuleNeedles(parent, radius, length) {
   // One needle geo + material are pooled per regen — disposeGroup runs on
   // state.world before resetFloraPool(), so the disposed cone gets re-built
@@ -102,6 +111,12 @@ export function addCapsuleNeedles(parent, radius, length) {
 // fully derived from the biome (no per-instance Math.random) are pooled —
 // `rock`, `pillar`, and `archstone` keep their per-instance jitter.
 const _floraPool = makePool();
+/**
+ * Resets the shared per-regen flora pool. MUST be called at the top of every
+ * `generateWorld()` (via src/flora.js's re-export) — pooled geometries and
+ * materials are disposed when the previous world's group is torn down, so a
+ * stale cache entry would hand back an already-disposed object.
+ */
 export const resetFloraPool = _floraPool.reset;
 // Indirection so portal previews (src/portal.js) can redirect every builder's
 // pooled() calls to an isolated pool instance instead of this shared one
@@ -111,17 +126,40 @@ export const resetFloraPool = _floraPool.reset;
 // entry). _activeFloraPool defaults to the shared per-regen pool and is only
 // ever swapped by withIsolatedFloraPool below.
 let _activeFloraPool = _floraPool;
+/**
+ * Get-or-create accessor into whichever pool is currently active (the shared
+ * per-regen pool, or an isolated scratch pool while inside
+ * `withIsolatedFloraPool`). Used by every flora builder in this family for
+ * memoizing geometries/materials. Contract: only pass a `factory` producing
+ * resources fully derived from the biome — no per-instance `Math.random` —
+ * since the same cached instance is shared across every placed instance of
+ * that kind this regen.
+ * @param {string} key - unique cache key for this resource.
+ * @param {() => any} factory - builds the resource on first access.
+ * @returns {any} the cached (or newly built) resource.
+ */
 export const pooled = (key, factory) => _activeFloraPool.get(key, factory);
 
-// Runs `fn(isolatedPool)` with every pooled() call in this module (and every
-// flora builder that imports it) redirected to a fresh, disposable pool.
-// `fn` receives the isolated pool so a caller building several one-off
-// preview objects (portal.js) can check `isolatedPool.values()` before
-// disposing an individual object's non-pooled resources, without disposing
-// entries other objects in the same preview build still share. Once `fn`
-// returns, every resource cached in the isolated pool is disposed — nothing
-// outside the preview build ever references it (QA-002/QA-026: replaces the
-// old per-object full-scene retained-set scan).
+/**
+ * Runs `fn(isolatedPool)` with every `pooled()` call in this module (and
+ * every flora builder that imports it) redirected to a fresh, disposable pool
+ * instead of the shared per-regen one. This is how portal previews
+ * (src/portal.js) render a different biome's flora without leaking that
+ * biome's cached materials into the live world's shared pool (QA-001: without
+ * this, previews built with the TARGET biome before the real world's flora
+ * loop ran, so shared flora kinds got cached under the wrong biome's palette
+ * and the live world then rendered from that contaminated entry).
+ *
+ * `fn` receives the isolated pool so a caller building several one-off
+ * preview objects can check `isolatedPool.values()` before disposing an
+ * individual object's non-pooled resources, without disposing entries other
+ * objects in the same preview build still share. Once `fn` returns, every
+ * resource cached in the isolated pool is disposed — nothing outside the
+ * preview build ever references it (QA-002/QA-026: replaces the old
+ * per-object full-scene retained-set scan).
+ * @param {(isolatedPool: object) => any} fn - callback run against the scratch pool.
+ * @returns {any} whatever `fn` returns.
+ */
 export function withIsolatedFloraPool(fn) {
   const isolated = makePool();
   const previous = _activeFloraPool;
@@ -134,6 +172,15 @@ export function withIsolatedFloraPool(fn) {
   }
 }
 
+/**
+ * Patches a material's vertex shader (via `onBeforeCompile`) so leaf-plate
+ * geometry (tree/bush foliage built from `buildLeafGeo`) flutters and gusts
+ * in the wind, driven by the shared `state.windUniforms`. Chains onto any
+ * previously-installed `onBeforeCompile` rather than replacing it.
+ * @param {THREE.Material} material - mutated in place.
+ * @param {number} [strength=0.16] - overall sway multiplier; higher reads as more wind-responsive.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
 export function applyLeafPlateWind(material, strength = 0.16) {
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader) => {
@@ -170,6 +217,20 @@ export function applyLeafPlateWind(material, strength = 0.16) {
   return material;
 }
 
+/**
+ * Patches a material's shaders (via `onBeforeCompile`) to paint a stylized
+ * per-leaf shading gradient (tip highlight, base/side/vein shade, and a
+ * procedural rib mask) onto leaf-plate geometry, in lieu of a texture map.
+ * Chains onto any previously-installed `onBeforeCompile`.
+ * @param {THREE.Material} material - mutated in place.
+ * @param {object} [opts]
+ * @param {number} [opts.tipLift=0.10] - brightening applied toward the leaf tip.
+ * @param {number} [opts.baseShade=0.10] - darkening applied toward the leaf base.
+ * @param {number} [opts.veinShade=0.08] - darkening along the center vein.
+ * @param {number} [opts.sideShade=0.10] - darkening toward the leaf edges.
+ * @param {number} [opts.ribShade=0.11] - darkening along the procedural rib pattern.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
 export function applyLeafPlateGradient(
   material,
   { tipLift = 0.10, baseShade = 0.10, veinShade = 0.08, sideShade = 0.10, ribShade = 0.11 } = {}
@@ -243,6 +304,15 @@ export function applyLeafPlateGradient(
   return material;
 }
 
+/**
+ * Patches a material's vertex shader (via `onBeforeCompile`) to drift
+ * vertices in a slow multi-axis sine wander, driven by `state.windUniforms`
+ * — used for floating spore particles. Chains onto any previously-installed
+ * `onBeforeCompile`.
+ * @param {THREE.Material} material - mutated in place.
+ * @param {number} [strength=0.035] - drift amplitude in world units.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
 export function applySporeDrift(material, strength = 0.035) {
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader) => {
@@ -270,6 +340,15 @@ export function applySporeDrift(material, strength = 0.035) {
   return material;
 }
 
+/**
+ * Patches a material's shaders (via `onBeforeCompile`) to paint animated
+ * swirling cloud-wisp bands across a balloon-shaped surface (the volcanic
+ * biome's `balloontree` puff), using local-position-based spiral noise.
+ * Chains onto any previously-installed `onBeforeCompile`.
+ * @param {THREE.Material} material - mutated in place.
+ * @param {number} [strength=0.34] - overall wisp visibility/contrast multiplier.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
 export function applyBalloonPuffWisps(material, strength = 0.34) {
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader) => {
@@ -338,6 +417,17 @@ export function applyBalloonPuffWisps(material, strength = 0.34) {
   return material;
 }
 
+/**
+ * Patches a material's vertex shader (via `onBeforeCompile`) so the
+ * dandylion's spherical seed head sways as a rigid whole (quadratic in its
+ * local Y so the head — sitting atop the stem — moves more than the stem
+ * base), driven by `state.windUniforms`. Chains onto any previously-installed
+ * `onBeforeCompile`.
+ * @param {THREE.Material} material - mutated in place.
+ * @param {number} strength - overall sway multiplier.
+ * @param {number} headY - local Y of the head center (stem height), used as the quadratic wind-amplitude anchor.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
 export function applyDandylionHeadWind(material, strength, headY) {
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader) => {
@@ -369,6 +459,17 @@ export function applyDandylionHeadWind(material, strength, headY) {
   return material;
 }
 
+/**
+ * Builds a static InstancedMesh from a shared geometry/material and a list of
+ * precomputed per-instance transforms (used for leaf-plate batches on trees
+ * and bushes). Returns `null` for an empty matrix list rather than an
+ * instanced mesh with zero instances.
+ * @param {THREE.BufferGeometry} geometry
+ * @param {THREE.Material} material
+ * @param {THREE.Matrix4[]} matrices - one transform per instance.
+ * @param {boolean} [castShadow=true]
+ * @returns {THREE.InstancedMesh|null}
+ */
 export function makeInstancedLeafBatch(geometry, material, matrices, castShadow = true) {
   if (!matrices.length) return null;
   const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
@@ -382,14 +483,37 @@ export function makeInstancedLeafBatch(geometry, material, matrices, castShadow 
   return mesh;
 }
 
+/**
+ * Whether small flora meshes (leaves, needles, stems) on this biome should
+ * cast shadows. Defaults to true; a biome opts out via
+ * `shadowLod.microFloraShadows === false` on lower shadow-detail tiers.
+ * @param {object} biome
+ * @returns {boolean}
+ */
 export function shouldCastMicroFloraShadow(biome) {
   return biome.shadowLod?.microFloraShadows !== false;
 }
 
+/**
+ * Whether the leafballtree should render a single low-poly sphere shadow
+ * proxy for its canopy instead of per-leaf shadows. Opt-in via
+ * `biome.shadowLod.leafballCanopyProxy === true`.
+ * @param {object} biome
+ * @returns {boolean}
+ */
 export function shouldUseLeafballCanopyShadowProxy(biome) {
   return biome.shadowLod?.leafballCanopyProxy === true;
 }
 
+/**
+ * Builds an invisible (colorWrite/depthWrite/depthTest disabled) sphere mesh
+ * that only casts a shadow — a cheap stand-in for a leafballtree's canopy
+ * when `shouldUseLeafballCanopyShadowProxy` is true, replacing per-leaf
+ * shadow casting with one shadow-map draw.
+ * @param {THREE.Vector3} canopyCenter - mesh-local position of the canopy center.
+ * @param {THREE.Vector3} canopyRadius - per-axis scale applied to the unit sphere.
+ * @returns {THREE.Mesh} the proxy mesh, tagged `userData.inspect = { category: "flora", variant: "leafballtree" }`.
+ */
 export function makeLeafballCanopyShadowProxy(canopyCenter, canopyRadius) {
   const geo = pooled("leafballtree.canopy.shadowProxy.geo", () => new THREE.SphereGeometry(1, 16, 10));
   const mat = pooled(
@@ -410,6 +534,13 @@ export function makeLeafballCanopyShadowProxy(canopyCenter, canopyRadius) {
   return proxy;
 }
 
+/**
+ * Derives the leafballtree's trunk/leaf/outline colors from the biome's
+ * ground palette (with an optional per-biome `leafballTreePalette` override
+ * for any of the leaf slots or trunk color).
+ * @param {object} biome
+ * @returns {{trunk: THREE.Color, outline: THREE.Color, leaves: THREE.Color[]}}
+ */
 export function getLeafballTreePalette(biome) {
   const override = biome.leafballTreePalette || {};
   const fallbackLeaves = [
@@ -427,12 +558,26 @@ export function getLeafballTreePalette(biome) {
   };
 }
 
+/**
+ * Derives the leafballtree's outline color as a darkened blend of its
+ * lightest leaf color and its trunk color.
+ * @param {THREE.Color[]} leaves
+ * @param {THREE.Color} trunk
+ * @returns {THREE.Color}
+ */
 export function getLeafballOutlineColor(leaves, trunk) {
   return new THREE.Color(leaves[0])
     .lerp(new THREE.Color(trunk), 0.34)
     .offsetHSL(0.0, -0.05, -0.18);
 }
 
+/**
+ * Derives the `flyer_nest` structure's base/light colors from the biome's
+ * ground/cliff/accent palette, with extra warmth blended in on `cloudlike`
+ * biomes.
+ * @param {object} biome
+ * @returns {{base: THREE.Color, light: THREE.Color}}
+ */
 export function getFlyerNestPalette(biome) {
   const ground0 = new THREE.Color(biome.ground[0]);
   const ground1 = new THREE.Color(biome.ground[1] ?? biome.ground[0]);
@@ -444,6 +589,12 @@ export function getFlyerNestPalette(biome) {
   return { base, light };
 }
 
+/**
+ * Derives the dandylion's stem/leaf colors from the biome's ground/cliff
+ * palette.
+ * @param {object} biome
+ * @returns {{stem: THREE.Color, leaf: THREE.Color}}
+ */
 export function getDandylionFloraPalette(biome) {
   const ground0 = new THREE.Color(biome.ground[0]);
   const ground1 = new THREE.Color(biome.ground[1] ?? biome.ground[0]);
@@ -455,6 +606,21 @@ export function getDandylionFloraPalette(biome) {
   };
 }
 
+/**
+ * Builds a custom mushroom-stem BufferGeometry: a tapered, gently curved
+ * cylinder with a bulbous base and a subtle neck tuck, plus vertical ridges
+ * and surface ripple detail. Local Y=0 is the stem base; Y=`height` is the
+ * top (where the cap sits).
+ * @param {number} height - stem height, local units.
+ * @param {object} [opts]
+ * @param {number} opts.baseRadius - radius at the stem base.
+ * @param {number} opts.topRadius - radius at the stem top.
+ * @param {number} [opts.bulbRadius=baseRadius*0.35] - extra radius blended in near the base for the bulb.
+ * @param {number} [opts.curve=height*0.028] - lateral S-curve bend amplitude.
+ * @param {number} [opts.radialSegments=7]
+ * @param {number} [opts.heightSegments=9]
+ * @returns {THREE.BufferGeometry}
+ */
 export function makeMushroomStemGeometry(
   height,
   { baseRadius, topRadius, bulbRadius = baseRadius * 0.35, curve = height * 0.028, radialSegments = 7, heightSegments = 9 } = {}
@@ -508,6 +674,23 @@ export function makeMushroomStemGeometry(
   return geo;
 }
 
+/**
+ * Builds a downward-facing disc geometry that closes a mushroom cap's
+ * hemisphere from below, so looking up under the cap (e.g. first-person
+ * stroll) doesn't see through into empty space. Normals point down
+ * (`geo.userData.normalsFaceDown = true`); a small rim overlap/bevel drop
+ * avoids z-fighting with the cap mesh's own rim.
+ * @param {number} radiusX - cap radius along local X, local units.
+ * @param {number} radiusZ - cap radius along local Z, local units.
+ * @param {number} y - local Y of the cap's rim (where the underside attaches).
+ * @param {number} segments - radial segment count, should match the cap geometry.
+ * @param {object} [opts]
+ * @param {number} [opts.rimOverlap=1.004] - outward radius scale so the rim slightly overlaps the cap.
+ * @param {number} [opts.yOffset=-0.001] - small downward offset from `y` to avoid z-fighting.
+ * @param {number} [opts.innerRimInset=0.965] - inward radius scale for the inner (bevel) ring.
+ * @param {number} [opts.bevelDrop=0.008] - how far below the rim the inner disc sits.
+ * @returns {THREE.BufferGeometry}
+ */
 export function makeMushroomUndersideGeometry(
   radiusX,
   radiusZ,
@@ -557,11 +740,32 @@ export function makeMushroomUndersideGeometry(
   return geo;
 }
 
+/**
+ * Sets `material.shadowSide = THREE.DoubleSide` so a mushroom cap mesh casts
+ * a shadow from its underside too (the cap geometry is a one-sided
+ * hemisphere; without this its self-shadow on the underside disc is wrong).
+ * @param {THREE.Material} material - mutated in place.
+ * @returns {THREE.Material} the same `material`, for chaining.
+ */
 export function enableMushroomCapShadowUnderside(material) {
   material.shadowSide = THREE.DoubleSide;
   return material;
 }
 
+/**
+ * Adds a cluster of small "baby" mushrooms (and, if the biome opts in, a
+ * scattering of glowing spore particles) as children of `group`, scattered
+ * around the origin at mesh-local ground level. No-op if
+ * `biome.groveDetails?.mushroomFamilies` is falsy; the spore pass is
+ * additionally gated on `biome.groveDetails?.sporeGlow`.
+ * @param {THREE.Group} group - parent to add the baby mushrooms/spores to (mesh-local space, origin-centered).
+ * @param {object} biome
+ * @param {object} [opts]
+ * @param {number} [opts.radius=0.44] - scatter radius for baby mushrooms, local units.
+ * @param {number} [opts.count=3] - baseline baby mushroom count (0-2 more added randomly).
+ * @param {number} [opts.capY=0.35] - reference height used to place spore particles proportionally above ground.
+ * @returns {void}
+ */
 export function addGroveMushroomFamily(group, biome, { radius = 0.44, count = 3, capY = 0.35 } = {}) {
   if (!biome.groveDetails?.mushroomFamilies) return;
   const stemGeo = pooled("grove.babyMushroom.stem.geo", () =>
@@ -639,6 +843,17 @@ export function addGroveMushroomFamily(group, biome, { radius = 0.44, count = 3,
   }
 }
 
+/**
+ * Adds a `THREE.LineSegments` overlay of random weathered scratch marks
+ * across a pillar/drum mesh's faces, in a darkened variant of `baseColor`.
+ * Purely decorative; adds the line mesh as a child of `drum`.
+ * @param {THREE.Object3D} drum - pillar mesh to add the marks to (mesh-local space).
+ * @param {number} topRadius - pillar radius at the top, local units.
+ * @param {number} bottomRadius - pillar radius at the bottom, local units.
+ * @param {number} height - pillar height, local units.
+ * @param {THREE.Color} baseColor - pillar's base color; marks are a darkened offset of this.
+ * @returns {void}
+ */
 export function addPillarSurfaceMarks(drum, topRadius, bottomRadius, height, baseColor) {
   const points = [];
   const markCount = 9 + Math.floor(Math.random() * 5);
@@ -691,6 +906,15 @@ export function addPillarSurfaceMarks(drum, topRadius, bottomRadius, height, bas
   drum.add(marks);
 }
 
+/**
+ * Builds a jittered icosahedron geometry sculpted into a plain rock/boulder
+ * shape: squashed vertically, stretched/skewed on X/Z, with one randomly
+ * oriented "chipped" flat side and subtle horizontal ledge banding.
+ * @param {number} radius - base radius before jitter/squash, local units.
+ * @param {object} [opts]
+ * @param {boolean} [opts.shoulder=false] - use a lower jitter/squash profile for a rock meant to sit against another surface (e.g. a shoulder rock), vs. a freestanding boulder.
+ * @returns {THREE.BufferGeometry}
+ */
 export function makePlainRockGeometry(radius, { shoulder = false } = {}) {
   const detail = shoulder ? 0 : 1;
   const geometry = jitterGeo(

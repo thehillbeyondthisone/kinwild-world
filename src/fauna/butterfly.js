@@ -12,6 +12,17 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 // Butterflies — small bright fliers that flutter between flowers
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Build one butterfly entity (body + two two-tone wing pairs).
+ *
+ * @param {Array} palette - candidate wing colors; front and back wing pairs
+ *   each independently pick a color, retrying once if they land on the same one.
+ * @param {Object} biome - biome config; only `biome.id` is used, for the catalog subject.
+ * @returns {{group: THREE.Group, wings: Array, target: THREE.Vector3, hasTarget: boolean,
+ *   state: "cruising"|"hovering", holdUntil: number, velocity: THREE.Vector3,
+ *   flapPhase: number, flapSpeed: number, wobblePhase: number, wobbleSpeed: number}}
+ *   butterfly state consumed by `stepButterfly`.
+ */
 export function makeButterfly(palette, biome) {
   const group = new THREE.Group();
   group.userData.catalog = buildCatalogSubject({
@@ -115,6 +126,18 @@ function pickFlower(b, flowerSpots) {
 }
 
 const _bflyTarget = new THREE.Vector3();
+/**
+ * Per-frame update for one butterfly: cruise/hover state machine over
+ * `flowerSpots`, steering, erratic wobble, damping/speed cap, water floor,
+ * obstacle avoidance, and orientation/wing flap.
+ *
+ * @param {Object} b - butterfly state returned by `makeButterfly`.
+ * @param {number} dt - elapsed time in seconds (0 when the sim is paused).
+ * @param {number} t - simulation time in seconds (frozen while paused).
+ * @param {Array<{x: number, y: number, z: number}>} flowerSpots - candidate flower
+ *   targets, mesh-local under state.world (from `state.flowerSpots`).
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ */
 export function stepButterfly(b, dt, t, flowerSpots, heightFn) {
   const pos = b.group.position;
 

@@ -9,14 +9,21 @@ import { setFollowReleaseCallback } from "../world.js";
 import { LOCATOR_HIDDEN_FLORA_VARIANTS } from "./constants.js";
 import { ctx } from "./context.js";
 
+/** The currently-followed creature/caterpillar struct, or null if none. */
 export function getFollowTarget() {
   return ctx.followTarget;
 }
 
+/** Whether the cinematic tour (T key) is currently active. */
 export function isTouring() {
   return ctx.tour !== null && ctx.tour.active;
 }
 
+/**
+ * Set (or clear) the followed creature and update the follow button's label/hint.
+ *
+ * @param {Object|null} creatureOrNull - creature/caterpillar struct to follow, or null to release
+ */
 export function setFollowTarget(creatureOrNull) {
   ctx.followTarget = creatureOrNull;
   if (!ctx.followButton) return;
@@ -40,6 +47,13 @@ function updateTourButtonLabel(active) {
   }
 }
 
+/**
+ * Advance the cinematic tour state machine (slow auto-orbit, periodically
+ * cutting to follow a random creature for a few seconds). No-op if no tour
+ * is active. Caller (main.js) invokes this every frame.
+ *
+ * @param {number} dt - frame delta time in seconds
+ */
 export function stepTour(dt) {
   const tour = ctx.tour;
   if (!tour || !tour.active) return;
@@ -131,6 +145,12 @@ const LOCATOR_NAMES = {
   fairyring: "Fairy Ring",
 };
 
+/**
+ * Wire up the locator panel (L key): the entity-type list, fly-to-nearest +
+ * follow-mode entry, Tab-to-cycle through instances of the last-located type,
+ * and the cinematic tour toggle. `setFollowReleaseCallback` (world.js) is
+ * hooked here so `generateWorld` releases any followed creature on regen.
+ */
 export function initLocatorPanel() {
   const { camera, canvas, controls } = ctx;
   const locatorPanel = document.getElementById("locator-panel");

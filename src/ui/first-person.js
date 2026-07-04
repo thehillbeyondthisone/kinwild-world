@@ -8,26 +8,35 @@ import { state } from "../state.js";
 import { islandFalloff, nearestCenter } from "../terrain.js";
 import { ctx } from "./context.js";
 
+/** Whether ground-level stroll mode (F key) is active. */
 export function isStrolling() {
   return ctx.stroll !== null;
 }
 
+/** Whether photo mode's first-person camera is active. */
 export function isPhotoFP() {
   return ctx.photoFP !== null;
 }
 
+/** Whether free-flight fly mode (V key) is active. */
 export function isFlyMode() {
   return ctx.flyFP !== null;
 }
 
+/** Whether any first-person mode (stroll, fly, or photo) is currently active. */
 export function isAnyFP() {
   return ctx.stroll !== null || ctx.flyFP !== null || ctx.photoFP !== null;
 }
 
+/**
+ * Hide/show the cloud-biome's cloud swirl halo and mountain backdrop while
+ * first-person camera is inside them. Big surrounding cloud halos look
+ * lovely from orbit but wash out the view when the camera is inside them;
+ * ground-level cloud puffs still provide close-up texture.
+ *
+ * @param {boolean} on - true to hide (entering first-person), false to restore (exiting)
+ */
 export function applyStrollVisualComfort(on) {
-  // Big surrounding cloud halos look lovely from orbit but wash out the view
-  // when the camera is inside them. Hide them only during first-person stroll;
-  // ground-level cloud puffs still provide close-up texture.
   if (state.currentBiome?.cloudlike && state.cloudSwirl) {
     state.cloudSwirl.visible = !on;
   }
@@ -36,24 +45,40 @@ export function applyStrollVisualComfort(on) {
   }
 }
 
+/**
+ * Clamp a first-person mode's pitch to just under +/-90 degrees, in place.
+ *
+ * @param {{pitch: number}} fp - first-person mode state object
+ */
 export function clampFirstPersonPitch(fp) {
   const lim = Math.PI / 2 - 0.05;
   if (fp.pitch > lim) fp.pitch = lim;
   if (fp.pitch < -lim) fp.pitch = -lim;
 }
 
-// QA-007: stroll, main-view fly, and photo mode each re-implemented the same
-// mouse-look handler (identical sensitivity constant + pitch clamp), WASD(+
-// extra) key-mapping bookkeeping, and pointer-lock state machine (including
-// the retry-on-next-click fallback needed when pointer lock is requested
-// outside a user gesture, e.g. portal arrival). One factory instance per
-// mode keeps each mode's own extras — stroll's ground snap + eye height, fly's
-// touch joystick, photo's review-mode lock-loss guard — in that mode's own
-// enter/exit function; only the genuinely duplicated plumbing lives here, so
-// a fix to it (like the pointer-lock retry) reaches all three automatically.
-// `getFp` reads the mode's own ctx state field (`ctx.stroll` / `ctx.flyFP` /
-// `ctx.photoFP`) so this factory never needs to be told when a mode starts or
-// stops — the enter/exit functions just assign that field as they already did.
+/**
+ * Shared pointer-lock first-person factory (QA-007). Stroll, main-view fly,
+ * and photo mode each used to re-implement the same mouse-look handler
+ * (identical sensitivity constant + pitch clamp), WASD(+extra) key-mapping
+ * bookkeeping, and pointer-lock state machine (including the
+ * retry-on-next-click fallback needed when pointer lock is requested outside
+ * a user gesture, e.g. portal arrival). One factory instance per mode keeps
+ * each mode's own extras — stroll's ground snap + eye height, fly's touch
+ * joystick, photo's review-mode lock-loss guard — in that mode's own
+ * enter/exit function; only the genuinely duplicated plumbing lives here, so
+ * a fix to it (like the pointer-lock retry) reaches all three automatically.
+ *
+ * @param {Object} args
+ * @param {HTMLCanvasElement} args.canvas - canvas to pointer-lock against
+ * @param {() => Object|null} args.getFp - reads the mode's own ctx state field
+ *   (`ctx.stroll`/`ctx.flyFP`/`ctx.photoFP`) so this factory never needs to be
+ *   told when a mode starts or stops — the enter/exit functions just assign that field
+ * @param {string[]} [args.extraKeys] - additional key names (beyond wasd/shift) this mode tracks
+ * @param {(fp: Object) => boolean} [args.ignoreLockLossIf] - when true for the current fp, a pointer-lock-loss event is ignored instead of exiting the mode
+ * @param {number} [args.sens=0.0022] - mouse-look sensitivity
+ * @returns {{onMove: Function, onKeyDown: Function, onKeyUp: Function, onLockChange: Function,
+ *   requestPointerLock: (armRetry?: boolean) => void, setExitFn: (fn: Function) => void}}
+ */
 export function makeFirstPersonMode({ canvas, getFp, extraKeys = [], ignoreLockLossIf, sens = 0.0022 }) {
   const knownKeys = new Set(["w", "a", "s", "d", "shift", ...extraKeys]);
   let exitFn = () => {};
@@ -112,6 +137,15 @@ export function makeFirstPersonMode({ canvas, getFp, extraKeys = [], ignoreLockL
   };
 }
 
+/**
+ * Snap stroll mode's camera to a given mesh-local ground position and yaw
+ * (world-scaled), resetting pitch and key state. Used for portal arrival.
+ *
+ * @param {number} localX - mesh-local X (unscaled by `worldScale`)
+ * @param {number} localZ - mesh-local Z (unscaled by `worldScale`)
+ * @param {number} yaw - facing yaw in radians
+ * @returns {boolean} true if stroll mode was active and the pose was applied
+ */
 export function setStrollLocalPose(localX, localZ, yaw) {
   if (!ctx.stroll) return false;
   const ws = state.userSettings.worldScale ?? 1;
@@ -131,6 +165,15 @@ export function setStrollLocalPose(localX, localZ, yaw) {
   return true;
 }
 
+/**
+ * Enter stroll mode (if not already active) positioned at a portal's arrival
+ * pose, then request pointer lock.
+ *
+ * @param {number} localX - mesh-local X
+ * @param {number} localZ - mesh-local Z
+ * @param {number} yaw - facing yaw in radians
+ * @returns {boolean} true if the pose was successfully applied
+ */
 export function enterStrollFromPortal(localX, localZ, yaw) {
   if (!ctx.stroll) ctx.enterStroll();
   const positioned = setStrollLocalPose(localX, localZ, yaw);
@@ -138,9 +181,13 @@ export function enterStrollFromPortal(localX, localZ, yaw) {
   return positioned;
 }
 
-// Advance the first-person camera using accumulated WASD keys and current
-// yaw/pitch. Caller (main.js) calls this in lieu of controls.update() each
-// frame while stroll mode is active.
+/**
+ * Advance the active first-person camera (stroll, fly, or photo) using
+ * accumulated WASD keys and current yaw/pitch. Caller (main.js) calls this in
+ * lieu of `controls.update()` each frame while any first-person mode is active.
+ *
+ * @param {number} dt - frame delta time in seconds
+ */
 export function stepStroll(dt) {
   if (!ctx.stroll && !ctx.flyFP && !ctx.photoFP) return;
   const fp = ctx.stroll || ctx.flyFP || ctx.photoFP;
@@ -221,6 +268,13 @@ export function stepStroll(dt) {
   );
 }
 
+/**
+ * Wire up ground-level stroll mode (F key) and main-view fly mode (V key),
+ * including mobile touch controls for both, on top of the shared
+ * `makeFirstPersonMode` factory. Attaches `ctx.enterStroll`/`ctx.exitStroll`/
+ * `ctx.enterFlyMode`/`ctx.exitFlyMode`/`ctx.requestStrollPointerLock`/
+ * `ctx.syncFlyTouchControls` for other panels/modes to call.
+ */
 export function initFirstPerson() {
   const { camera, canvas, controls } = ctx;
 

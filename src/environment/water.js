@@ -8,6 +8,17 @@ import { WATER_SURFACE_Y } from "../world-constants.js";
 // Water plane — translucent disk for water-adjacent biomes (marsh, ...).
 // Animated in `animate()` via a small per-vertex sin displacement.
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Build the translucent water plane used by water-adjacent biomes. Patches
+ * `MeshPhysicalMaterial.onBeforeCompile` to add procedural surface turbulence
+ * (bump-mapped normal perturbation + roughness variation, both driven by
+ * `stepWater`'s `uWaterTurbulenceTime`) and, once `state.waterReflection` is
+ * set by `world.js`, a Fresnel-mixed sky reflection sampled from its render
+ * target (`uReflMix` stays 0 — and the mix branch is skipped — until that happens).
+ * @param {object} biome - biome config; uses `water` or `fog` for the base color.
+ * @returns {THREE.Mesh} the water mesh, positioned at `WATER_SURFACE_Y`, with
+ *   `userData.basePositions` caching the flat vertex XZ for `stepWater`'s per-frame Y displacement.
+ */
 export function makeWaterPlane(biome) {
   const segs = 48;
   const size = state.ISLAND_SIZE * 1.05;
@@ -142,6 +153,13 @@ export function makeWaterPlane(biome) {
   return mesh;
 }
 
+/**
+ * Advance the water plane's per-vertex sine displacement and turbulence-time
+ * uniform for one frame.
+ * @param {THREE.Mesh|null} water - a mesh returned by `makeWaterPlane`.
+ * @param {number} dt - elapsed time in seconds since the last call (currently unused; kept for step-function signature parity).
+ * @param {number} t - total elapsed simulation time in seconds.
+ */
 export function stepWater(water, dt, t) {
   if (!water) return;
   const waterTurbulenceUniforms = water.material.userData.waterTurbulenceUniforms;

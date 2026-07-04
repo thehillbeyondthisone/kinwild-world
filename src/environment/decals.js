@@ -161,6 +161,17 @@ function _repaintGroundMarks(system) {
   d.active[0] = d.marks.length > 0 ? 1 : 0;
 }
 
+/**
+ * Build a terrain-shader-painted ground-marks system for a biome, if the biome
+ * configures `biome.groundMarks`. Patches the shared terrain material's
+ * `onBeforeCompile` (via `installGroundMarkShader`) so footprint/trail marks
+ * render as an alpha-blended tint sampled from a CanvasTexture, rather than
+ * as separate decal geometry.
+ * @param {object} biome - biome config; only `biome.groundMarks` is consulted.
+ * @returns {THREE.Object3D|null} an invisible system object holding the mark
+ *   state (`userData.marks`, `userData.texture`, etc.) for `emitGroundMark`/
+ *   `stepGroundMarks` to mutate, or `null` if the biome has no `groundMarks` config.
+ */
 export function makeGroundMarks(biome) {
   const cfg = biome.groundMarks;
   if (!cfg) return null;
@@ -198,6 +209,24 @@ export function makeGroundMarks(biome) {
   return system;
 }
 
+/**
+ * Stamp a single ground mark (or, if `fromX`/`fromZ` are given, an interpolated
+ * trail of stamps between the previous and current position) onto the
+ * system's mark texture, and record it for future fade/expiry in `stepGroundMarks`.
+ * No-op if the mark's height is below the water line.
+ * @param {THREE.Object3D} system - a system returned by `makeGroundMarks`.
+ * @param {object} [opts]
+ * @param {number} opts.x - world-space X of the mark.
+ * @param {number} opts.z - world-space Z of the mark.
+ * @param {number} [opts.y] - world-space Y; defaults to `state.heightFn(x, z)`.
+ * @param {number} [opts.fromX] - previous X, to draw a connecting trail segment.
+ * @param {number} [opts.fromZ] - previous Z, to draw a connecting trail segment.
+ * @param {number} [opts.heading=0] - stamp rotation in radians.
+ * @param {number} [opts.width=0.18] - stamp width in world units (pre-softness).
+ * @param {number} [opts.length=0.32] - stamp length in world units (pre-softness).
+ * @param {number} [opts.opacity] - stamp opacity; defaults to the biome's configured opacity or 0.2.
+ * @param {number} [opts.life] - seconds before the mark fully fades; defaults to the biome's configured life or 6.
+ */
 export function emitGroundMark(system, opts = {}) {
   if (!system || !system.userData) return;
   installGroundMarkShader(system);
@@ -228,6 +257,15 @@ export function emitGroundMark(system, opts = {}) {
   d.active[0] = 1;
 }
 
+/**
+ * Age and expire ground marks, and repaint the mark texture. Full canvas
+ * clear+redraw is throttled to `GROUND_MARK_REPAINT_INTERVAL` (~10Hz) since
+ * marks fade over several seconds, but a repaint is always forced immediately
+ * on any mark's expiry so the final disappearance (and the canvas fully
+ * clearing once none remain) isn't delayed.
+ * @param {THREE.Object3D} system - a system returned by `makeGroundMarks`.
+ * @param {number} dt - elapsed time in seconds since the last call.
+ */
 export function stepGroundMarks(system, dt) {
   if (!system || !system.userData || dt <= 0) return;
   installGroundMarkShader(system);

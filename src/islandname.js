@@ -21,6 +21,15 @@ const SUFFIXES = [
   "mead", "peak", "rise", "comb", "bury", "fell",
 ];
 
+/**
+ * Deterministically derive a whimsical island place-name (e.g. "Mossbrim")
+ * from the world seed. Spins up its own `mulberry32` stream rather than using
+ * the shared `Math.random`, so it's safe to call any time — including outside
+ * or after the seeded world-gen determinism window — without perturbing it.
+ *
+ * @param {number} seed - 16-bit world seed
+ * @returns {string} generated island name (prefix + suffix)
+ */
 export function generateIslandName(seed) {
   const rng = mulberry32(seed);
   const prefix = PREFIXES[Math.floor(rng() * PREFIXES.length)];

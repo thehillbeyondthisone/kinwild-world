@@ -11,23 +11,28 @@
 // onBeforeCompile. Keeping the variants distinct preserves each shader's
 // exact prior output.
 
-// hash(vec2) -> [0,1], as used by makeCloudSwirl and makeIslandEdgeMist.
+/** GLSL source for `hash(vec2) -> [0,1]`, as used by makeCloudSwirl and makeIslandEdgeMist. */
 export const GLSL_HASH2 = `float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }`;
 
-// Same algorithm, higher-precision magic constant — as used by makeAurora.
-// Do not merge with GLSL_HASH2: the extra digits change the actual hash
-// values, not just formatting.
+/**
+ * Same algorithm as {@link GLSL_HASH2}, higher-precision magic constant — as
+ * used by makeAurora. Do not merge with GLSL_HASH2: the extra digits change
+ * the actual hash values, not just formatting.
+ */
 export const GLSL_HASH2_HI_PRECISION = `float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }`;
 
-// float hash(float) variant used by the lavafissure shader (volcanic.js).
+/** GLSL source for the `float hash(float)` variant used by the lavafissure shader (volcanic.js). */
 export const GLSL_HASH_FLOAT = `float hash(float n) { return fract(sin(n) * 43758.5453123); }`;
 
-// Bilinear-interpolated value noise built on GLSL_HASH2 (function name
-// `hash`). Used by makeCloudSwirl and makeIslandEdgeMist.
+/**
+ * GLSL source for a bilinear-interpolated value-noise function, built on
+ * {@link GLSL_HASH2} (expects a function named `hash` in scope). Used by
+ * makeCloudSwirl and makeIslandEdgeMist.
+ */
 export const GLSL_VALUE_NOISE = `float vnoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
   vec2 u = f * f * (3.0 - 2.0 * f);
@@ -35,8 +40,10 @@ export const GLSL_VALUE_NOISE = `float vnoise(vec2 p) {
              mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
 }`;
 
-// Same value-noise algorithm, multi-line `mix` formatting and paired with
-// GLSL_HASH2_HI_PRECISION — used by makeAurora.
+/**
+ * Same value-noise algorithm as {@link GLSL_VALUE_NOISE}, multi-line `mix`
+ * formatting, paired with {@link GLSL_HASH2_HI_PRECISION} — used by makeAurora.
+ */
 export const GLSL_VALUE_NOISE_MULTILINE = `float valueNoise(vec2 p) {
   vec2 i = floor(p);
   vec2 f = fract(p);
@@ -51,10 +58,12 @@ export const GLSL_VALUE_NOISE_MULTILINE = `float valueNoise(vec2 p) {
 // grass.js patches these into three.js's generated MeshStandardMaterial
 // vertex shader via onBeforeCompile, so the names are prefixed with `g` to
 // avoid colliding with any function three's own chunks might define.
+/** GLSL source for `gHash(vec2) -> [0,1]`, the grass.js-prefixed variant of {@link GLSL_HASH2}. */
 export const GLSL_HASH2_G = `float gHash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }`;
 
+/** GLSL source for `gNoise(vec2)`, the grass.js-prefixed value-noise built on {@link GLSL_HASH2_G}. */
 export const GLSL_VALUE_NOISE_G = `float gNoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
   vec2 u = f * f * (3.0 - 2.0 * f);

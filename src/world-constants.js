@@ -10,63 +10,89 @@ import { createNoise2D } from "simplex-noise";
 import { mulberry32 } from "./seed.js";
 import { BIOMES } from "./biomes.js";
 
-// XORed into the world seed before deriving the terrain noise permutation so
-// the terrain noise stream is decorrelated from the placement RNG stream.
+/** XORed into the world seed before deriving the terrain noise permutation so
+ * the terrain noise stream is decorrelated from the placement RNG stream. */
 export const TERRAIN_NOISE_SEED_XOR = 0x5eed5eed;
 
-// Visual canopy spacing is wider than root/footprint spacing. Trees, bushes,
-// and big mushrooms can have small bases but broad crowns/caps, so they need
-// a separate placement radius to prevent silhouettes from intersecting.
-// Lives here (rather than world.js, which re-exports it for back-compat) so
-// src/world/flora-placement.js can use it without an import cycle back
-// through world.js.
+/**
+ * Flora kinds whose visual canopy spacing must be wider than their
+ * root/footprint spacing (small bases, broad crowns/caps, to prevent
+ * silhouettes from intersecting). Lives here (rather than world.js, which
+ * re-exports it for back-compat) so `src/world/flora-placement.js` can use it
+ * without an import cycle back through world.js.
+ * @type {Set<string>}
+ */
 export const CANOPY_SPACING_KINDS = new Set(["tree", "leafballtree", "pine", "snowpine", "deadtree", "bigmushroom", "fairyring", "portal", "berrybush"]);
+/** Extra placement radius padding (world units) applied to `CANOPY_SPACING_KINDS` members. */
 export const CANOPY_SPACING_PAD = 2.8;
 
-// Build the canonical terrain-noise permutation from a world seed. Both the
-// real world and the portal preview must call this with the same seed so the
-// destination terrain matches what the user will actually travel to.
+/**
+ * Build the canonical terrain-noise permutation from a world seed. Both the
+ * real world and the portal preview must call this with the same seed so the
+ * destination terrain matches what the user will actually travel to.
+ *
+ * @param {number} seed - world seed
+ * @returns {(x: number, z: number) => number} simplex-noise 2D sampler
+ */
 export function terrainNoiseFromSeed(seed) {
   return createNoise2D(mulberry32((seed ^ TERRAIN_NOISE_SEED_XOR) >>> 0));
 }
 
-// ARC-003/QA-013: the RNG-prefix consumed at the very start of world
-// generation is exactly one Math.random() call for the biome roll,
-// immediately followed by whatever pickLayout() itself consumes. The portal
-// preview (src/portal.js) replays this same prefix so a preview built for a
-// given seed reconstructs the identical destination layout generateWorld
-// would build for that seed. Inserting any Math.random() call between the
-// biome roll and pickLayout() in generateWorld — or reordering them — would
-// silently desync every portal preview from its destination with no failing
-// test. Route both call sites through this helper so the coupling is
-// enforced by shared code instead of a comment. `pickLayoutFn` is injected
-// (rather than imported) to avoid pulling terrain.js's dependency chain into
-// this low-level constants module.
+/**
+ * Roll the biome and layout together as one atomic RNG-prefix step.
+ * ARC-003/QA-013: the RNG-prefix consumed at the very start of world
+ * generation is exactly one `Math.random()` call for the biome roll,
+ * immediately followed by whatever `pickLayoutFn()` itself consumes. The
+ * portal preview (`src/portal.js`) replays this same prefix so a preview
+ * built for a given seed reconstructs the identical destination layout
+ * `generateWorld` would build for that seed. Inserting any `Math.random()`
+ * call between the biome roll and layout pick in `generateWorld` — or
+ * reordering them — would silently desync every portal preview from its
+ * destination with no failing test; both call sites MUST route through this
+ * helper instead of duplicating the sequence.
+ *
+ * @param {() => Object} pickLayoutFn - injected (rather than imported) to
+ *   avoid pulling terrain.js's dependency chain into this low-level constants module
+ * @returns {{biome: Object, layout: Object}}
+ */
 export function rollBiomeAndLayout(pickLayoutFn) {
   const biome = BIOMES[Math.floor(Math.random() * BIOMES.length)];
   const layout = pickLayoutFn();
   return { biome, layout };
 }
 
-// Cloud islands should read as soft puffs rather than rocky mountains.
-// Lowering the amplitude keeps the silhouette pillowy while preserving the
-// seeded terrain function for creature placement. Shared by world.js and the
-// portal preview so a preview's terrain silhouette matches the real thing.
+/**
+ * Terrain noise amplitude for a biome. Cloud islands should read as soft
+ * puffs rather than rocky mountains — lowering the amplitude keeps the
+ * silhouette pillowy while preserving the seeded terrain function for
+ * creature placement. Shared by world.js and the portal preview so a
+ * preview's terrain silhouette matches the real thing.
+ *
+ * @param {Object} biome - biome config (reads `cloudlike`)
+ * @returns {number} noise amplitude to pass to `makeHeightFn`
+ */
 export function terrainAmpFor(biome) {
   return biome.cloudlike ? 2.15 : 3.2;
 }
 
-// Water-plane surface Y — matches makeWaterPlane in environment.js. Shared by
-// world.js (heightFn wet-depth + flora/creature water gating), main.js
-// (underwater fog), environment.js (water plane placement), and portal.js
-// (preview water plane + terrain wet-depth) so all five never drift apart.
+/**
+ * Water-plane surface Y — matches `makeWaterPlane` in environment.js. Shared
+ * by world.js (heightFn wet-depth + flora/creature water gating), main.js
+ * (underwater fog), environment.js (water plane placement), and portal.js
+ * (preview water plane + terrain wet-depth) so all five never drift apart.
+ */
 export const WATER_SURFACE_Y = -0.12;
 
-// Softens terrain further below the water surface so a lake bed reads as a
-// smooth trough rather than a hard step. Shared by world.js and portal.js —
-// both derive a biome's terrain heightFn from the same noise permutation and
-// must apply the same wet-depth softening for the preview to match the real
-// destination.
+/**
+ * Wrap a heightFn so terrain below the water surface softens into a smooth
+ * trough rather than a hard step. Shared by world.js and portal.js — both
+ * derive a biome's terrain heightFn from the same noise permutation and must
+ * apply the same wet-depth softening for the preview to match the real destination.
+ *
+ * @param {(x: number, z: number) => number} baseHeightFn - unmodified terrain heightFn
+ * @param {number} [waterSurfaceY=WATER_SURFACE_Y] - water surface world-Y
+ * @returns {(x: number, z: number) => number} heightFn with wet-depth softening applied
+ */
 export function applyWaterWetDepth(baseHeightFn, waterSurfaceY = WATER_SURFACE_Y) {
   return (x, z) => {
     const h = baseHeightFn(x, z);
@@ -78,11 +104,17 @@ export function applyWaterWetDepth(baseHeightFn, waterSurfaceY = WATER_SURFACE_Y
   };
 }
 
-// Wraps a heightFn so it also reflects recorded terrain "flatten" zones
-// (portal pads, fairy rings, ...) via the same smoothstep blend used to
-// physically flatten the real terrain mesh. world.js uses this to patch
-// worldState.heightFn after mutating the mesh; portal.js uses it to patch
-// its synthetic preview heightFn, which has no backing mesh to mutate.
+/**
+ * Wrap a heightFn so it also reflects recorded terrain "flatten" zones
+ * (portal pads, fairy rings, ...) via the same smoothstep blend used to
+ * physically flatten the real terrain mesh. world.js uses this to patch
+ * `worldState.heightFn` after mutating the mesh; portal.js uses it to patch
+ * its synthetic preview heightFn, which has no backing mesh to mutate.
+ *
+ * @param {(x: number, z: number) => number} heightFn - base heightFn to wrap
+ * @param {Array<{cx: number, cz: number, r: number, flatY: number}>} flatZones - zones to flatten toward `flatY`
+ * @returns {(x: number, z: number) => number} heightFn with flat zones applied
+ */
 export function applyFlatZonesToHeightFn(heightFn, flatZones) {
   if (!flatZones.length) return heightFn;
   return (x, z) => {
@@ -100,10 +132,18 @@ export function applyFlatZonesToHeightFn(heightFn, flatZones) {
   };
 }
 
-// 9-point footprint sampler — heights around (x,z) at radius r, used to find
-// the lowest ground a flora/portal base needs to reach so slope-planting
-// keeps the downhill side buried. Shared by world.js's slope-plant footprint
-// sampling and portal.js's identical preview-anchor sampling.
+/**
+ * 9-point footprint sampler — heights around (x, z) at radius r, used to
+ * find the lowest ground a flora/portal base needs to reach so slope-planting
+ * keeps the downhill side buried. Shared by world.js's slope-plant footprint
+ * sampling and portal.js's identical preview-anchor sampling.
+ *
+ * @param {(x: number, z: number) => number} heightFn - terrain heightFn to sample
+ * @param {number} x - center world X
+ * @param {number} z - center world Z
+ * @param {number} r - sample radius (world units)
+ * @returns {number[]} 9 height samples (center + 4 cardinal + 4 diagonal)
+ */
 export function sampleFootprintHeights(heightFn, x, z, r) {
   const diagonal = r * Math.SQRT1_2;
   const samples = [
@@ -115,10 +155,13 @@ export function sampleFootprintHeights(heightFn, x, z, r) {
   return samples.map(([dx, dz]) => heightFn(x + dx, z + dz));
 }
 
-// Per-kind footprint radius — how far around the trunk axis we sample
-// heightFn to find the lowest ground the base needs to reach. Bigger trunks
-// need a wider sample so the downhill side stays buried on slopes.
-// Anything not listed falls back to FLORA_FOOTPRINT_DEFAULT.
+/**
+ * Per-kind footprint radius — how far around the trunk axis to sample
+ * heightFn to find the lowest ground the base needs to reach. Bigger trunks
+ * need a wider sample so the downhill side stays buried on slopes. Anything
+ * not listed falls back to `FLORA_FOOTPRINT_DEFAULT`.
+ * @type {Record<string, number>}
+ */
 export const FLORA_FOOTPRINT = {
   // Footprints describe the root/base contact patch for slope planting.
   // Broad crowns are spaced separately by CANOPY_SPACING_KINDS; using the
@@ -131,4 +174,5 @@ export const FLORA_FOOTPRINT = {
   seaweed: 0.12, beach_succulent: 0.20, lavafissure: 1.45,
 };
 
+/** Fallback footprint radius for flora kinds absent from `FLORA_FOOTPRINT`. */
 export const FLORA_FOOTPRINT_DEFAULT = 0.20;

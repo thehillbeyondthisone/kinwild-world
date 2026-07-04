@@ -10,14 +10,23 @@ import { PHOTO_REVIEW_DIM_RENDER_ORDER, PHOTO_REVIEW_DIM_OPACITY } from "./const
 import { makeFirstPersonMode, applyStrollVisualComfort } from "./first-person.js";
 import { ctx } from "./context.js";
 
+/** The active photo-review 3D group (postcard + dim plane), or null if no review is open. */
 export function getPhotoReviewGroup() {
   return ctx.photoReview?.group ?? null;
 }
 
+/** Whether photo mode is currently active (reflected via a body class). */
 export function isPhotoMode() {
   return document.body.classList.contains("photo-mode");
 }
 
+/**
+ * Wire up photo mode: the pointer-lock reticle capture flow, the 3D photo
+ * review (postcard mesh + dim plane), and Field Guide save/replace prompts.
+ * Reuses `makeFirstPersonMode`/`applyStrollVisualComfort` from
+ * first-person.js, and reaches into `ctx.catalogStore`/`ctx.renderCatalogPanel`
+ * to save framed subjects to the Field Guide.
+ */
 export function initPhotoMode() {
   const { camera, canvas, controls } = ctx;
 

@@ -1,6 +1,9 @@
-// QA-015: every biome's edgeAura block was hand-duplicated with only
-// pattern/colors/alpha actually varying. Biomes spread this and override
-// just those three fields.
+/**
+ * Shared base config for each biome's `edgeAura`, spread into per-biome
+ * overrides (QA-015: every biome's edgeAura block used to be hand-duplicated
+ * with only `pattern`/`colors`/`alpha` actually varying — biomes now spread
+ * this and override just those three fields).
+ */
 export const EDGE_AURA_DEFAULTS = {
   innerSoft: 0.24,
   outerSoft: 10.5,
@@ -12,6 +15,17 @@ export const EDGE_AURA_DEFAULTS = {
   windStrength: 0.85,
 };
 
+/**
+ * The biome config table — one entry per selectable biome, each fully
+ * specifying palette, fog, accent/sun colors, allowed flora kinds + count,
+ * particle type, creature color palette + count range, plus optional
+ * dusk/night palette deltas. Optional flags (`water`, `cloudlike`,
+ * `glowFlowers`, `glowEyes`, `furProbability`, `creatureKind`,
+ * `hasWillowisps`, `giantFlora`, `guaranteeBurrower`, `treeFloraRadiusFrac`)
+ * gate cross-cutting behavior — see the biome-flag pattern in CLAUDE.md.
+ * Adding visual variety usually means editing this table, not the builders.
+ * @type {Object[]}
+ */
 export const BIOMES = [
   {
     id: "verdant",
@@ -440,6 +454,7 @@ export const BIOMES = [
   },
 ];
 
+/** Per-biome wildflower color palette (hex strings). Biomes absent here fall back to a default palette. */
 export const WILDFLOWER_PALETTES = {
   // Bright, varied garden biomes.
   verdant: ["#f4a261", "#e76f51", "#fefae0", "#fff2b3"],
@@ -455,19 +470,25 @@ export const WILDFLOWER_PALETTES = {
   obsidian:["#ff7a2a", "#ffb060", "#fcbf49"],
 };
 
-// Optional per-biome grass density overrides. When empty, every biome uses
-// grass.js's shared stock density; set a biome id to 0 here to disable its
-// grass field, or to a positive count to retune only that biome.
+/**
+ * Optional per-biome grass density overrides. When empty, every biome uses
+ * `grass.js`'s shared stock density; set a biome id to 0 here to disable its
+ * grass field, or to a positive count to retune only that biome.
+ */
 export const GRASS_DENSITY = { ashen: 0, desert: 0, frozen: 0, coral: 0, cloud: 0, obsidian: 0 };
-// Optional per-biome grass height multipliers. When empty, every biome uses
-// the shared grass height; add a biome id here for future biome-specific tuning.
+/**
+ * Optional per-biome grass height multipliers. When empty, every biome uses
+ * the shared grass height; add a biome id here for future biome-specific tuning.
+ */
 export const GRASS_HEIGHT = {};
 
-// Per-biome rejection threshold for the grass density noise. Blades whose
-// underlying noise sample at world XZ falls below this threshold are not
-// placed, producing bald patches. Range [0, 1]. Higher = balder. Biomes
-// without an override use 0.18 — light flecking only. Sparse/dry biomes
-// raise it so the field reads patchy.
+/**
+ * Per-biome rejection threshold for the grass density noise. Blades whose
+ * underlying noise sample at world XZ falls below this threshold are not
+ * placed, producing bald patches. Range [0, 1]; higher = balder. Biomes
+ * without an override use 0.18 (light flecking only); sparse/dry biomes
+ * raise it so the field reads patchy.
+ */
 export const BALD_THRESHOLD = {
   verdant: 0.10,
   golden: 0.00,
@@ -475,27 +496,32 @@ export const BALD_THRESHOLD = {
   ashen: 0.45,
   obsidian: 0.40,
 };
+/** Per-biome target wildflower count. 0 = biome has no wildflowers. */
 export const FLOWER_DENSITY = {
   verdant: 180, desert: 0, frozen: 0,
   marsh:   220, ashen:   0, golden: 200,
   mossy:   140, twilight: 240, coral: 0,
   cloud:   0,   grove:   170, obsidian: 0,
 };
-// Per-biome cloud count for the sky-backdrop. 0 / undefined = no clouds
-// (overcast deserts, smoky biomes). Cloud island gets the most by far.
+/**
+ * Per-biome cloud count for the sky-backdrop. 0/undefined = no clouds
+ * (overcast deserts, smoky biomes). Cloud island gets the most by far.
+ */
 export const CLOUD_COUNT = {
   verdant: 16, desert: 3, frozen: 10, marsh: 14,
   ashen:    5, golden: 20, mossy:  12, twilight: 14,
   coral:   30, cloud:  30, grove:  12, obsidian:  7,
 };
-// Biomes that get aurora curtains at night. Tinted via AURORA_TINTS below.
+/** Biomes that get aurora curtains at night. Tinted via `AURORA_TINTS`. @type {Set<string>} */
 export const AURORA_BIOMES = new Set(["frozen", "twilight", "cloud"]);
+/** Per-biome aurora curtain color palette (hex strings), for members of `AURORA_BIOMES`. */
 export const AURORA_TINTS = {
   frozen:   ["#7df0c8", "#a98cff", "#f6d6ff"],
   twilight: ["#ffd97a", "#c9a8e8", "#8fe9ff"],
   cloud:    ["#a8e0ff", "#ffd0e8", "#fff6b8"],
 };
 
+/** Per-biome target pebble ground-cover instance count. */
 export const PEBBLE_DENSITY = {
   verdant: 80, desert: 130, frozen: 100,
   marsh:   70, ashen:  140, golden: 90,
@@ -503,11 +529,12 @@ export const PEBBLE_DENSITY = {
   cloud:   0, grove:    80, obsidian: 160,
 };
 
+/** Per-biome target beachcomb ground-cover instance count. Biomes absent here get none. */
 export const BEACHCOMB_DENSITY = {
   coral: 95,
 };
 
-// Per-biome bloom radius multiplier (1.0 = user setting, 0.85 = 15% smaller).
+/** Per-biome bloom radius multiplier (1.0 = user setting, 0.85 = 15% smaller). */
 export const BLOOM_RADIUS_SCALE = {
   twilight: 0.85,
 };

@@ -29,6 +29,7 @@ const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _s = new THREE.Vector3();
 const _ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+/** Squared-distance LOD cutoff (world units) from the camera focus point beyond which contact shadow discs are skipped (zero-scaled) each frame. */
 export const CONTACT_SHADOW_LOD_DISTANCE = 28;
 const CONTACT_SHADOW_LOD_DISTANCE_SQ = CONTACT_SHADOW_LOD_DISTANCE * CONTACT_SHADOW_LOD_DISTANCE;
 
@@ -39,6 +40,16 @@ function isWithinContactShadowLod(position, focus) {
   return dx * dx + dz * dz <= CONTACT_SHADOW_LOD_DISTANCE_SQ;
 }
 
+/**
+ * Build one InstancedMesh holding every creature/caterpillar contact shadow
+ * disc (soft circular gradient texture on a ground-aligned plane). Sized to
+ * `creatures.length + caterpillars.length + 16` slack slots; unused slots
+ * start zero-scaled (invisible) and are reassigned per frame by
+ * {@link stepShadowDisks} rather than rebuilt on regen.
+ * @param {object} biome - biome config; tints the disc from a darkened `fog`
+ *   color and lowers opacity/darkness for `cloudlike` biomes.
+ * @returns {THREE.InstancedMesh}
+ */
 export function makeShadowDisks(biome) {
   const tex = getShadowTexture();
   // Sized to a generous upper bound — creatures + caterpillars + 16 slack.
@@ -73,6 +84,16 @@ export function makeShadowDisks(biome) {
   return mesh;
 }
 
+/**
+ * Update every shadow disc's instance matrix for the current frame, walking
+ * `state.creatures` then `state.caterpillars` in that order (so a shared
+ * slot index maps deterministically across the two arrays). Creatures/
+ * segments outside {@link CONTACT_SHADOW_LOD_DISTANCE} of `focus`, or beyond
+ * the mesh's instance capacity, get a zero-scale (invisible) matrix.
+ * @param {THREE.InstancedMesh|null} disks - mesh returned by {@link makeShadowDisks}.
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ * @param {{x: number, z: number}|null} [focus] - LOD focus point (e.g. camera target); no LOD culling if omitted.
+ */
 export function stepShadowDisks(disks, heightFn, focus) {
   if (!disks || !heightFn) return;
   const cap = disks.userData.capacity;

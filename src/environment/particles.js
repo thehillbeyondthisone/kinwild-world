@@ -179,6 +179,19 @@ void main() {
 }
 `;
 
+/**
+ * Build a `THREE.Points` particle system for `biome.particle` (pollen, dust,
+ * snow, firefly, ember, lichenmote, feather, bubble, leaf, spark, rain, sand,
+ * or cinder). All kinds share one `ShaderMaterial` selected via the
+ * `PARTICLE_KIND` `#define`, with per-particle `aSeed`/`aLife` attributes
+ * driving fade/twinkle/streak behavior in the shader. `sand`/`cinder` kinds
+ * additionally bake a coarse height grid (`_buildParticleHeightGrid`) and, for
+ * `cinder`, a flattened list of nearby lava-fissure obstacles, both consumed
+ * by `stepParticles` for cheap per-frame ground clamping.
+ * @param {object} biome - biome config; uses `particle`, `sun`, `fog`, `accent`, `water`, `sky`.
+ * @returns {THREE.Points} the particle system, with `userData` holding
+ *   `{ kind, velocities, seeds, lifes, count, heightGrid, fissureObstacles }`.
+ */
 export function makeParticles(biome) {
   const kind = biome.particle;
   const baseCount = {
@@ -297,6 +310,14 @@ export function makeParticles(biome) {
   return points;
 }
 
+/**
+ * Advance one particle system's per-particle positions and life-cycle for
+ * one frame, per its `userData.kind`-specific motion rule (drift, rise/fall,
+ * wind sweep, wrap-around, etc.), and re-upload the position/`aLife` buffers.
+ * @param {THREE.Points} points - a system returned by `makeParticles`.
+ * @param {number} dt - elapsed time in seconds since the last call.
+ * @param {number} t - total elapsed simulation time in seconds (drives shader `uTime` and per-kind oscillation).
+ */
 export function stepParticles(points, dt, t) {
   if (!points) return;
   const { kind, seeds, lifes, count, heightGrid, fissureObstacles } = points.userData;

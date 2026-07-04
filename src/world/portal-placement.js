@@ -35,14 +35,21 @@ function getPortalTargetBiomes(sourceBiome, portalTargetBiomeId, doublePlacement
   return targets;
 }
 
-// Places 1-2 portals (double placement is a user setting) leading to
-// neighboring biomes. Extracted verbatim from the head of generateWorld's
-// flora phase (QA-008) — purely synchronous (no `Math.random` yield points
-// inside), so lifting it out doesn't touch the seeded-PRNG-window mechanics.
-// `blocksFloraPlacement` and `flattenTerrainCircle` are the flora-placement
-// phase's helpers (defined there since other flora kinds share them too);
-// `floraPlacementBlocks` is that phase's shared array, pushed into directly
-// so later flora placement sees the portal as a blocker.
+/**
+ * Place 1-2 portals (double placement is a user setting) leading to
+ * neighboring biomes. Extracted verbatim from the head of `generateWorld`'s
+ * flora phase (QA-008) — purely synchronous (no `Math.random` yield points
+ * inside), so lifting it out doesn't touch the seeded-PRNG-window mechanics.
+ *
+ * @param {Object} args
+ * @param {Object} args.worldState - shared mutable state (pushes to `portals`/`obstacles`, adds to `world`)
+ * @param {Object} args.biome - source biome for the placed portals
+ * @param {number} args.seed - world seed (used to seed each portal's target world)
+ * @param {Object} args.context - world-build context (reads `portalTargetBiomeId`)
+ * @param {(x: number, z: number, r: number) => boolean} args.blocksFloraPlacement - flora-placement phase's helper (defined there since other flora kinds share it too)
+ * @param {(cx: number, cz: number, r: number, flatY: number) => void} args.flattenTerrainCircle - flora-placement phase's helper for flattening terrain under a portal pad
+ * @param {Array} args.floraPlacementBlocks - flora-placement phase's shared block-list array; pushed into directly so later flora placement sees the portal as a blocker
+ */
 export function placePortals({
   worldState,
   biome,

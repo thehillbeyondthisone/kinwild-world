@@ -31,6 +31,12 @@ const _detailTextureCache = new Map();
 // per regen at the default TERRAIN_PBR_TEX_SIZE).
 const _scratchNormal = /* @__PURE__ */ new THREE.Vector3();
 
+/**
+ * Dispose and clear every cached detail-texture family. Must run at the top
+ * of every regen (mirrors the other per-regen pool resets in this codebase)
+ * so a stale family isn't handed out after its textures were already
+ * disposed by `disposeGroup`.
+ */
 export function resetPBRTextureCache() {
   // Dispose defensively: textures attached to world materials were already
   // disposed by disposeGroup (double-dispose is a no-op), but prewarmed
@@ -79,9 +85,18 @@ const TEXTURE_FAMILY_BUILDERS = {
   "flyer-nest-twigs": () => cachedDetailTextures("flyer-nest-twigs", buildFlyerNestTwigTextures),
 };
 
-// Returns thunks that each build one detail-texture family into the cache.
-// Callers in an async context should yield between thunks. A kind missing
-// from the map simply builds lazily at first use, as before.
+/**
+ * Return thunks that each build one detail-texture family this biome's flora
+ * (and grove-mushroom decorations) will need, into the shared cache.
+ * `generateWorld` awaits `yieldIfNeeded` between calling each thunk so the
+ * 10-20ms canvas paints don't hitch flora placement — safe because these
+ * builders consume no `Math.random` and don't perturb the seeded
+ * determinism window. Returns `[]` under LOWFX or when `userSettings.pbrDetails`
+ * is false. A flora kind missing from the internal family map simply builds
+ * lazily at first use instead of being prewarmed.
+ * @param {object} biome - biome config (`flora` kind list, optional `groveDetails.mushroomFamilies`).
+ * @returns {Array<() => object>} zero-arg thunks; call each once, yielding between calls.
+ */
 export function pbrDetailPrewarmSteps(biome) {
   if (LOWFX || state.userSettings.pbrDetails === false) return [];
   const families = new Set();
@@ -808,6 +823,15 @@ function baseTerrainMaterialParams(biome) {
   };
 }
 
+/**
+ * Build the terrain material, painting a fresh normal/roughness-specular
+ * texture pair from `heightFn` (not cached — terrain is per-world). Falls
+ * back to a plain `MeshStandardMaterial` under LOWFX or when
+ * `userSettings.pbrDetails` is false.
+ * @param {object} biome - biome config (`cloudlike` softens normal strength and material response).
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler used to derive slope/normals.
+ * @returns {THREE.MeshPhysicalMaterial|THREE.MeshStandardMaterial}
+ */
 export function makeTerrainPBRMaterial(biome, heightFn) {
   const baseParams = baseTerrainMaterialParams(biome);
   return pbrMaterialOr(baseParams, () => {
@@ -823,6 +847,13 @@ export function makeTerrainPBRMaterial(biome, heightFn) {
   });
 }
 
+/**
+ * Build the leafball-tree trunk/bark material using the cached
+ * "leafball-bark" detail-texture family. Falls back to plain
+ * `MeshStandardMaterial` under LOWFX or when `userSettings.pbrDetails` is false.
+ * @param {object} params - base `MeshStandardMaterial`-style params (color, roughness, etc.).
+ * @returns {THREE.MeshPhysicalMaterial|THREE.MeshStandardMaterial}
+ */
 export function makeLeafballTreeTrunkPBRMaterial(params) {
   return pbrMaterialOr(params, () => {
     const material = new THREE.MeshPhysicalMaterial({
@@ -837,6 +868,13 @@ export function makeLeafballTreeTrunkPBRMaterial(params) {
   });
 }
 
+/**
+ * Build the leafball-tree foliage material using the cached
+ * "leafball-leaf" detail-texture family. Falls back to plain
+ * `MeshStandardMaterial` under LOWFX or when `userSettings.pbrDetails` is false.
+ * @param {object} params - base `MeshStandardMaterial`-style params (color, roughness, etc.).
+ * @returns {THREE.MeshPhysicalMaterial|THREE.MeshStandardMaterial}
+ */
 export function makeLeafballTreeLeafPBRMaterial(params) {
   return pbrMaterialOr(params, () => {
     const material = new THREE.MeshPhysicalMaterial({
@@ -851,6 +889,13 @@ export function makeLeafballTreeLeafPBRMaterial(params) {
   });
 }
 
+/**
+ * Build the dead-tree bark material using the cached "deadtree-bark"
+ * detail-texture family. Falls back to plain `MeshStandardMaterial` under
+ * LOWFX or when `userSettings.pbrDetails` is false.
+ * @param {object} params - base `MeshStandardMaterial`-style params (color, roughness, etc.).
+ * @returns {THREE.MeshPhysicalMaterial|THREE.MeshStandardMaterial}
+ */
 export function makeDeadTreePBRMaterial(params) {
   return pbrMaterialOr(params, () => {
     const material = new THREE.MeshPhysicalMaterial({
@@ -865,6 +910,13 @@ export function makeDeadTreePBRMaterial(params) {
   });
 }
 
+/**
+ * Build the flyer-nest twig material using the cached "flyer-nest-twigs"
+ * detail-texture family, including its color map. Falls back to plain
+ * `MeshStandardMaterial` under LOWFX or when `userSettings.pbrDetails` is false.
+ * @param {object} params - base `MeshStandardMaterial`-style params (color, roughness, etc.).
+ * @returns {THREE.MeshPhysicalMaterial|THREE.MeshStandardMaterial}
+ */
 export function makeFlyerNestPBRMaterial(params) {
   return pbrMaterialOr(params, () => {
     const material = new THREE.MeshPhysicalMaterial({
@@ -880,6 +932,13 @@ export function makeFlyerNestPBRMaterial(params) {
   });
 }
 
+/**
+ * Build the stone material (pillars/limestone/archstone) using the cached
+ * "stone" detail-texture family. Falls back to plain `MeshStandardMaterial`
+ * under LOWFX or when `userSettings.pbrDetails` is false.
+ * @param {object} params - base `MeshStandardMaterial`-style params (color, roughness, etc.).
+ * @returns {THREE.MeshPhysicalMaterial|THREE.MeshStandardMaterial}
+ */
 export function makeStonePBRMaterial(params) {
   return pbrMaterialOr(params, () => {
     const material = new THREE.MeshPhysicalMaterial({
@@ -894,6 +953,13 @@ export function makeStonePBRMaterial(params) {
   });
 }
 
+/**
+ * Build the plain-rock material using the cached "plain-rock"
+ * detail-texture family. Falls back to plain `MeshStandardMaterial` under
+ * LOWFX or when `userSettings.pbrDetails` is false.
+ * @param {object} params - base `MeshStandardMaterial`-style params (color, roughness, etc.).
+ * @returns {THREE.MeshPhysicalMaterial|THREE.MeshStandardMaterial}
+ */
 export function makePlainRockPBRMaterial(params) {
   return pbrMaterialOr(params, () => {
     const material = new THREE.MeshPhysicalMaterial({
@@ -908,6 +974,13 @@ export function makePlainRockPBRMaterial(params) {
   });
 }
 
+/**
+ * Build the mushroom-cap material using the cached "mushroom-cap"
+ * detail-texture family, including its color map. Falls back to plain
+ * `MeshStandardMaterial` under LOWFX or when `userSettings.pbrDetails` is false.
+ * @param {object} params - base `MeshStandardMaterial`-style params (color, roughness, etc.).
+ * @returns {THREE.MeshPhysicalMaterial|THREE.MeshStandardMaterial}
+ */
 export function makeMushroomCapPBRMaterial(params) {
   return pbrMaterialOr(params, () => {
     const material = new THREE.MeshPhysicalMaterial({
@@ -922,6 +995,15 @@ export function makeMushroomCapPBRMaterial(params) {
   });
 }
 
+/**
+ * Build the mushroom-underside material using the cached
+ * "mushroom-underside" detail-texture family (gill color map wired as both
+ * the base map and the emissive map, plus a procedural gill-tint shader
+ * patch). Falls back to plain `MeshStandardMaterial` under LOWFX or when
+ * `userSettings.pbrDetails` is false.
+ * @param {object} [params] - overrides for `color`/`roughness`/`emissive` (defaults are cream/off-white gill tones).
+ * @returns {THREE.MeshPhysicalMaterial|THREE.MeshStandardMaterial}
+ */
 export function makeMushroomUndersideMaterial(params = {}) {
   const baseParams = {
     color: params.color ?? "#f1e8d8",

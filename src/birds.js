@@ -7,6 +7,12 @@ import { integrateVelocity, capVelocitySpeed, orientToVelocity } from "./fauna/s
 // ─────────────────────────────────────────────────────────────────────────────
 // Birds — small bodies + flapping wings, flocking with boid behaviour
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Build a single bird body with two hinged wing pivots for flap animation.
+ * @param {THREE.ColorRepresentation} color - shared body/wing material color.
+ * @returns {{group: THREE.Group, body: THREE.Mesh, wings: THREE.Group[], velocity: THREE.Vector3, flapPhase: number, flapSpeed: number}}
+ *   `wings` are the two pivot groups (`stepFlock` rotates `.rotation.z` on each to flap).
+ */
 export function makeBird(color) {
   const group = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({
@@ -50,6 +56,12 @@ export function makeBird(color) {
   };
 }
 
+/**
+ * Randomly pick a bird color: 50% near-black, 30% the biome's accent color,
+ * 20% the biome's sun color darkened.
+ * @param {object} biome - biome config; uses `accent`, `sun`.
+ * @returns {THREE.Color} the chosen color.
+ */
 export function pickBirdColor(biome) {
   const r = Math.random();
   if (r < 0.5) return new THREE.Color(0x1a1a22);
@@ -57,6 +69,16 @@ export function pickBirdColor(biome) {
   return new THREE.Color(biome.sun).offsetHSL(0, 0, -0.25);
 }
 
+/**
+ * Build one flock of 5-9 same-colored birds at a random altitude and heading.
+ * Unlike every other entity module, the returned object has no `.group` — a
+ * flock is a loose collection of individually-grouped birds (`flock.birds`),
+ * not one parented `THREE.Group` — so `stepFlock` and any disposal code must
+ * walk `flock.birds` directly rather than expecting a single top-level group.
+ * @param {object} biome - biome config; uses `id`, `accent`, `sun` (via `pickBirdColor`).
+ * @returns {{birds: Array, waypoint: THREE.Vector3, waypointTimer: number, altitude: number}}
+ *   `birds` is the array of objects returned by `makeBird`, each pre-positioned near the flock center.
+ */
 export function makeFlock(biome) {
   const size = 5 + Math.floor(Math.random() * 5); // 5–9
   const color = pickBirdColor(biome);
@@ -101,6 +123,16 @@ export function makeFlock(biome) {
 }
 
 const _flockTarget = new THREE.Vector3();
+/**
+ * Advance one flock's boid simulation (alignment/cohesion/separation/waypoint
+ * seeking, ground-avoidance floor, wing flap) for one frame. O(N²) over the
+ * flock's own birds — fine at the current flock sizes (N ≤ ~9); a spatial
+ * structure would only be worth it above N ≈ 15. Because `makeFlock` returns
+ * no `.group`, this walks `flock.birds` directly rather than a parented group.
+ * @param {ReturnType<typeof makeFlock>} flock - a flock returned by `makeFlock`, mutated in place.
+ * @param {number} dt - elapsed time in seconds since the last call.
+ * @param {number} t - total elapsed simulation time in seconds (drives wing-flap phase).
+ */
 export function stepFlock(flock, dt, t) {
   flock.waypointTimer -= dt;
   if (flock.waypointTimer <= 0) {

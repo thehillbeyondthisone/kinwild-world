@@ -2,8 +2,14 @@ import { state } from "../state.js";
 import { WATER_AVOID_Y } from "./shared.js";
 import { makeDustKick, emitGroundMark } from "../environment.js";
 
-// Water plane is around y=-0.12 and can wave downward; keep the fish body's
-// top below the lowest visible surface and require terrain clearance below.
+/**
+ * Highest terrain-ground Y a fish of the given scale may swim over. The water
+ * plane is around y=-0.12 and can wave downward, so this keeps the fish
+ * body's top below the lowest visible surface and requires terrain
+ * clearance below.
+ * @param {number} scale - creature's overall scale multiplier.
+ * @returns {number} maximum ground height (world-space Y) for the fish to stay submerged.
+ */
 export function fishMaxGroundY(scale) {
   return WATER_AVOID_Y - 0.24 - 0.66 * scale;
 }
@@ -16,6 +22,16 @@ let _perchCacheT = -Infinity;
 let _perchCachePerch = null;
 let _perchCacheResult = null;
 
+/**
+ * Resolve a perch spot's current wind-swayed world position, or the perch
+ * itself unchanged if it has no `perchWind` data. Mirrors the non-instanced
+ * path of `applyWindSway`'s vertex shader so the visual sway a flier lands on
+ * matches the flora's actual rendered sway. Results are memoized for the
+ * current animation frame (same `perch` + same `state.windUniforms.uTime`
+ * value) so repeated calls within one frame skip redundant trig.
+ * @param {object} perch - a `state.perchSpots` entry (or any `{x,y,z}`-shaped point).
+ * @returns {{x: number, y: number, z: number}} the perch's current world position.
+ */
 export function currentPerchPoint(perch) {
   if (!perch?.perchWind) return perch;
   const t = state.windUniforms.uTime.value;
@@ -46,12 +62,27 @@ export function currentPerchPoint(perch) {
   return result;
 }
 
+/**
+ * Release the flier's claim on its current perch, if any, so another flier
+ * can claim it. No-op if `c` has no `perchTarget` or is no longer that
+ * perch's occupant (e.g. it was already evicted or reassigned).
+ * @param {object} c - creature state.
+ */
 export function releasePerchForFlier(c) {
   if (!c?.perchTarget) return;
   const perch = c.perchTarget;
   if (perch.occupant === c) perch.occupant = null;
 }
 
+/**
+ * Claim a perch spot for a flier, releasing any previously held perch first.
+ * Fails if the perch is already occupied by a different, still-live creature
+ * (`occupant.group?.parent` truthy) — a creature whose group has been
+ * disposed no longer blocks the claim.
+ * @param {object} c - creature state.
+ * @param {object|null} perch - a `state.perchSpots` entry to claim.
+ * @returns {boolean} true if the perch was claimed (or `perch` was falsy → false).
+ */
 export function claimPerchForFlier(c, perch) {
   if (!perch) return false;
   if (c.perchTarget && c.perchTarget !== perch) releasePerchForFlier(c);
@@ -61,9 +92,16 @@ export function claimPerchForFlier(c, perch) {
   return true;
 }
 
-// Pick a perch target when a flier transitions flying→descending. Probability
-// gate is per-call so most descents still land normally on the ground; nest
-// perches are preferred before other caps unless every nest is occupied.
+/**
+ * Pick and claim a perch target when a flier transitions flying→descending.
+ * No-op for fish/bumblebees. Gated by a 55% per-call roll so most descents
+ * still land normally on the ground instead of homing to a perch.
+ * `flyer_nest` perches are searched with no distance cap and preferred over
+ * any other perch kind (mushroom caps, etc.), which are only considered
+ * within a 6-unit radius (squared distance < 36). Sets `c.perchTarget` via
+ * {@link claimPerchForFlier} on success; leaves it unset otherwise.
+ * @param {object} c - creature state.
+ */
 export function pickPerchForFlier(c) {
   if (c.isFish || c.isBee) return;
   const perches = state.perchSpots;
@@ -95,6 +133,15 @@ export function pickPerchForFlier(c) {
   if (nearest) claimPerchForFlier(c, nearest);
 }
 
+/**
+ * Convert a mesh-local foot/paw offset (from a creature's facing-relative
+ * body frame) into a world-space XZ point, using the creature's current
+ * heading and scale. Used for footstep/landing ground-mark placement.
+ * @param {object} c - creature state.
+ * @param {number} localX - local-space X offset (pre-scale), body-relative.
+ * @param {number} localZ - local-space Z offset (pre-scale), body-relative.
+ * @returns {{x: number, z: number}} world-space XZ position.
+ */
 export function localFootToWorld(c, localX, localZ) {
   const rot = -c.heading + Math.PI / 2;
   const cr = Math.cos(rot);
@@ -157,11 +204,29 @@ function emitFlierLandingMarks(c, heightFn) {
   }
 }
 
-// ── flier landing FSM ─────────────────────────────────────────────────────
-// The 4-state landing state machine (flying ↔ descending ↔ landed ↔ ascending)
-// plus water/drowsy/perch gating. Runs every frame for non-fish fliers; the
-// actual movement + animation is handled by the shared walker/flier path in
-// stepCreature after this returns. Extracted from stepCreature (QA-001).
+/**
+ * ── flier landing FSM ─────────────────────────────────────────────────────
+ * Advance the 4-state landing state machine (`flying ↔ descending ↔ landed ↔
+ * ascending`, held in `c.landState`) for one frame, plus its water/drowsy/
+ * perch safeguards:
+ *  - Water: if the ground beneath the flier is below `WATER_AVOID_Y`, the FSM
+ *    is forced back to "flying" and any held perch is released, so a flier
+ *    never lands on/over water.
+ *  - Drowsy: sleepiness > 0.6 forces a descent (skipped while over water so a
+ *    sleepy flier doesn't try to ditch mid-lake).
+ *  - Perch: while descending with a `c.perchTarget`, holds an approach
+ *    altitude until roughly over the perch, then commits to "landed" only
+ *    once within `perchRadius` (default 0.4) of the perch's current
+ *    (wind-swayed) point.
+ * Runs every frame for non-fish fliers (fish always float and never call
+ * this); the actual movement + animation is handled by the shared walker/
+ * flier path in stepCreature after this returns. Extracted from stepCreature
+ * (QA-001).
+ * @param {object} c - creature state; mutates `c.landState`, `c.landTimer`,
+ *   `c.currentHover`, `c.perchTarget`/`perchOffsetX`/`perchOffsetZ`.
+ * @param {number} dt - frame delta time in seconds.
+ * @param {(x: number, z: number) => number} heightFn - world-space terrain height sampler.
+ */
 export function stepFlier(c, dt, heightFn) {
   c.landTimer -= dt;
   const restH = 0.35 * c.scale;

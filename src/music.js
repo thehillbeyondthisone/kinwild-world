@@ -9,10 +9,12 @@
 
 import { state } from "./state.js";
 
+/** Hard cap on audio element volume; the actual level is this times the persisted `musicVolume` slider (0..1). */
 export const MAX_VOLUME = 0.15;
 const FADE_MS = 800;
 const MUSIC_BASE_URL = "https://static.pardev.net/small-world/music";
 
+/** Filenames of every track available for manual per-biome override selection, relative to `MUSIC_BASE_URL`. */
 export const AVAILABLE_MUSIC_TRACKS = [
   "AshenWastes.mp3",
   "CloudIsland.mp3",
@@ -29,7 +31,7 @@ export const AVAILABLE_MUSIC_TRACKS = [
   "VolcanicGlass.mp3",
 ];
 
-// Static map: PascalCase biome name → filename.
+/** Static map: PascalCase biome name (see `nameToKey`) → default track filename. */
 export const BIOME_TRACKS = {
   AshenWastes: "AshenWastes.mp3",
   CloudIsland: "CloudIsland.mp3",
@@ -64,16 +66,36 @@ function nameToKey(name) {
     .join("");
 }
 
+/**
+ * Look up the default track filename for a biome from `BIOME_TRACKS`,
+ * falling back to `Default.mp3` when the biome has no dedicated track.
+ *
+ * @param {{name: string}} biome - biome config (reads `name`)
+ * @returns {string} track filename
+ */
 export function defaultTrackForBiome(biome) {
   const key = nameToKey(biome.name);
   return BIOME_TRACKS[key] ?? DEFAULT_TRACK;
 }
 
+/**
+ * Resolve the track to actually play for a biome: the user's persisted
+ * per-biome override if valid, else `defaultTrackForBiome`.
+ *
+ * @param {{id: string, name: string}} biome - biome config
+ * @returns {string} track filename
+ */
 export function selectedTrackForBiome(biome) {
   const override = state.userSettings.musicTrackOverrides?.[biome.id];
   return AVAILABLE_MUSIC_TRACKS.includes(override) ? override : defaultTrackForBiome(biome);
 }
 
+/**
+ * Set (or clear) a manual per-biome track override, persisted in `userSettings.musicTrackOverrides`.
+ *
+ * @param {string} biomeId - biome id to override
+ * @param {string} track - track filename from `AVAILABLE_MUSIC_TRACKS`; any other value clears the override
+ */
 export function setMusicTrackOverride(biomeId, track) {
   if (!biomeId) return;
   const overrides = { ...(state.userSettings.musicTrackOverrides || {}) };

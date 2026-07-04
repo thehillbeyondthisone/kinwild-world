@@ -43,15 +43,33 @@ export {
 export { getFollowTarget, setFollowTarget, stepTour, isTouring } from "./ui/locator-panel.js";
 export { getPhotoReviewGroup, isPhotoMode } from "./ui/photo-mode.js";
 
-// Pure predicates over shared ctx state — small enough to keep here.
+/** Whether the user is currently in follow-mode creature-selection (click-to-pick). Part of the `paused` OR in main.js's animation loop. */
 export function isSelectingCreature() {
   return ctx.selectingCreature;
 }
 
+/** Whether the user has manually paused via spacebar. Part of the `paused` OR in main.js's animation loop. */
 export function isManualPaused() {
   return ctx.manualPause;
 }
 
+/**
+ * Wire up every HUD panel/mode against the static markup in index.html.
+ * Restores persisted settings before any panel reads its defaults. Init
+ * order preserves the original single-module registration sequence:
+ * settings before input (its "world-ready" wind/grass rebase must precede
+ * the mobile header fade listener); the panels that own
+ * `setSettingsOpen`/`setLocatorOpen`/`setCatalogOpen` before help-panel
+ * (whose first-visit block calls them at init time); first-person before
+ * input (its canvas pointer listeners must register before input's
+ * click-to-pick).
+ *
+ * @param {Object} args
+ * @param {THREE.Camera} args.camera
+ * @param {HTMLCanvasElement} args.canvas
+ * @param {Object} args.controls - OrbitControls instance
+ * @param {THREE.WebGLRenderer} args.renderer
+ */
 export function initUi({ camera, canvas, controls, renderer }) {
   ctx.camera = camera;
   ctx.canvas = canvas;

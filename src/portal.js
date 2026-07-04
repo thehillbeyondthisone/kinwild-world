@@ -27,6 +27,7 @@ const PORTAL_VIEW_RADIUS = PORTAL_RING_RADIUS - 0.04;
 const PORTAL_GROUND_SINK = 0.18 + PORTAL_RING_RADIUS * 0.1;
 const PORTAL_TRAVEL_PLANE_EPSILON = 0.38;
 const PORTAL_TRAVEL_RADIUS = PORTAL_VIEW_RADIUS * 0.8;
+/** World-units offset in front of/behind a portal ring where an arriving/departing camera lands. */
 export const PORTAL_ARRIVAL_OFFSET = PORTAL_RING_RADIUS + 0.9;
 const PORTAL_PREVIEW_LOOK_DISTANCE = 8;
 const PORTAL_FLORA_BLOCK_RADIUS = PORTAL_RING_RADIUS + 1.0;
@@ -60,6 +61,16 @@ function portalNormal(portal) {
   return { x: Math.sin(yaw), z: Math.cos(yaw) };
 }
 
+/**
+ * Test whether the camera is currently within the portal's travel disc
+ * (close to its plane and within its radius) — used to trigger cross-world
+ * travel when the player walks through a portal ring.
+ *
+ * @param {Object} portal - portal instance as returned by `createBiomePortal`
+ * @param {THREE.Camera} camera - active camera
+ * @param {number} [worldScale=1] - `state.world.scale` factor to un-scale camera position by
+ * @returns {boolean}
+ */
 export function isCameraPassingThroughPortal(portal, camera, worldScale = 1) {
   if (!portal || !camera) return false;
   const invWorldScale = 1 / Math.max(0.001, worldScale);
@@ -75,6 +86,12 @@ export function isCameraPassingThroughPortal(portal, camera, worldScale = 1) {
   return planeDist < PORTAL_TRAVEL_PLANE_EPSILON && discDistSq < PORTAL_TRAVEL_RADIUS * PORTAL_TRAVEL_RADIUS;
 }
 
+/**
+ * Compute the camera pose for arriving in front of a portal (facing back through it).
+ *
+ * @param {Object} portal - portal instance
+ * @returns {{x: number, z: number, yaw: number}} world XZ and facing yaw (radians)
+ */
 export function getPortalArrivalPose(portal) {
   const normal = portalNormal(portal);
   const center = portal.group.position;
@@ -85,6 +102,15 @@ export function getPortalArrivalPose(portal) {
   };
 }
 
+/**
+ * Like `getPortalArrivalPose`, but for a specific side of the portal —
+ * used when the destination world's cross-world arrival needs to land on the
+ * near or far side of its own portal.
+ *
+ * @param {Object} portal - portal instance
+ * @param {number} [side=1] - >=0 for the "front" side, negative for the "back" side
+ * @returns {{x: number, z: number, yaw: number}}
+ */
 export function getPortalSideArrivalPose(portal, side = 1) {
   const normal = portalNormal(portal);
   const center = portal.group.position;
@@ -96,6 +122,14 @@ export function getPortalSideArrivalPose(portal, side = 1) {
   };
 }
 
+/**
+ * Like `getPortalSideArrivalPose`, but facing *into* the portal (the pose the
+ * camera passes through while entering, rather than the pose after arrival).
+ *
+ * @param {Object} portal - portal instance
+ * @param {number} [side=1] - >=0 for the "front" side, negative for the "back" side
+ * @returns {{x: number, z: number, yaw: number}}
+ */
 export function getPortalSideEntryPose(portal, side = 1) {
   const normal = portalNormal(portal);
   const center = portal.group.position;
@@ -107,6 +141,14 @@ export function getPortalSideEntryPose(portal, side = 1) {
   };
 }
 
+/**
+ * Determine which side of the portal plane the camera is currently on.
+ *
+ * @param {Object} portal - portal instance
+ * @param {THREE.Camera} camera - active camera
+ * @param {number} [worldScale=1] - `state.world.scale` factor to un-scale camera position by
+ * @returns {number} 1 for the front side, -1 for the back side
+ */
 export function getPortalCameraSide(portal, camera, worldScale = 1) {
   if (!portal || !camera) return 1;
   const invWorldScale = 1 / Math.max(0.001, worldScale);
@@ -137,6 +179,27 @@ function withSeededRandom(seed, fn) {
   }
 }
 
+/**
+ * Deterministically pick a flattened ground anchor for a portal, seeded so
+ * the same world seed + portal index always produces the same placement
+ * (needed so a preview built ahead of time matches the anchor `world.js`
+ * later commits to). Tries up to 96 random ground points (rejecting water,
+ * the min-radius ring, and caller-supplied blockers), then falls back to a
+ * 32-attempt golden-angle spiral scan, and finally an origin placement if
+ * everything is blocked.
+ *
+ * @param {Object} args
+ * @param {number} args.seed - world seed (portal RNG is derived from this + `index`, independent of the world's own RNG stream)
+ * @param {number} [args.index=0] - portal index within the world (0 or 1 for double-placement)
+ * @param {Object} args.layout - layout as returned by `pickLayout()`
+ * @param {(x: number, z: number) => number} args.heightFn - terrain heightFn to sample
+ * @param {(x: number, z: number) => boolean} [args.isBlocked] - caller-supplied placement blocker (e.g. other flora/portals)
+ * @param {number} [args.maxRadiusFrac=0.54] - outer sampling radius fraction of the island
+ * @param {number} [args.minRadiusFrac=0] - inner exclusion radius fraction (keeps portals apart in double-placement)
+ * @param {number|null} [args.preferredAngle] - biases the golden-angle fallback scan toward this heading
+ * @returns {{x: number, z: number, y: number, heading: number, nx: number, nz: number, flatZones: Array}}
+ *   placement anchor; `flatZones` are fed to `flattenTerrainCircle`/`applyFlatZonesToHeightFn`
+ */
 export function makeSeededPortalPlacement({
   seed,
   index = 0,
@@ -603,6 +666,29 @@ function buildPortalPreviewScene(targetBiome, seed, previewSettings = {}) {
   return { scene: previewScene, frontCamera: previewFrontCamera, backCamera: previewBackCamera };
 }
 
+/**
+ * Build a biome-portal torus ring at the given world position, including its
+ * live front/back preview render targets showing a reconstruction of the
+ * target biome's world (see `buildPortalPreviewScene`). The preview replays
+ * `generateWorld`'s exact RNG prefix via `rollBiomeAndLayout`/`terrainNoiseFromSeed`
+ * so the destination terrain silhouette matches what the player will actually
+ * arrive at when traveling through.
+ *
+ * @param {Object} args
+ * @param {Object} args.sourceBiome - biome the portal is placed in
+ * @param {Object} args.targetBiome - biome the portal leads to
+ * @param {number} args.x - world X position
+ * @param {number} args.y - ground world Y at the portal base
+ * @param {number} args.z - world Z position
+ * @param {number} [args.heading=0] - yaw (radians) the ring faces
+ * @param {number} [args.seed=0] - seed for the portal's own RNG derivation (placement/preview)
+ * @param {number} [args.targetSeed=seed] - seed of the destination world reconstructed for the preview
+ * @param {Object} [args.previewSettings] - user preview toggles (grass/flora/creatures/fx), normalized internally
+ * @returns {Object} portal instance: `{group, ring, view, frontRt, backRt, previewScene,
+ *   previewFrontCamera, previewBackCamera, sourceBiome, targetBiome, seed, targetSeed,
+ *   previewSettings, lastRenderAt, blocker, obstacle}` — `blocker`/`obstacle` are consumed
+ *   by `world.js`'s flora/creature placement and obstacle-avoidance
+ */
 export function createBiomePortal({
   sourceBiome,
   targetBiome,
@@ -680,6 +766,16 @@ export function createBiomePortal({
   };
 }
 
+/**
+ * Re-render a portal's front/back preview render targets from its
+ * reconstructed destination scene, throttled to `PORTAL_RENDER_INTERVAL_MS`
+ * and skipped entirely beyond `PORTAL_ACTIVE_DISTANCE` from the camera.
+ *
+ * @param {Object} portal - portal instance
+ * @param {THREE.WebGLRenderer} renderer - renderer to render the preview scenes with
+ * @param {THREE.Camera} camera - active camera (used for distance gating + preview projection sync)
+ * @param {number} [nowSeconds=0] - current sim time in seconds
+ */
 export function updatePortalPreview(portal, renderer, camera, nowSeconds = 0) {
   if (!portal || !renderer || !camera) return;
   portal.view.material.uniforms.uTime.value = nowSeconds;
@@ -700,6 +796,14 @@ export function updatePortalPreview(portal, renderer, camera, nowSeconds = 0) {
   renderer.setRenderTarget(prevTarget);
 }
 
+/**
+ * Apply new preview toggles (grass/flora/creatures/fx) to an existing portal:
+ * disposes and rebuilds its preview scene/cameras so the change is visible
+ * on the next `updatePortalPreview` render.
+ *
+ * @param {Object} portal - portal instance to mutate
+ * @param {Object} [previewSettings] - user preview toggles, normalized internally
+ */
 export function updatePortalPreviewSettings(portal, previewSettings = {}) {
   if (!portal) return;
   const settings = normalizePortalPreviewSettings(previewSettings);
@@ -715,6 +819,11 @@ export function updatePortalPreviewSettings(portal, previewSettings = {}) {
   portal.lastRenderAt = -Infinity;
 }
 
+/**
+ * Dispose a portal's group, preview scene, and render targets.
+ *
+ * @param {Object|null|undefined} portal - portal instance, or falsy (no-op)
+ */
 export function disposePortal(portal) {
   if (!portal) return;
   disposeGroup(portal.group);

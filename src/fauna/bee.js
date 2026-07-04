@@ -14,6 +14,14 @@ import {
 // A "swarm" is a shared object { target, retargetAt }; each bee references
 // it so they all migrate together when the swarm picks a new flower.
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Create a shared swarm target that every bee added to it (via `makeBee`)
+ * references, so the whole swarm migrates to the same flower together.
+ *
+ * @returns {{target: THREE.Vector3, hasTarget: boolean, retargetIn: number, members: Array}}
+ *   `target` is pre-allocated and overwritten in place on each retarget;
+ *   `members` collects the bees sharing this swarm.
+ */
 export function makeSwarm() {
   return {
     target: new THREE.Vector3(),          // pre-allocated; values overwritten on retarget
@@ -23,6 +31,16 @@ export function makeSwarm() {
   };
 }
 
+/**
+ * Build one bee entity (body, stripe, two wings) and register it with `swarm`.
+ *
+ * @param {Object} swarm - a swarm object from `makeSwarm()`; the bee is pushed
+ *   onto `swarm.members` and steers toward `swarm.target`.
+ * @param {Object} biome - biome config; only `biome.id` is used, for the catalog subject.
+ * @returns {{group: THREE.Group, body: THREE.Mesh, wings: Array, swarm: Object,
+ *   orbitPhase: number, orbitSpeed: number, orbitRadius: number, flapPhase: number,
+ *   flapSpeed: number, velocity: THREE.Vector3}} bee state consumed by `stepBee`.
+ */
 export function makeBee(swarm, biome) {
   const group = new THREE.Group();
   group.userData.catalog = buildCatalogSubject({
@@ -113,6 +131,18 @@ function pickBeeFlower(swarm, flowerSpots) {
 const _beeTarget = new THREE.Vector3();
 const _beeOffset = new THREE.Vector3();
 
+/**
+ * Per-frame update for one bee: shared-swarm flower retargeting, tight
+ * pursuit toward the swarm target plus personal orbit offset, buzzy jitter,
+ * damping/speed cap, water floor, obstacle avoidance, orientation, and wing flap.
+ *
+ * @param {Object} b - bee state returned by `makeBee`.
+ * @param {number} dt - elapsed time in seconds (0 when the sim is paused).
+ * @param {number} t - simulation time in seconds (frozen while paused).
+ * @param {Array<{x: number, y: number, z: number}>} flowerSpots - candidate flower
+ *   targets, mesh-local under state.world (from `state.flowerSpots`).
+ * @param {(x: number, z: number) => number} heightFn - terrain height sampler.
+ */
 export function stepBee(b, dt, t, flowerSpots, heightFn) {
   // shared swarm target — countdown shared across the swarm, so it's only
   // decremented by the first bee each frame.

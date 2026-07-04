@@ -20,6 +20,13 @@ import {
 } from "./storage.js";
 import { ctx } from "./context.js";
 
+/**
+ * Wire up the help panel, biome filter chips, and seed bookmarks. Attaches
+ * `ctx.pickRandomBiomeSeed`/`ctx.pickSameBiomeSeed` (consumed by the regen
+ * buttons in input.js, constrained to the enabled biome chips) and
+ * `ctx.syncBookmarkButton` (consumed by input.js's seed-change watcher to
+ * refresh the star label on every world change).
+ */
 export function initHelpPanel() {
   const helpPanel = document.getElementById("help-panel");
   const helpToggle = document.getElementById("help-toggle");

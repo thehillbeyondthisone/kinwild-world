@@ -11,6 +11,11 @@ import { makeGrassMaterial } from "./grass.js";
 import { createNoise2D } from "simplex-noise";
 
 const _params = new URLSearchParams(window.location.search);
+/**
+ * `?inspect=1` URL gate. When true, `main.js` replaces normal world-gen with
+ * a single specimen on a neutral studio backdrop (see `setupInspect`).
+ * @type {boolean}
+ */
 export const INSPECT = _params.get("inspect") === "1";
 
 const INSPECT_VIEW_DIRECTIONS = {
@@ -468,8 +473,12 @@ const INSPECT_SCENERY_BUILDERS = {
   },
 };
 
-// Named + exported (was an inline array literal) so tests can assert on the
-// real inspect-mode flora catalog instead of grepping this file's source text.
+/**
+ * Every flora kind cyclable in inspect mode. Named + exported (was an inline
+ * array literal) so tests can assert on the real inspect-mode flora catalog
+ * instead of grepping this file's source text.
+ * @type {string[]}
+ */
 export const INSPECT_FLORA_KINDS = [
   "tree", "leafballtree", "pine", "snowpine", "dandylion", "cactus", "mushroom", "fern", "rock", "limestonerock",
   "reed", "seaweed", "grass", "beachsucculent", "flyer_nest", "deadtree", "skull",
@@ -951,6 +960,20 @@ function stepInspectCaterpillar(c, dt) {
   }
 }
 
+/**
+ * Boot inspect mode: positions the camera/controls (from URL overrides or the
+ * default view direction), builds the neutral studio stage, hides the normal
+ * HUD, installs the inspect keyboard handler (biome `[`/`]`, variant `,`/`.`,
+ * category `k`, reroll seed `r`, screenshot `s`, wind toggle `w`, fur toggle
+ * `f`, pause `Space`, frame-step `←`/`→`), and spawns the first specimen.
+ * URL params (`category`, `biome`, `variant`, `seed`, `paused`) are written
+ * back via `history.replaceState` on every state change.
+ *
+ * @param {THREE.Scene} scene - scene to build the stage and specimens into
+ * @param {THREE.WebGLRenderer} renderer - renderer (used for screenshots)
+ * @param {THREE.Camera} camera - camera to position
+ * @param {Object} controls - OrbitControls instance to configure
+ */
 export function setupInspect(scene, renderer, camera, controls) {
   _inspectCamera = camera;
   _inspectControls = controls;
@@ -1064,6 +1087,15 @@ export function setupInspect(scene, renderer, camera, controls) {
   scheduleAutoScreenshot(renderer);
 }
 
+/**
+ * Per-frame inspect-mode update: steps the current specimen's animation
+ * (creature/caterpillar), honoring pause/frame-step. No-op for flora
+ * specimens (wind sway runs via the global `uTime` uniform; no per-frame work
+ * needed) or when no specimen is spawned.
+ *
+ * @param {number} dt - frame delta time in seconds (zeroed while paused; `_stepDt` overrides one paused frame-step)
+ * @param {number} t - simulation time in seconds (frozen while paused)
+ */
 export function stepInspect(dt, t) {
   if (!_specimen) return;
   if (_specimenKind === "flora") return; // wind sway runs via global uTime; no per-frame work

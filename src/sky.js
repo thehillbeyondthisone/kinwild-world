@@ -15,6 +15,13 @@ import {
 // mutated each frame by updateDayNight so the dome inherits the same dawn /
 // day / dusk / night palette transitions as the rest of the world.
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Build the vertical-gradient sky dome sphere that replaces `scene.background`
+ * so the horizon reads as a soft gradient rather than a flat color seam.
+ * `uZenith`/`uHorizon` are mutated each frame by {@link updateSkyColors}.
+ * @param {object} biome - biome config; seeds the initial zenith (from `sky`) and horizon (from `fog`) colors.
+ * @returns {THREE.Mesh}
+ */
 export function makeSkyDome(biome) {
   // Big enough to sit behind the parallax mountains (radius 200) and well
   // outside the camera maxDistance (72).
@@ -88,6 +95,14 @@ function makeWobbledRing(radius, height, peakAmp, peakDetail, segs) {
   return geo;
 }
 
+/**
+ * Build the two-layer wobbled-cylinder mountain backdrop (far ring: lighter,
+ * taller, hazier; near ring: darker, more defined) that reads as a distant
+ * silhouette ringing the island. Re-tinted per frame by {@link updateSkyColors}
+ * via the `farMat`/`nearMat`/`farBase`/`nearBase` refs stashed on `group.userData`.
+ * @param {object} biome - biome config; both rings derive their tint from `sky`/`fog`.
+ * @returns {THREE.Group}
+ */
 export function makeMountainBackdrop(biome) {
   const group = new THREE.Group();
   const skyC = new THREE.Color(biome.sky);
@@ -197,6 +212,15 @@ function getCloudTexture() {
   return _cloudTex;
 }
 
+/**
+ * Build the drifting cloud-sprite layer for one biome — soft circular puff
+ * sprites grouped into loose clusters across the upper hemisphere so the sky
+ * reads as cottony clumps rather than evenly-spaced dots. Density comes from
+ * `CLOUD_COUNT[biome.id]` (halved under LOWFX); returns `null` for biomes
+ * with a count of 0. Step per frame with {@link stepClouds}.
+ * @param {object} biome - biome config (`id`, optional `cloudTint`/`cloudOpacity`).
+ * @returns {THREE.Group|null}
+ */
 export function makeCloudLayer(biome) {
   const base = CLOUD_COUNT[biome.id] ?? 12;
   const count = LOWFX ? Math.max(2, Math.floor(base * 0.5)) : base;
@@ -288,6 +312,11 @@ export function makeCloudLayer(biome) {
   return group;
 }
 
+/**
+ * Advance each cloud sprite's drift angle and reposition it on its orbit.
+ * @param {THREE.Group|null} group - value returned by {@link makeCloudLayer}; no-op if null.
+ * @param {number} dt - frame delta time, in seconds.
+ */
 export function stepClouds(group, dt) {
   if (!group) return;
   for (const s of group.userData.sprites) {
@@ -302,6 +331,14 @@ export function stepClouds(group, dt) {
 // and fades in at night via updateDayNight. Single mesh, shared across all
 // biomes; the per-biome aurora layer (below) adds biome-specific night color.
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Build the shared starfield point cloud on the upper sky hemisphere. Hidden
+ * during the day and faded in at night via `uAlpha`, mutated by
+ * {@link updateSkyColors}'s caller (`updateDayNight` in world.js). One
+ * instance is shared across all biomes; per-biome night color comes from
+ * the aurora layer (see {@link makeAurora}).
+ * @returns {THREE.Points}
+ */
 export function makeStarfield() {
   const count = LOWFX ? 220 : 600;
   const positions = new Float32Array(count * 3);
@@ -366,6 +403,14 @@ export function makeStarfield() {
 // Biome opt-in via `aurora: true`; otherwise this returns null. Fades in
 // alongside the starfield at night.
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Build the aurora curtain layer for biomes opted in via `AURORA_BIOMES`
+ * (see biomes.js) — a few overlapping shader-driven curtain meshes at
+ * different angles around the horizon, tinted from `AURORA_TINTS[biome.id]`.
+ * Fades in alongside the starfield at night via each curtain's `uAlpha`.
+ * @param {object} biome - biome config (`id`, `sky`, `accent`).
+ * @returns {THREE.Group|null} null for biomes not in `AURORA_BIOMES`.
+ */
 export function makeAurora(biome) {
   if (!AURORA_BIOMES.has(biome.id)) return null;
 
@@ -466,11 +511,15 @@ export function makeAurora(biome) {
 
 // Stepping for sky-dome / mountain re-tinting (called by updateDayNight in
 // world.js — kept here so all sky knobs live alongside their constructors).
-// Cloud-biome swirling cloud halo. A wide flat torus around the island with
-// a custom shader: two-octave value noise sampled at UV, scrolled in opposing
-// directions to read as swirling, soft alpha falloff at the torus poles, and
-// colors blended from biome.fog → biome.accent. Returns null on any biome
-// that isn't flagged cloudlike.
+/**
+ * Build the cloudlike-biome swirling cloud halo: a wide flat torus around the
+ * island with a custom shader running two-octave value noise scrolled in
+ * opposing directions (reads as swirling), soft alpha falloff at the torus
+ * poles, and colors blended from `biome.fog` → `biome.accent`. Shares
+ * `state.windUniforms.uTime` so no dedicated per-frame step call is needed.
+ * @param {object} biome - biome config; must have `cloudlike` truthy and not `cloudSwirl === false`.
+ * @returns {THREE.Mesh|null} null for any biome that isn't flagged `cloudlike` (or opts out via `cloudSwirl: false`).
+ */
 export function makeCloudSwirl(biome) {
   if (!biome.cloudlike || biome.cloudSwirl === false) return null;
 
@@ -714,9 +763,16 @@ function makeGrassAuraLineSegments(center, inwardOverlap, outerSoft, aura, color
   return lines;
 }
 
-// Low perimeter aura. The aura band is generated from the active layout shape
-// instead of a plain circular RingGeometry, so oblong island edges and their
-// grass/mist rings share the same perimeter.
+/**
+ * Build the low perimeter aura ringing the island edge — either a misty
+ * fog band or, for biomes with `edgeAura.pattern === "grass"`, a painted
+ * grass-colored ground ring plus a `LineSegments` field of individual grass
+ * blades (skipped under LOWFX). The aura band is generated from the active
+ * layout shape (not a plain circular RingGeometry), so oblong island edges
+ * and their grass/mist rings share the same perimeter.
+ * @param {object} biome - biome config; reads `edgeAura` (pattern/colors/sizing overrides), `fog`, `accent`, `sun`, `ground`.
+ * @returns {THREE.Mesh|THREE.Group|null} null when no usable layout center is found (or a grass aura is requested under LOWFX).
+ */
 export function makeIslandEdgeMist(biome) {
   const centers = state.currentLayout?.centers ?? [];
   const aura = biome.edgeAura ?? {};
@@ -890,9 +946,18 @@ export function makeIslandEdgeMist(biome) {
   return mesh;
 }
 
-// Compatibility alias for older world wiring that imported the cloud ring name.
+/** Compatibility alias for older world wiring that imported the cloud ring name. See {@link makeIslandEdgeMist}. */
 export const makeIslandCloudRing = makeIslandEdgeMist;
 
+/**
+ * Re-tint the sky dome and mountain backdrop from the current day/night
+ * blend. Called once per frame by `updateDayNight` (world.js).
+ * @param {THREE.Mesh|null} skyDome - value from {@link makeSkyDome}.
+ * @param {THREE.Group|null} mountains - value from {@link makeMountainBackdrop}.
+ * @param {object} dayNight - biome's snapshotted day/dusk/night palette (`sky`, `duskSky`, `nightSky`, `fog`, `duskFog`, `nightFog`).
+ * @param {number} dayFactor - 0..1 day/night blend factor (1 = full day).
+ * @param {number} nightAmt - 0..1 night amount used to fade the mountain rings toward `nightFog`.
+ */
 export function updateSkyColors(skyDome, mountains, dayNight, dayFactor, nightAmt) {
   if (skyDome) {
     const u = skyDome.material.uniforms;

@@ -9,6 +9,17 @@ import {
 } from "../pbr.js";
 import { pooled, getFlyerNestPalette, makeMushroomStemGeometry, makeMushroomUndersideGeometry, enableMushroomCapShadowUnderside, addGroveMushroomFamily } from "./_shared.js";
 
+/**
+ * Builds a woven bird's-nest structure — a bowl + twig ring + radial twigs — that
+ * fliers can land in.
+ * Registered in `FLORA_BUILDERS` under the `"flyer_nest"` key.
+ * @param {object} biome - Biome config; passed to `getFlyerNestPalette` for base/light twig tints.
+ * @returns {THREE.Group} Mesh-local group. `userData.capTopY` is the local-Y of the nest rim
+ *   (obstacle-avoidance reference), `userData.obstacleTopY` is the collision-top height, and
+ *   `userData.perchRadius` is the landing radius consumed by the flier perch-selection logic
+ *   in `src/fauna/creature.js` (flyer_nest perches are searched globally and preferred over
+ *   other perch kinds — see CLAUDE.md "Flier landing system").
+ */
 export function flyer_nest(biome) {
     const g = new THREE.Group();
     const FLYER_NEST_PERCH_RADIUS = 0.612;
@@ -88,6 +99,12 @@ export function flyer_nest(biome) {
     g.userData.perchRadius = FLYER_NEST_PERCH_RADIUS;
     return g;
 }
+/**
+ * Builds a bare, leafless trunk with four splayed branches.
+ * Registered in `FLORA_BUILDERS` under the `"deadtree"` key.
+ * @param {object} biome - Biome config; reads `biome.cliff` for the bark tint.
+ * @returns {THREE.Group} Mesh-local group (trunk + 4 branches), no userData.
+ */
 export function deadtree(biome) {
     const g = new THREE.Group();
     const mat = pooled("deadtree.mat.smooth", () =>
@@ -125,6 +142,13 @@ export function deadtree(biome) {
     }
     return g;
 }
+/**
+ * Builds a faceted cluster of 3-5 emissive icosahedron shards sharing roots so
+ * they read as one crystal formation. Shards are enrolled in the bloom layer.
+ * Registered in `FLORA_BUILDERS` under the `"crystal"` key.
+ * @param {object} biome - Biome config; reads `biome.accent` for the emissive tint.
+ * @returns {THREE.Group} Mesh-local group of shard meshes, no userData.
+ */
 export function crystal(biome) {
     const g = new THREE.Group();
     const mat = pooled("crystal.mat", () => {
@@ -162,6 +186,19 @@ export function crystal(biome) {
     }
     return g;
 }
+/**
+ * Builds a tall single mushroom (stem + domed cap + underside gill disc + surface
+ * spots + a small satellite grove via `addGroveMushroomFamily`), tall enough for
+ * creatures to pass beneath. Stem height is randomized per instance, so its
+ * stem/cap/underside geometries cannot be pooled (see inline comments in the body
+ * for the shared-wind-strength rationale).
+ * Registered in `FLORA_BUILDERS` under the `"bigmushroom"` key.
+ * @param {object} biome - Biome config; reads `biome.accent` for the cap tint.
+ * @returns {THREE.Group} Mesh-local group. `userData.capTopY` is the cap-top local-Y
+ *   (instance-specific — read this off userData rather than a static per-kind table).
+ *   `userData.perchWind` is `{ strength, localY }`, the wind-sway strength and cap
+ *   height a perching flier's approach code should match.
+ */
 export function bigmushroom(biome) {
     const g = new THREE.Group();
     // tall stem — creatures could pass beneath the cap
@@ -277,6 +314,17 @@ export function bigmushroom(biome) {
     addGroveMushroomFamily(g, biome, { radius: 1.15, count: 4, capY: stemH });
     return g;
 }
+/**
+ * Builds a hollow tree stump ringed by 10-13 small mushrooms.
+ * Registered in `FLORA_BUILDERS` under the `"fairyring"` key.
+ * @param {object} biome - Biome config; reads `biome.accent` for cap tint. When
+ *   `biome.groveDetails?.sporeGlow` is set, rolls a 1-3 will-o'-wisp count instead
+ *   of the old static spore particles — the actual `WillOWisp` instances are created
+ *   and parented by the world-placement code, not by this builder.
+ * @returns {THREE.Group} Mesh-local group (stump + hollow + ring of mushrooms).
+ *   `userData.willowispCount` (optional) is the number of wisps to spawn.
+ *   `userData.capTopY` is the stump-top local-Y.
+ */
 export function fairyring(biome) {
     const g = new THREE.Group();
     const stumpMat = new THREE.MeshStandardMaterial({ color: TRUNK, flatShading: true, roughness: 1 });
@@ -347,6 +395,14 @@ export function fairyring(biome) {
     g.userData.capTopY = 0.32;
     return g;
 }
+/**
+ * Builds a hanging paper-lantern: a tethered pole topped with an emissive orb and
+ * a soft additive halo. Orb and halo are enrolled in the bloom layer.
+ * Registered in `FLORA_BUILDERS` under the `"lantern"` key.
+ * @param {object} biome - Biome config; reads `biome.cliff` for the tether tint and
+ *   `biome.accent` for the orb/halo glow color.
+ * @returns {THREE.Group} Mesh-local group (tether + orb + halo), no userData.
+ */
 export function lantern(biome) {
     const g = new THREE.Group();
     const tetherH = 1.3 + Math.random() * 0.4;

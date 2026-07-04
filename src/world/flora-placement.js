@@ -16,18 +16,29 @@ import { pbrDetailPrewarmSteps } from "../pbr.js";
 import { placeGroundCover } from "./ground-cover.js";
 import { placePortals } from "./portal-placement.js";
 
-// Portal placement, fairy-ring landmark, PBR detail prewarm, the main flora
-// placement loop (canopy spacing, giant-flora promotion, obstacle/perch
-// registration), reef-coral top-up, and instanced ground cover (grass /
-// wildflowers / grove details / cloud puffs / beachcomb / pebbles / ground
-// marks). Extracted verbatim from generateWorld (QA-008) — every
-// `yieldIfNeeded` call below sits at the exact position it did inside
-// generateWorld, since this function is awaited at that same point.
-//
-// Returns `{ placed, blocksPlacement, GROUND_CREATURE_BLOCK_KINDS, placeFlyerNest }`:
-// `placed` feeds the HUD flora count; the other three are reused by the
-// fauna-population phase (ground-creature placement and the post-creature
-// flyer-nest top-up both need helpers built during flora placement).
+/**
+ * Run portal placement, the fairy-ring landmark, PBR detail prewarm, the main
+ * flora placement loop (canopy spacing, giant-flora promotion, obstacle/perch
+ * registration), the reef-coral top-up, and instanced ground cover (grass /
+ * wildflowers / grove details / cloud puffs / beachcomb / pebbles / ground
+ * marks). Extracted verbatim from `generateWorld` (QA-008) — every
+ * `yieldIfNeeded` call below sits at the exact position it did inside
+ * `generateWorld`, since this function is awaited at that same point.
+ *
+ * @param {Object} args
+ * @param {Object} args.worldState - shared mutable state (mutated in place)
+ * @param {Object} args.biome - resolved BIOMES entry
+ * @param {number} args.seed - 16-bit world seed (for portal target seeding)
+ * @param {Object} args.context - world-build context (used for `portalTargetBiomeId`)
+ * @param {number} args.densityScale - `ISLAND_SIZE / DENSITY_BASE` scale applied to `biome.floraCount`
+ * @param {(maxRadiusFrac?: number, opts?: Object) => {x: number, z: number}} args.pickWorldGroundPoint - layout-bound ground-point sampler
+ * @param {(object: THREE.Object3D) => void} args.attachCatalogMetadata - tags a built object with its Field Guide subject
+ * @param {(force?: boolean) => Promise<void>} args.yieldIfNeeded - determinism-safe async yield
+ * @returns {Promise<{placed: number, blocksPlacement: Function, GROUND_CREATURE_BLOCK_KINDS: Set<string>, placeFlyerNest: () => boolean}>}
+ *   `placed` feeds the HUD flora count; the other three are reused by the
+ *   fauna-population phase (ground-creature placement and the post-creature
+ *   flyer-nest top-up both need helpers built during flora placement)
+ */
 export async function placeFloraAndGroundCover({
   worldState,
   biome,

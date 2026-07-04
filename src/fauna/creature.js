@@ -41,6 +41,13 @@ const PERCHED_WING_RELAX_X = -0.12;
 // the first creature that consumed it). Without pooling, every creature
 // would allocate its own copies of identical resources.
 const _creaturePool = makePool();
+/**
+ * Clear the shared per-regen creature resource pool (eye/pupil materials,
+ * shared leg/foot geometries). Must be called once at the top of every
+ * `generateWorld` — the previous world's pooled resources are disposed when
+ * `state.world` is torn down, so a stale `pooled()` lookup after a missed
+ * reset would return a disposed geometry/material.
+ */
 export const resetCreaturePool = _creaturePool.reset;
 // Indirection so portal previews (src/portal.js) can redirect every pooled()
 // call in this module to an isolated pool instead of this shared one
@@ -50,8 +57,17 @@ export const resetCreaturePool = _creaturePool.reset;
 let _activeCreaturePool = _creaturePool;
 const pooled = (key, factory) => _activeCreaturePool.get(key, factory);
 
-// See withIsolatedFloraPool in src/flora/_shared.js — same contract, applied
-// to the creature pool.
+/**
+ * Run `fn` against a fresh, isolated creature resource pool instead of the
+ * shared per-regen one, then dispose the isolated pool's resources when done.
+ * This is what lets a portal preview (`src/portal.js`) build a different
+ * biome's creatures without leaking that biome's materials into the live
+ * world's shared pool. See `withIsolatedFloraPool` in `src/flora/_shared.js`
+ * for the matching contract on the flora side.
+ * @param {(pool: object) => any} fn - callback run with the isolated pool active;
+ *   any `makeCreature` calls inside it read/write the isolated pool via `pooled()`.
+ * @returns {any} whatever `fn` returns.
+ */
 export function withIsolatedCreaturePool(fn) {
   const isolated = makePool();
   const previous = _activeCreaturePool;
@@ -64,21 +80,50 @@ export function withIsolatedCreaturePool(fn) {
   }
 }
 
-// ARC-004: a live snapshot of the currently-active pool's cached resources.
-// Individual-reject placement paths in world.js (placeOnGround/placeCrawler/
-// placeFishUnderwater/family-kid spawn) pass this as disposeGroup's `skip`
-// set so rejecting one creature never disposes a geometry/material the pool
-// map — and therefore other already-placed creatures — still holds.
+/**
+ * Snapshot of the currently-active creature pool's cached resources (ARC-004).
+ * Individual-reject placement paths in `world.js` (placeOnGround/placeCrawler/
+ * placeFishUnderwater/family-kid spawn) pass this as `disposeGroup`'s `skip`
+ * set so rejecting one creature never disposes a geometry/material the pool
+ * — and therefore other already-placed creatures — still holds.
+ * @returns {Set<object>} the pool's currently cached geometries/materials.
+ */
 export function creaturePoolResources() {
   return new Set(_activeCreaturePool.values());
 }
 
-// opts:
-//   role         — "parent" | "kid"   (for family groups)
-//   parent       — reference to the parent creature (for kids)
-//   sizeMul      — overall size multiplier (default 1)
-//   sleeper      — spawn in sleeping state (walkers only)
-//   burrower     — spawn as burrower variant (walkers only)
+/**
+ * Build one creature: body/belly/eyes/antennae, walker legs+feet or flier
+ * wings (or fish fins, or bumblebee legs+stinger), optional fur shells, and
+ * the full per-creature simulation state consumed by {@link stepCreature}.
+ * Must be called inside `generateWorld`'s seeded `Math.random` window — the
+ * fur roll, personality pick, color pick, and per-variant detail rolls all
+ * consume the deterministic RNG stream, so the same seed reproduces the same
+ * creature every regen.
+ * @param {object} biome - the current biome config (`src/biomes.js`); supplies
+ *   `creatureColors`, `creatureKind`, `furProbability`, `glowEyes`, `accent`, `ground`, `id`.
+ * @param {object} [opts]
+ * @param {"parent"|"kid"} [opts.role] - family-group role, stored on the returned state.
+ * @param {object} [opts.parent] - reference to the parent creature (for kids).
+ * @param {number} [opts.sizeMul=1] - overall size multiplier.
+ * @param {boolean} [opts.sleeper] - spawn already curled/asleep (walkers only;
+ *   forces `flies=false`).
+ * @param {boolean} [opts.burrower] - spawn as the burrower variant (walkers
+ *   only; forces `flies=false`).
+ * @param {boolean} [opts.angler] - spawn as an angler fish (glowing lure; implies `isFish`).
+ * @param {"bumblebee"} [opts.variant] - special-cased body plan (striped, six-legged, stinger).
+ * @param {THREE.Color} [opts.color] - explicit body color (else randomly picked from the biome palette).
+ * @param {boolean} [opts.furry] - force the fur roll result (used by inspect mode).
+ * @param {object} [opts.patternOverride] - replay an exact fur pattern (inspect mode).
+ * @param {string[]} [opts.stripeColors] - bumblebee stripe color pair override.
+ * @returns {object} creature state — `{ group: THREE.Group, body, belly, antennae,
+ *   feet, legs, wings, tailFin, lureStalk, lureOrb, eyeParts, flies, isFish, isBee,
+ *   scale, heading, speed, bob, hoverHeight, landState, perchTarget, isSleeper,
+ *   isBurrower, burrowState, personality, sleepiness, ...and further per-frame
+ *   simulation fields consumed by stepCreature }`. `group` is the THREE.Group to
+ *   add to the scene; every other field is read/mutated by `stepCreature` and
+ *   its dispatch targets each frame.
+ */
 export function makeCreature(biome, opts = {}) {
   const isAngler = !!opts.angler;
   const isBumblebee = opts.variant === "bumblebee";
@@ -648,17 +693,25 @@ export function makeCreature(biome, opts = {}) {
   };
 }
 
-// Trigger a brief look-at-camera response. Called from the UI hover/tap
-// handler — the stepCreature override decays via c.lookTimer.
+/**
+ * Trigger a brief look-at-camera response (1.5s). Called from the UI
+ * hover/tap handler — `stepCreature`'s facing override decays `c.lookTimer`
+ * back to 0 each frame. No-op for sleepers.
+ * @param {object} c - creature state.
+ */
 export function lookAtCreature(c) {
   if (c.isSleeper) return;
   // 1.5s of camera-facing — long enough to read, short enough to not feel sticky
   c.lookTimer = 1.5;
 }
 
-// Find distance to nearest butterfly or bee for the curiosity-hop trigger.
-// Returns Infinity if no buzzers are loaded. Cheap — we early-exit on the
-// first close-enough hit so most checks bail in a handful of cells.
+/**
+ * Distance to the nearest butterfly or bee, for the curiosity-hop trigger.
+ * Cheap — early-exits as soon as a hit within 1 unit is found, so most calls
+ * bail after scanning a handful of entries.
+ * @param {{x: number, z: number}} pos - world-space position to measure from (mesh-local under state.world).
+ * @returns {number} distance to the nearest buzzer, or Infinity if none are loaded.
+ */
 function nearestBuzzer(pos) {
   let best = Infinity;
   const list1 = state.butterflies;
@@ -682,6 +735,14 @@ function nearestBuzzer(pos) {
   return Math.sqrt(best);
 }
 
+/**
+ * Emit one ground mark under a walker's foot at the current rising-edge step,
+ * biased to a side based on which foot. No-op for fliers/fish, if ground
+ * marks are disabled for the biome, or if the foot is over water.
+ * @param {object} c - creature state.
+ * @param {number} footIndex - index into `c.feet`/`c.legs`.
+ * @param {(x: number, z: number) => number} heightFn - world-space terrain height sampler.
+ */
 function emitWalkerFootprint(c, footIndex, heightFn) {
   const marks = state.groundMarks;
   const cfg = state.currentBiome?.groundMarks;
@@ -704,9 +765,15 @@ function emitWalkerFootprint(c, footIndex, heightFn) {
   });
 }
 
-// Nudge `c.heading` toward the nearest same-color creature so kin pair up
-// into loose pairs/trios. Capped by `c.herdStrength` and a max distance so
-// it never overpowers the existing random wander.
+/**
+ * Nudge `c.heading` toward the nearest same-color creature (searched via
+ * `state.creatureColorBuckets` when available, else the full creature list)
+ * so kin pair up into loose pairs/trios — pulling together in a 1.4–4 unit
+ * sweet spot, drifting apart if closer than 1.2 units, ignoring anyone beyond
+ * 8 units. Capped by `c.herdStrength` and only called once per think cycle,
+ * so it never overpowers the existing random wander.
+ * @param {object} c - creature state; mutates `c.heading`.
+ */
 function herdInfluence(c) {
   const me = c.group.position;
   let best = null;
@@ -740,13 +807,20 @@ function herdInfluence(c) {
   c.heading += sign * diff * c.herdStrength * 0.4;
 }
 
-// Wake a sleeping creature. Called from the UI hover handler and from the
-// first-person stroll proximity check. Handles two distinct sleep states:
-//   - isSleeper: spawned-asleep flag set at world-gen time
-//   - sleepiness > 0.05: natural night-sleep, eased in by the night cycle
-// Either path triggers the same unfurl animation, and we set alertUntil so
-// the per-frame sleepiness target is forced to 0 for a few seconds (otherwise
-// they'd re-curl immediately because state.nightFactor is still high).
+/**
+ * Wake a sleeping creature. Called from the UI hover handler and from the
+ * first-person stroll proximity check. Handles two distinct sleep states:
+ *  - `isSleeper`: spawned-asleep flag set at world-gen time.
+ *  - `sleepiness > 0.05`: natural night-sleep, eased in by the night cycle
+ *    (also covers a drowsy, non-fish flier, which is nudged into "ascending"
+ *    if it was landed/descending rather than fully unfurled).
+ * Either path (for walkers) triggers the same unfurl animation via
+ * `c._waking`/`c.wakeProgress`, and sets `c.alertUntil` so the per-frame
+ * sleepiness target is forced to 0 for ~8 seconds — otherwise the creature
+ * would re-curl immediately because `state.nightFactor` is still high.
+ * No-op if the creature isn't asleep by either measure.
+ * @param {object} c - creature state.
+ */
 export function wakeCreature(c) {
   const naturallyAsleep = !c.flies && c.sleepiness > 0.05;
   const drowsyFlier = c.flies && !c.isFish && c.sleepiness > 0.05;
@@ -770,6 +844,21 @@ export function wakeCreature(c) {
   c.wakeProgress = 0;
 }
 
+/**
+ * Advance one creature by one simulation frame. Thin dispatcher over the
+ * creature's top-level state: after integrating age/timers/hop-physics and
+ * updating sleepiness/z-particles, it hands off in priority order to
+ * `stepSleeper` (spawned-asleep, early-exits), `stepNightSleep` (walker
+ * curled from night sleepiness, early-exits once fully curled), `stepBurrower`
+ * (burrower FSM, early-exits while fully underground), and `stepFlier`
+ * (non-fish flier landing FSM) — before falling through to the shared
+ * think/move/position/animate pipeline used by plain walkers, landed fliers,
+ * and fish.
+ * @param {object} c - creature state, as returned by {@link makeCreature}; mutated in place.
+ * @param {number} dt - frame delta time in seconds (0 while the sim is paused).
+ * @param {number} t - simulation time in seconds (frozen while paused).
+ * @param {(x: number, z: number) => number} heightFn - world-space terrain height sampler.
+ */
 export function stepCreature(c, dt, t, heightFn) {
   c.age += dt;
   c.nextThink -= dt;
@@ -838,8 +927,15 @@ export function stepCreature(c, dt, t, heightFn) {
   animateCreature(c, dt, t, heightFn, moving, grounded);
 }
 
-// ── waking-up animation (unfurl eyes + body + legs) ────────────────────────
-// Extracted from stepCreature's per-frame head (QA-010).
+/**
+ * ── waking-up animation (unfurl eyes + body + legs) ────────────────────────
+ * Ease `c.wakeProgress` from 0→1 over ~0.56s, un-curling eyes/body/legs/
+ * belly/antennae in lockstep, and clear `c._waking` once complete. Called
+ * from `stepCreature` while `c._waking` is true. Extracted from
+ * stepCreature's per-frame head (QA-010).
+ * @param {object} c - creature state.
+ * @param {number} dt - frame delta time in seconds.
+ */
 function stepWakeAnimation(c, dt) {
   c.wakeProgress = Math.min(1, c.wakeProgress + dt * 1.8);
   const w = c.wakeProgress;
@@ -863,8 +959,21 @@ function stepWakeAnimation(c, dt) {
   if (w >= 1) c._waking = false;
 }
 
-// ── think + heading bias (perch homing, family kids) ───────────────────────
-// Extracted from stepCreature's pre-movement head (QA-010).
+/**
+ * ── think + heading bias (perch homing, family kids) ───────────────────────
+ * On each `c.nextThink` expiry, roll a pause vs. a random heading jitter
+ * (plus herd influence), and gate an occasional curiosity hop near a
+ * butterfly/bee. While a flier is homing to a perch (`landState ===
+ * "descending"` with a `perchTarget`), skips the random jitter in favor of
+ * dedicated perch-seeking steering; family "kid" creatures also get a bias
+ * back toward their parent when they've drifted more than 2.2 units away.
+ * Extracted from stepCreature's pre-movement head (QA-010).
+ * @param {object} c - creature state; mutates `c.heading`, `c.nextThink`,
+ *   `c.pauseUntil`, `c.hopVy`/`c.hopCooldown`, `c.thinkCount`.
+ * @param {number} dt - frame delta time in seconds.
+ * @param {number} t - simulation time in seconds.
+ * @param {boolean} grounded - true if a flier is currently landed.
+ */
 function stepThink(c, dt, t, grounded) {
   // think — fliers never pause while airborne; walkers + landed fliers can
   if (c.nextThink <= 0) {
@@ -937,8 +1046,22 @@ function stepThink(c, dt, t, grounded) {
   }
 }
 
-// ── movement: heading/obstacle/edge/speed integration ──────────────────────
-// Extracted from stepCreature (QA-010).
+/**
+ * ── movement: heading/obstacle/edge/speed integration ──────────────────────
+ * Integrate `c.group.position` XZ by heading × speed × dt (0 if `!moving`),
+ * with edge avoidance (fish stay in their swim band; airborne fliers may
+ * range past the island edge but never off the base plane; walkers/landed
+ * fliers turn back near the island radius or a waterline), obstacle sliding
+ * (via `avoidObstacles`, skipping the creature's own claimed perch), and
+ * post-commit water-crossing reverts for both fish and ground movers.
+ * Extracted from stepCreature (QA-010).
+ * @param {object} c - creature state; mutates `c.group.position.x/.z`, `c.heading`, `c.bob`.
+ * @param {number} dt - frame delta time in seconds.
+ * @param {number} t - simulation time in seconds (unused directly; kept for
+ *   signature symmetry with the other dispatch-chain phases).
+ * @param {(x: number, z: number) => number} heightFn - world-space terrain height sampler.
+ * @param {boolean} moving - false during a think-triggered pause or while landed.
+ */
 function moveCreature(c, dt, t, heightFn, moving) {
   const pos = c.group.position;
   if (moving) {
@@ -1076,8 +1199,23 @@ function moveCreature(c, dt, t, heightFn, moving) {
   }
 }
 
-// ── vertical placement: ground sampling, slope tilt, hover/perch floor ────
-// Extracted from stepCreature (QA-010).
+/**
+ * ── vertical placement: ground sampling, slope tilt, hover/perch floor ────
+ * Set `c.group.position.y` (and pin XZ to the perch point when grounded on
+ * one) for the current frame: fish swim within a terrain/waterline band with
+ * a bob cycle; fliers blend the floor from terrain ground up to a
+ * water-clearance floor and/or the claimed perch's top (smoothstepped +
+ * low-pass filtered via `c.perchFloorWeight` so the rise/fall never snaps),
+ * plus hover bob; walkers rest on the ground with a bob, and burrowers sink
+ * along the terrain normal toward their cached emerge point while
+ * `c.burrowDepth > 0`. Extracted from stepCreature (QA-010).
+ * @param {object} c - creature state; mutates `c.group.position`.
+ * @param {number} dt - frame delta time in seconds.
+ * @param {number} t - simulation time in seconds, used for bob/swim phase.
+ * @param {(x: number, z: number) => number} heightFn - world-space terrain height sampler.
+ * @param {boolean} moving - whether the creature is currently walking (affects walker bob amplitude).
+ * @param {boolean} grounded - true if a flier is currently landed.
+ */
 function positionCreatureY(c, dt, t, heightFn, moving, grounded) {
   const pos = c.group.position;
   if (grounded && c.perchTarget) {
@@ -1183,8 +1321,23 @@ function positionCreatureY(c, dt, t, heightFn, moving, grounded) {
   }
 }
 
-// ── animation: facing, slope tilt, squash & stretch, wings/legs/feet ──────
-// Extracted from stepCreature (QA-010).
+/**
+ * ── animation: facing, slope tilt, squash & stretch, wings/legs/feet ──────
+ * Ease `c.group.rotation.y` to face the heading (or the camera, while
+ * `c.lookTimer > 0`); for walkers, ease pitch/roll toward the sampled slope
+ * (cached and reused while the creature hasn't moved >0.1 units, to avoid
+ * redundant heightFn samples — relies on the group's YXZ Euler order so
+ * pitch/roll resolve in the body frame after yaw); apply body squash &
+ * stretch; and drive per-variant limb animation (fish fin/tail wave, perched
+ * or flapping wings, or the diagonal walker foot-trot with rising-edge
+ * footstep ground marks/dust kicks). Extracted from stepCreature (QA-010).
+ * @param {object} c - creature state; mutates rotation/scale of `c.group` and its parts.
+ * @param {number} dt - frame delta time in seconds.
+ * @param {number} t - simulation time in seconds, used for animation phases.
+ * @param {(x: number, z: number) => number} heightFn - world-space terrain height sampler.
+ * @param {boolean} moving - whether the creature is currently walking.
+ * @param {boolean} grounded - true if a flier is currently landed.
+ */
 function animateCreature(c, dt, t, heightFn, moving, grounded) {
   const pos = c.group.position;
 

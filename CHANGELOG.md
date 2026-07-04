@@ -5,6 +5,43 @@
 > folded into the adjacent 1.3.3 and 1.3.6 entries — which is why the history
 > below jumps from 1.3.3 to 1.3.6.
 
+## 1.5.9 - 2026-07-03
+
+Second audit-driven remediation pass (four-domain audit in `AUDIT.md`): two runtime correctness bugs, two per-frame performance bugs, security hardening, dedup/consistency cleanups, and a documentation sync. No new user-facing features.
+
+### Added
+- `src/shaders/noise.js` — shared GLSL hash/value-noise chunks consumed by `sky.js`, `grass.js`, and `flora/volcanic.js` (precision-distinct variants preserved, not merged).
+- `src/world-constants.js` grew shared world↔portal helpers: `rollBiomeAndLayout` (the RNG prefix the portal preview replays), `terrainAmpFor`, `WATER_SURFACE_Y`, wet-depth/flatten/footprint helpers — the preview can no longer silently drift from the destination world.
+- Biome flags `hasWillowisps`, `giantFlora`, `guaranteeBurrower`, `treeFloraRadiusFrac` replace hardcoded `biome.id` behavior branches; `EDGE_AURA_DEFAULTS` deduplicates the per-biome edge-aura config.
+- Content-Security-Policy meta tag in `index.html` (verified against the Vite build; `style-src 'unsafe-inline'` and `connect-src data:` are load-bearing and documented inline).
+- `makeFirstPersonMode` factory in `ui.js` — stroll/fly/photo modes share one mouse-look/key-map/pointer-lock implementation, so the pointer-lock retry fix now covers all three.
+- Behavioral regression tests: `caterpillar-trail-trim.test.mjs`, `portal-preview-pool-isolation-runtime.test.mjs`, `portal-world-rng-parity-runtime.test.mjs`, catalog quota-failure rollback case.
+- `AUDIT.md` — full four-domain audit report with remediation plan and deferred-work backlog.
+
+### Changed
+- Portal previews build against isolated resource pools (`withIsolatedFloraPool`/`withIsolatedCreaturePool`) instead of the shared per-regen pools; the retained-set disposal machinery is gone.
+- `disposeGroup` accepts `{ skip }`; creature/crawler placement-rejection paths pass pooled-resource skip sets so a rejected spawn can't dispose geometry other creatures share.
+- Ground-mark canvas repaints throttled to ~10 Hz with a cached unit gradient (was: full 512×512 repaint + GPU re-upload every frame).
+- Sand/cinder particles clamp against a baked 64×64 height grid and pre-filtered fissure obstacles (was: ~10k three-octave noise evals per frame).
+- Twilight's grass-pattern edge aura builds 3,200 line segments instead of 3,200,000 (~128 MB → ~125 KB of attribute data). Visually equivalent at normal viewing; downstream RNG draws shift for twilight seeds, so those worlds differ slightly from 1.5.8.
+- Wind/grass settings reapply now rides the existing `world-ready` CustomEvent; the `state._reapply*` back-channel calls from `world.js` and the redundant poll trigger are gone.
+- Grass baselines `GRASS_DENSITY_BASE`/`GRASS_HEIGHT_BASE` are canonical exports of `state.js`; persisted settings are type-coerced and range-clamped on load.
+- Fur `uLayers` is per-template instead of a shared monotonically-ratcheting uniform; shader `onBeforeCompile` patches warn when their anchor string no longer matches; music playback errors log and clear state so a biome can retry, and superseded crossfades cancel.
+- Caterpillar eye/pupil resources pooled per regen (`resetCaterpillarPool`); butterfly/bee/bird velocity integrate/damp/cap/orient boilerplate shared via `fauna/shared.js` helpers; `pushOutOfObstacles` grid/fallback duplication collapsed; nine PBR LOWFX fallback guards collapsed into `pbrMaterialOr`.
+- CLAUDE.md architecture inventory synced to the post-1.5.8 module layout (flora split, `world-hud`/`world-constants`/`ui/storage`, catalog subsystem, testing docs, TOC); README gains badges, troubleshooting, prerequisites; CONTRIBUTING gains a Testing section.
+
+### Fixed
+- Portal previews contaminated the shared flora/creature pools with the target biome's materials, and preview teardown disposed pooled resources still referenced by the live world (visible wrong-biome flora when a portal was present).
+- Caterpillar trail ring buffers never trimmed — unbounded memory growth and linearly rising per-frame cost over a session (~3,850 points after one minute vs. the intended ~200).
+- Photo-mode fog decayed to near-zero on cloudlike biomes (cumulative per-frame multiply while paused); fog now derives from a snapshotted baseline.
+- Focused `<select>` elements (music dropdown) no longer trigger regen/pause on `r`/Space; catalog save failures show a recoverable error state instead of sticking on "saving"; overlapping catalog panel renders can't interleave; catalog blob/metadata writes can't strand orphans on partial failure.
+- `parseSeed` masks to the documented 16-bit seed space; interpolated caterpillar trail positions include `y`; sundry dead code, stale comments, shadowed variables, and disposal gaps (terrain depth material, reflection dome clone, per-texel Vector3 churn).
+
+### Verified
+- `make checkall` — 71 JS tests + 53 Python tests, ESLint clean, production build.
+- Visual smoke test (headless Chromium): twilight biome loads with zero console errors; zoomed-out island compared side-by-side against the production 1.5.8 build on the same seed.
+- `tests/determinism-seed.test.mjs` plus the new portal parity and pool-isolation tests pass; five-seed RNG-prefix parity confirmed.
+
 ## 1.5.8 - 2026-06-16
 
 Audit-driven remediation: critical bug fixes, internal structural refactors, hardening, and a determinism regression test. No user-facing feature changes.

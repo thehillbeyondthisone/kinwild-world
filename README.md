@@ -138,7 +138,11 @@ Append `?lowfx=1` to the URL to force the low-FX profile (drops fur, post-FX, an
 
 - `main.js` — boots the renderer, camera, and animation loop
 - `src/` — world generation, entities, UI, terrain, biomes, etc. (one file per concern), including `world.js` (the regen orchestrator), `postfx.js` (the bloom + depth-FX pipeline), `portal.js` (biome portals with live previews), `pbr.js` (procedural detail textures), `music.js` (biome music streaming), and `islandname.js` (procedural place names)
+- `src/world/` — `generateWorld` phase modules (atmosphere, flora placement, portals, ground cover, fauna population)
 - `src/fauna/` — per-entity modules (creatures, caterpillars, butterflies, bees, will-o'-wisps)
+- `src/flora/` — flora builders by family (trees, garden, rocks, structures, aquatic, volcanic)
+- `src/environment/` — particles, swarms, ground marks, ground cover, water
+- `src/ui/` — HUD panels and modes (settings, help, photo, first-person, locator, catalog)
 - `index.html` / `style.css` — static HUD shell
 - `Makefile` — Vite dev/build/preview/lint shortcuts
 - `dist/` — deployment build (GitHub Pages)

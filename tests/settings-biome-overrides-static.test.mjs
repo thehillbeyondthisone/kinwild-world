@@ -1,9 +1,19 @@
+// Protected invariant: removed settings (terrain smooth shading, grass edge
+// discs) never resurface in persisted defaults or the settings panel;
+// per-biome bloom opt-outs (BIOMES[].bloom === false) are respected; and the
+// biome-override sync hooks exist in ui.js. Most of this spans src/ui.js,
+// src/world.js, src/sky.js, and index.html — DOM-touching/other-owner
+// modules and static markup — kept as source-text checks. The state.js
+// portions (owned here) are converted to import-and-assert.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BIOMES } from '../src/biomes.js';
 
+globalThis.__APP_VERSION__ = 'test';
+
+const { state } = await import('../src/state.js');
+
 const htmlSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const stateSource = readFileSync(new URL('../src/state.js', import.meta.url), 'utf8');
 const environmentSource = readFileSync(new URL('../src/environment.js', import.meta.url), 'utf8');
 const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
@@ -35,7 +45,7 @@ assert.equal(
   'Removed settings should not be persisted from older localStorage values.'
 );
 assert.equal(
-  stateSource.includes('terrainSmoothShading') || stateSource.includes('grassEdgeDiscs'),
+  'terrainSmoothShading' in state.userSettings || 'grassEdgeDiscs' in state.userSettings,
   false,
   'Removed settings should not remain in userSettings defaults.'
 );

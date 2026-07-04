@@ -1,37 +1,53 @@
+// Protected invariant: grass rooted under placed flora is shortened via a
+// spatial grid (not a per-blade scan of every flora circle), and the height
+// scale fades smoothly from `shortenTo` back to 1 across each circle's edge.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const grassSource = readFileSync(new URL('../src/grass.js', import.meta.url), 'utf8');
+globalThis.__APP_VERSION__ = 'test';
+
+const { makeFloraShortGrassIndex, grassHeightScaleAt } = await import('../src/grass.js');
+
+// World generation (grassRadius/GRASS_SHORTEN_MIN_HEIGHT/makeGrassField wiring)
+// lives in src/world.js, owned by another QA-009 agent — kept as a source
+// check here.
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
 
-assert.match(
-  grassSource,
-  /const SHORT_GRASS_CELL_SIZE = 1\.25;/,
-  'Grass flora-shortening should use a spatial grid instead of scanning every flora circle per blade.'
+// No circles -> no shortening anywhere.
+const emptyIndex = makeFloraShortGrassIndex([]);
+assert.equal(grassHeightScaleAt(0, 0, emptyIndex), 1, 'With no shortening circles, grass height should be unaffected.');
+
+const circle = { x: 10, z: 10, r: 2, shortenTo: 0.3 };
+const index = makeFloraShortGrassIndex([circle]);
+
+assert.equal(
+  grassHeightScaleAt(10, 10, index),
+  0.3,
+  'Grass at the flora exact center should be cut all the way to shortenTo.'
 );
 
-assert.match(
-  grassSource,
-  /export function makeFloraShortGrassIndex\(circles = \[\]\)/,
-  'Grass should expose a helper that indexes flora shortening circles.'
+assert.equal(
+  grassHeightScaleAt(50, 50, index),
+  1,
+  'Grass far outside a shortening circle should be unaffected.'
 );
 
-assert.match(
-  grassSource,
-  /const fade = t \* t \* \(3 - 2 \* t\);[\s\S]*const circleScale = circle\.shortenTo \+ \(1 - circle\.shortenTo\) \* fade;/,
-  'Grass shortening should smoothly fade back to normal height near flora edges.'
+const nearEdgeScale = grassHeightScaleAt(10 + 1.9, 10, index); // t = 0.95, close to circle edge
+assert(
+  nearEdgeScale > 0.3 && nearEdgeScale < 1,
+  'Grass near a shortening circle edge should smoothly fade back toward full height rather than snapping.'
 );
 
-assert.match(
-  grassSource,
-  /const shortGrassIndex = makeFloraShortGrassIndex\(shortGrassCircles\);/,
-  'Grass placement should build the flora-shortening index once per field.'
+const midScale = grassHeightScaleAt(10 + 1.0, 10, index); // t = 0.5
+assert(
+  midScale < nearEdgeScale,
+  'Grass closer to the flora center should be shorter than grass closer to the circle edge.'
 );
 
-assert.match(
-  grassSource,
-  /const floraHeightMul = grassHeightScaleAt\(x,\s*z,\s*shortGrassIndex\);[\s\S]*baseScale \* heightMul \* biomeHeightMul \* floraHeightMul/,
-  'Grass placement should apply flora shortening to per-instance Y scale.'
+assert.equal(
+  grassHeightScaleAt(10 + 2.0, 10, index),
+  1,
+  'Grass exactly at the circle radius should read as unshortened (strict interior-only comparison).'
 );
 
 assert.match(

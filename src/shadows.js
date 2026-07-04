@@ -29,7 +29,7 @@ const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _s = new THREE.Vector3();
 const _ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
-const CONTACT_SHADOW_LOD_DISTANCE = 28;
+export const CONTACT_SHADOW_LOD_DISTANCE = 28;
 const CONTACT_SHADOW_LOD_DISTANCE_SQ = CONTACT_SHADOW_LOD_DISTANCE * CONTACT_SHADOW_LOD_DISTANCE;
 
 function isWithinContactShadowLod(position, focus) {

@@ -1,13 +1,34 @@
+// Behavioral coverage where the target module is owned by this agent
+// (src/flora/rocks.js pillar builder); world.js/environment.js assertions
+// stay as source-text greps since those files are owned by other concurrent
+// agents (QA-009 conversion note).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BIOMES, FLOWER_DENSITY, WILDFLOWER_PALETTES } from '../src/biomes.js';
 
+globalThis.__APP_VERSION__ = 'test';
+globalThis.document = {
+  createElement() {
+    return {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          createImageData(w, h) {
+            return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
+          },
+          putImageData() {},
+        };
+      },
+    };
+  },
+};
+const { FLORA_BUILDERS, withIsolatedFloraPool } = await import('../src/flora.js');
+
 const desert = BIOMES.find((biome) => biome.id === 'desert');
+const golden = BIOMES.find((biome) => biome.id === 'golden');
 const ashen = BIOMES.find((biome) => biome.id === 'ashen');
 const environmentSource = readFileSync(new URL('../src/environment.js', import.meta.url), 'utf8');
-// src/flora.js is now a registry. The pillar builder (asserted here for the
-// crimson dunes nest-host cap radius) lives in rocks.js.
-const floraSource = readFileSync(new URL('../src/flora/rocks.js', import.meta.url), 'utf8');
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
 const sizeMapStart = environmentSource.indexOf('const sizeMap = {');
 const sizeMapEnd = environmentSource.indexOf('const opacityMap = {', sizeMapStart);
@@ -45,11 +66,26 @@ assert.equal(
   'crimson dunes should not keep a wildflower palette when flowers are disabled.'
 );
 
-assert(
-  floraSource.includes('const pillarHorizontalScale = biome.id === "desert" ? 1 + Math.random() : 1')
-    && floraSource.includes('const capRadius = 0.22 * 1.1 * pillarHorizontalScale')
-    && floraSource.includes('g.userData.nestHostRadius = capRadius'),
+// Build real pillar groups instead of grepping the builder's source: a
+// crimson dunes (desert) pillar should roll an extra 0..1x horizontal scale
+// (widening its cap and nestHostRadius up to 2x), while any other biome's
+// pillar keeps a fixed 1x scale.
+const originalRandom = Math.random;
+Math.random = () => 0.5;
+const desertPillar = withIsolatedFloraPool(() => FLORA_BUILDERS.pillar(desert));
+const otherPillar = withIsolatedFloraPool(() => FLORA_BUILDERS.pillar(golden));
+Math.random = originalRandom;
+const expectedDesertRadius = 0.22 * 1.1 * (1 + 0.5);
+const expectedOtherRadius = 0.22 * 1.1 * 1;
+assert.equal(
+  desertPillar.userData.nestHostRadius,
+  expectedDesertRadius,
   'crimson dunes pillars should roll up to +1 horizontal radius and expose their wide cap for flyer nests.'
+);
+assert.equal(
+  otherPillar.userData.nestHostRadius,
+  expectedOtherRadius,
+  'non-desert biome pillars should not roll the extra horizontal cap scale.'
 );
 
 assert(
@@ -126,3 +162,5 @@ assert(
     && !environmentSource.includes('kind === "ember" || kind === "spark" || kind === "cinder"'),
   'Ashen cinders should use a slower, separate lifetime rate so they have time to drift.'
 );
+
+console.log('crimson-dunes-static.test.mjs passed');

@@ -1,21 +1,37 @@
+// Protected invariant: island size doubled (ISLAND_SIZE_BASE=100) while the
+// flora/creature/ground-cover density anchor (DENSITY_BASE=76) stayed fixed,
+// so absolute spawn counts don't double along with the bigger island.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const stateSource = readFileSync(new URL('../src/state.js', import.meta.url), 'utf8');
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+globalThis.__APP_VERSION__ = 'test';
+
+const { ISLAND_SIZE_BASE, ISLAND_RADIUS_BASE, DENSITY_BASE } = await import('../src/state.js');
 const environmentSource = readFileSync(new URL('../src/environment.js', import.meta.url), 'utf8');
 const grassSource = readFileSync(new URL('../src/grass.js', import.meta.url), 'utf8');
+// Flora/creature count scaling itself lives in src/world.js, owned by
+// another QA-009 agent — kept as a source check here.
+const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
 
-assert(
-  stateSource.includes('export const ISLAND_SIZE_BASE = 100;')
-    && stateSource.includes('export const ISLAND_RADIUS_BASE = ISLAND_SIZE_BASE * 0.462;'),
-  'Base island radius should be doubled through the shared island-size constant.'
+assert.equal(ISLAND_SIZE_BASE, 100, 'Base island size should be doubled through the shared island-size constant.');
+assert.equal(
+  ISLAND_RADIUS_BASE,
+  ISLAND_SIZE_BASE * 0.462,
+  'Base island radius should be derived from ISLAND_SIZE_BASE.'
+);
+assert.equal(
+  DENSITY_BASE,
+  76,
+  'Density anchor should stay at the pre-doubling 76-unit base so creature/flora counts do not increase.'
 );
 
 assert(
-  stateSource.includes('export const DENSITY_BASE = 76;')
-    && stateSource.includes('absolute spawn counts stay near the old world size instead of doubling'),
-  'Density anchor should double with island size so creature/flora counts do not increase.'
+  environmentSource.includes('state.ISLAND_SIZE / DENSITY_BASE'),
+  'Ground cover should use the same density anchor as flora/creatures.'
+);
+assert(
+  grassSource.includes('state.ISLAND_SIZE / DENSITY_BASE'),
+  'Grass placement should use the same density anchor as flora/creatures.'
 );
 
 assert(
@@ -23,10 +39,4 @@ assert(
     && worldSource.includes('Math.round(biome.floraCount * densityScale)')
     && worldSource.includes('Math.round(randInt(...biome.creatureCount) * densityScale)'),
   'World generation should keep flora and creature budgets tied to DENSITY_BASE.'
-);
-
-assert(
-  environmentSource.includes('state.ISLAND_SIZE / DENSITY_BASE')
-    && grassSource.includes('state.ISLAND_SIZE / DENSITY_BASE'),
-  'Ground cover and grass should use the same density anchor as flora/creatures.'
 );

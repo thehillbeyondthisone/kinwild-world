@@ -1,3 +1,9 @@
+// QA-009: this file checks DOM aria-hidden toggling sequences (photo HUD/seed
+// visibility) and matching CSS selectors — all inside ui.js's initUi()
+// closures / stylesheet rules, with no pure logic to extract into a DOM-free
+// module. Exercising the actual show/close-review flow would require a full
+// browser DOM (elements, event dispatch), which is out of scope here — stays
+// a source-text assertion.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

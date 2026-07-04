@@ -438,7 +438,7 @@ const _copyShader = {
 
 // Replacement for RenderPass in the main composer chain. It copies an
 // external color target into the EffectComposer ping-pong buffers.
-class InputPass extends Pass {
+export class InputPass extends Pass {
   constructor(sourceTexture) {
     super();
     this._sourceTexture = sourceTexture;

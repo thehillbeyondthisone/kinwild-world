@@ -1,3 +1,8 @@
+// QA-009: this file asserts the ABSENCE of a removed feature (transient
+// creature-click focus) rather than a positive behavior with a return value
+// to assert on, and the code paths it checks live inside ui.js's initUi()
+// closures, which require a full browser DOM to invoke. There is no pure
+// logic to extract here, so it stays a source-text assertion.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

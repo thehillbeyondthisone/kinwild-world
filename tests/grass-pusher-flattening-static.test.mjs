@@ -1,3 +1,9 @@
+// Protected invariant: the grass pusher (creature -> blade bend) GLSL keeps
+// bounded, multiplicative vertical compression (`transformed.y *= 1.0 -
+// pushFlatten`) rather than the old subtractive sinking, which could remove
+// grass entirely under a creature. This shader math only executes on the
+// GPU, so there is no import-and-assert path — it stays a source-text check
+// on the shader-chunk template string (QA-009 GLSL exception).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

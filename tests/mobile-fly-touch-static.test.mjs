@@ -1,3 +1,9 @@
+// QA-009: this file checks HTML markup, CSS selectors, and touch/pointer
+// event wiring inside ui.js's initUi() closures. Exercising the joystick
+// math behaviorally would require synthesizing PointerEvent sequences
+// against a real canvas; there's no standalone pure function to extract
+// (setFlyTouchJoystick closes over module-local fly-mode state). Stays a
+// source-text assertion.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

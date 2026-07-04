@@ -25,7 +25,7 @@ const PUSH_RADIUS_SCALE = 0.9;
 // needing a regen. The slider labels 100% as the user's preferred lush
 // look (internally a 25× multiplier on biome stock); slider max 300%
 // corresponds to a 75× internal multiplier, so the cap here matches.
-const MAX_DENSITY_MULTIPLIER = 75;
+export const MAX_DENSITY_MULTIPLIER = 75;
 
 const _lowfxScale = (n) => (LOWFX ? Math.max(1, Math.round(n * LOWFX_DENSITY)) : n);
 const _coverScale = (n, gain = 1) =>

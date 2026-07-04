@@ -1,40 +1,58 @@
+// Behavioral coverage for the volcanic glass biome's flora mix and the
+// obsidianglass builder (src/flora/volcanic.js). Protects: obsidian has no
+// tree flora or leftover tree palette, obsidianglass is its own flora slot
+// (not a tree replacement), and the shard builder uses a real high-shine
+// physical material (black, high metalness/clearcoat/reflectivity) rather
+// than a flat placeholder or a floating glint strip. The lava fissure's red
+// band width lives entirely inside a GLSL fragment shader string, which
+// isn't observable without a WebGL context, so that one assertion stays a
+// source grep; so do the ui.js/world.js/world-constants.js references,
+// since those files are owned by other concurrent agents.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BIOMES } from '../src/biomes.js';
 
+globalThis.__APP_VERSION__ = 'test';
+globalThis.window = { location: { search: '' }, matchMedia: () => ({ matches: false }) };
+Object.defineProperty(globalThis, 'navigator', { value: { maxTouchPoints: 0 }, configurable: true });
+globalThis.document = {
+  createElement() {
+    return {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          createImageData(w, h) {
+            return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
+          },
+          putImageData() {},
+        };
+      },
+    };
+  },
+};
+
+const { FLORA_BUILDERS, withIsolatedFloraPool } = await import('../src/flora.js');
+const { INSPECT_FLORA_KINDS } = await import('../src/inspect.js');
+
 const obsidian = BIOMES.find((biome) => biome.id === 'obsidian');
-// src/flora.js is now a registry. The lavafissure and obsidianglass builders
-// both live in volcanic.js; the slice (lavafissure -> obsidianglass) resolves
-// within that one file.
 const floraSource = readFileSync(new URL('../src/flora/volcanic.js', import.meta.url), 'utf8');
-const inspectSource = readFileSync(new URL('../src/inspect.js', import.meta.url), 'utf8');
 const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
-// ARC-002: FLORA_FOOTPRINT lives in the shared constants module now.
 const worldConstantsSource = readFileSync(new URL('../src/world-constants.js', import.meta.url), 'utf8');
 const fissureStart = floraSource.indexOf('lavafissure(biome)');
 const fissureEnd = floraSource.indexOf('obsidianglass()', fissureStart);
 const fissureBlock = floraSource.slice(fissureStart, fissureEnd);
 
 assert(obsidian, 'volcanic glass biome should exist.');
-assert(
-  !obsidian.flora.includes('leafballtree'),
-  'volcanic glass should not spawn tree flora.'
-);
+assert(!obsidian.flora.includes('leafballtree'), 'volcanic glass should not spawn tree flora.');
 assert.equal(
   obsidian.leafballTreePalette,
   undefined,
   'volcanic glass should not keep a tree palette when tree flora is removed.'
 );
-assert(
-  obsidian.flora.includes('obsidianglass'),
-  'volcanic glass should include shiny obsidian glass flora.'
-);
-assert.equal(
-  obsidian.noButterflies,
-  true,
-  'volcanic glass should not spawn butterflies.'
-);
+assert(obsidian.flora.includes('obsidianglass'), 'volcanic glass should include shiny obsidian glass flora.');
+assert.equal(obsidian.noButterflies, true, 'volcanic glass should not spawn butterflies.');
 assert.equal(
   obsidian.sunIntensity,
   8.8,
@@ -44,20 +62,26 @@ assert(
   obsidian.flora.indexOf('obsidianglass') > obsidian.flora.indexOf('skull'),
   'obsidian glass should be its own volcanic glass flora slot, not a tree replacement in the list.'
 );
+
+// Build a real obsidianglass group and inspect the actual mesh/material
+// instead of grepping the builder's source text.
+const glass = withIsolatedFloraPool(() => FLORA_BUILDERS.obsidianglass());
+assert(glass.children.length > 0, 'obsidianglass should build at least one shard mesh.');
+const shard = glass.children[0];
+assert.equal(shard.geometry.type, 'ConeGeometry', 'obsidian glass shards should be pointed cone shapes.');
+const mat = shard.material;
+assert.equal(mat.color.getHexString(), '020204', 'obsidian glass shards should be near-black.');
+assert.equal(mat.emissive.getHex(), 0, 'obsidian glass shards should not glow.');
+assert.equal(mat.roughness, 0.035, 'obsidian glass shards should be very smooth/glossy.');
+assert.equal(mat.metalness, 0.88, 'obsidian glass shards should be near-metal.');
+assert.equal(mat.clearcoat, 1.0, 'obsidian glass shards should have full clearcoat.');
+assert.equal(mat.specularIntensity, 1.0, 'obsidian glass shards should have full specular intensity.');
+assert.equal(mat.reflectivity, 1.0, 'obsidian glass shards should have full reflectivity.');
 assert(
-  floraSource.includes('obsidianglass()')
-    && floraSource.includes('new THREE.ConeGeometry(0.22, 1, 5, 1)')
-    && floraSource.includes('new THREE.MeshPhysicalMaterial')
-    && floraSource.includes('color: new THREE.Color("#020204")')
-    && floraSource.includes('emissive: new THREE.Color("#000000")')
-    && floraSource.includes('roughness: 0.035')
-    && floraSource.includes('metalness: 0.88')
-    && floraSource.includes('clearcoat: 1.0')
-    && floraSource.includes('specularIntensity: 1.0')
-    && floraSource.includes('reflectivity: 1.0')
-    && !floraSource.includes('obsidianglass.glint'),
-  'obsidian glass flora should use black pointed shards and a high-shine physical material without floating glint strips.'
+  glass.children.every((child) => !child.name?.includes('glint')),
+  'obsidian glass flora should not have floating glint strips.'
 );
+
 assert(
   worldConstantsSource.includes('obsidianglass: 0.34')
     && worldSource.includes('"obsidianglass"')
@@ -65,7 +89,7 @@ assert(
   'obsidian glass flora should participate in slope planting and obstacle routing.'
 );
 assert(
-  inspectSource.includes('"lavafissure", "obsidianshard", "obsidianglass"')
+  INSPECT_FLORA_KINDS.includes('obsidianglass')
     && uiSource.includes('obsidianglass: "Obsidian Glass"'),
   'shift-click and locator UI should treat obsidian glass as a dedicated inspectable flora variant.'
 );
@@ -75,3 +99,5 @@ assert(
   fissureBlock.includes('float redBand = smoothstep(0.0084375, 0.285, vAcross);'),
   'Lava fissure bright center should be 25% thinner than the previous 0.01125/0.38 band.'
 );
+
+console.log('obsidian-glass-flora-static.test.mjs passed');

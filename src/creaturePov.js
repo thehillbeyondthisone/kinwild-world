@@ -8,7 +8,7 @@
 import * as THREE from "three";
 import { state } from "./state.js";
 
-const POV_EYE_LIFT = 0.35;
+export const POV_EYE_LIFT = 0.35;
 const POV_LOOK_DISTANCE = 8;
 
 const _eyeA = new THREE.Vector3();

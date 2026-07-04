@@ -1,3 +1,11 @@
+// QA-009: getPortalArrivalPose/getPortalSideEntryPose are already exercised
+// behaviorally below (real function calls + geometric assertions on the
+// returned pose) — that part predates this pass and needs no conversion.
+// The remaining checks are cross-file wiring (world.js portal-URL override,
+// ui.js first-person pointer-lock/entry closures, main.js render-loop portal
+// traversal) that only exist inside modules touching the DOM/WebGL at import
+// time (ui.js's wiring lives inside initUi(); main.js touches WebGLRenderer
+// at import — see CLAUDE.md) — those stay as source-text assertions.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

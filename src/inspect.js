@@ -468,15 +468,19 @@ const INSPECT_SCENERY_BUILDERS = {
   },
 };
 
+// Named + exported (was an inline array literal) so tests can assert on the
+// real inspect-mode flora catalog instead of grepping this file's source text.
+export const INSPECT_FLORA_KINDS = [
+  "tree", "leafballtree", "pine", "snowpine", "dandylion", "cactus", "mushroom", "fern", "rock", "limestonerock",
+  "reed", "seaweed", "grass", "beachsucculent", "flyer_nest", "deadtree", "skull",
+  "pillar", "archstone", "crystal", "bigmushroom", "fairyring", "berrybush",
+  "lantern", "coral", "braincoral", "cupcoral", "balloontree",
+  "lavafissure", "obsidianshard", "obsidianglass",
+];
+
 const VARIANTS_BY_CATEGORY = {
   creature: CREATURE_VARIANTS,
-  flora: [
-    "tree", "leafballtree", "pine", "snowpine", "dandylion", "cactus", "mushroom", "fern", "rock", "limestonerock",
-    "reed", "seaweed", "grass", "beachsucculent", "flyer_nest", "deadtree", "skull",
-    "pillar", "archstone", "crystal", "bigmushroom", "fairyring", "berrybush",
-    "lantern", "coral", "braincoral", "cupcoral", "balloontree",
-    "lavafissure", "obsidianshard", "obsidianglass",
-  ].map((name) => ({
+  flora: INSPECT_FLORA_KINDS.map((name) => ({
     name,
     kind: "flora",
     build: (biome) => FLORA_BUILDERS[name](biome),

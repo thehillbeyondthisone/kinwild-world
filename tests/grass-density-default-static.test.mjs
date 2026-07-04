@@ -1,23 +1,42 @@
+// Protected invariant: GRASS_DENSITY_BASE (25) is defined once in state.js
+// and reused (imported, not re-declared) everywhere a grass-density baseline
+// is needed, including the density-slider preallocation headroom in grass.js.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const stateSource = readFileSync(new URL('../src/state.js', import.meta.url), 'utf8');
-// Grass-density persistence lives in src/ui/storage.js (ARC-003 / QA-004 ui.js
-// split); the GRASS_DENSITY_BASE constant itself is canonicalized in
-// src/state.js and imported everywhere else (ARC-007) to avoid hand-duplicated
-// baselines drifting apart.
+globalThis.__APP_VERSION__ = 'test';
+
+const { state, GRASS_DENSITY_BASE } = await import('../src/state.js');
+const { MAX_DENSITY_MULTIPLIER } = await import('../src/grass.js');
+
+// Persistence/migration logic and the slider wiring live in src/ui/storage.js
+// and src/ui.js, both DOM-touching UI modules owned by another QA-009 agent —
+// kept as source-text checks here.
 const storageSource = readFileSync(new URL('../src/ui/storage.js', import.meta.url), 'utf8');
 const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
-const grassSource = readFileSync(new URL('../src/grass.js', import.meta.url), 'utf8');
 
-assert(
-  stateSource.includes('export const GRASS_DENSITY_BASE = 25'),
+assert.equal(
+  GRASS_DENSITY_BASE,
+  25,
   'GRASS_DENSITY_BASE should be canonically defined once in src/state.js.'
 );
 
-assert(
-  stateSource.includes('grassDensity: GRASS_DENSITY_BASE'),
+assert.equal(
+  state.userSettings.grassDensity,
+  GRASS_DENSITY_BASE,
   'Default grass density should use the canonical GRASS_DENSITY_BASE constant.'
+);
+
+assert.equal(
+  state.userSettings.grassDensityBase,
+  GRASS_DENSITY_BASE,
+  'Persisted grassDensityBase should track the canonical constant so a future rebase can be detected.'
+);
+
+assert.equal(
+  MAX_DENSITY_MULTIPLIER,
+  75,
+  'Grass field preallocation should match the density slider max of 300% × 25 = 75.'
 );
 
 assert(
@@ -31,15 +50,9 @@ assert(
 );
 
 assert(
-  stateSource.includes('grassDensityBase: GRASS_DENSITY_BASE')
-    && storageSource.includes('"grassDensityBase"')
+  storageSource.includes('"grassDensityBase"')
     && storageSource.includes('const savedGrassDensityBase = Number(saved.grassDensityBase ?? 12.5);')
     && storageSource.includes('state.userSettings.grassDensity = saved.grassDensity * (GRASS_DENSITY_BASE / savedGrassDensityBase);')
     && storageSource.includes('state.userSettings.grassDensityBase = GRASS_DENSITY_BASE;'),
   'Saved grass-density settings should migrate from the previous baseline so existing users also get the doubled grass density.'
-);
-
-assert(
-  grassSource.includes('const MAX_DENSITY_MULTIPLIER = 75'),
-  'Grass field preallocation should match the density slider max of 300% × 25 = 75.'
 );

@@ -1,16 +1,25 @@
+// Protected invariant: GRASS_HEIGHT_BASE (0.96) is defined once in state.js
+// and reused as the grass-height slider's 100% baseline.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const stateSource = readFileSync(new URL('../src/state.js', import.meta.url), 'utf8');
+globalThis.__APP_VERSION__ = 'test';
+
+const { state, GRASS_HEIGHT_BASE } = await import('../src/state.js');
+
+// The slider wiring lives in src/ui.js, a DOM-touching UI module owned by
+// another QA-009 agent — kept as a source check here.
 const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
 
-assert(
-  stateSource.includes('export const GRASS_HEIGHT_BASE = 0.96'),
+assert.equal(
+  GRASS_HEIGHT_BASE,
+  0.96,
   'GRASS_HEIGHT_BASE should be canonically defined once in src/state.js (20% lower than the previous 1.2 baseline).'
 );
 
-assert(
-  stateSource.includes('grassHeight: GRASS_HEIGHT_BASE'),
+assert.equal(
+  state.userSettings.grassHeight,
+  GRASS_HEIGHT_BASE,
   'Default grass height should use the canonical GRASS_HEIGHT_BASE constant.'
 );
 

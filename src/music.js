@@ -9,7 +9,7 @@
 
 import { state } from "./state.js";
 
-const MAX_VOLUME = 0.15;
+export const MAX_VOLUME = 0.15;
 const FADE_MS = 800;
 const MUSIC_BASE_URL = "https://static.pardev.net/small-world/music";
 

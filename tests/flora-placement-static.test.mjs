@@ -1,28 +1,33 @@
+// QA-009: CANOPY_SPACING_KINDS / CANOPY_SPACING_PAD are pure data hoisted to
+// module scope and exported from src/world.js (previously local consts
+// inside generateWorld), so this test imports and asserts them directly
+// instead of extracting a Set literal from the middle of that function's
+// source text. The two call-site checks below (that generateWorld actually
+// applies the wider spacing before placing flora and reserves the matching
+// radius for later canopy checks) are structural facts about a specific
+// ~2000-line async generator's body and stay as targeted source-text
+// assertions.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+globalThis.__APP_VERSION__ = 'test';
+globalThis.performance = { now: () => 0 };
+
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
 
-function extractSetBlock(source, name) {
-  const marker = `const ${name} = new Set([`;
-  const start = source.indexOf(marker);
-  assert.notEqual(start, -1, `${name} declaration not found`);
+const { CANOPY_SPACING_KINDS, CANOPY_SPACING_PAD } = await import('../src/world.js');
 
-  const end = source.indexOf(']);', start);
-  assert.notEqual(end, -1, `${name} declaration end not found`);
-
-  return source.slice(start, end + 3);
-}
-
-const canopySpacingKinds = extractSetBlock(worldSource, 'CANOPY_SPACING_KINDS');
-
+// Protected invariant: tree-like and berry-bush flora (broad canopies/crowns
+// on small bases) reserve a wider placement radius than their footprint so
+// silhouettes don't intersect.
 assert(
-  canopySpacingKinds.includes('"tree"')
-    && canopySpacingKinds.includes('"leafballtree"')
-    && canopySpacingKinds.includes('"pine"')
-    && canopySpacingKinds.includes('"berrybush"'),
+  CANOPY_SPACING_KINDS.has('tree')
+    && CANOPY_SPACING_KINDS.has('leafballtree')
+    && CANOPY_SPACING_KINDS.has('pine')
+    && CANOPY_SPACING_KINDS.has('berrybush'),
   'Tree and berry bush flora should share broad spacing so their visible masses do not overlap.'
 );
+assert.equal(CANOPY_SPACING_PAD, 2.8, 'Canopy spacing pad should widen the placement radius beyond the root footprint.');
 
 assert(
   worldSource.includes('blocksFloraPlacement(p.x, p.z, fp * CANOPY_SPACING_PAD, CANOPY_SPACING_KINDS)'),

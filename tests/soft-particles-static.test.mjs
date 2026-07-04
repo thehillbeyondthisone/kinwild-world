@@ -1,3 +1,10 @@
+// Protected invariant: the removed soft-particle depth-sampling feature
+// (settings checkbox, uniforms, extra render target) never gets
+// reintroduced. This is a negative existence check for a *removed* code
+// path spanning mostly non-owned files (ui.js, biomes.js) and a static
+// asset (index.html); there is no positive behavior to exercise via
+// import, so it stays a source-text check (QA-009 postfx/removed-feature
+// exception).
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

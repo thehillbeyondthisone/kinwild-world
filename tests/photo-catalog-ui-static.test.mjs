@@ -1,9 +1,28 @@
+// QA-009: the hidden-ground-cover-variants set is a pure, DOM-free constant
+// (src/ui/constants.js) and is asserted here by importing it directly. The
+// rest of this file checks HTML/CSS markup and ui.js DOM-wiring (buttons,
+// panel rendering, hotkeys) that only executes inside ui.js's initUi()
+// closures — that requires a full browser DOM to exercise, so it stays as
+// source-text assertions.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
 const htmlSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+
+const { LOCATOR_HIDDEN_FLORA_VARIANTS } = await import('../src/ui/constants.js');
+
+// Protected invariant: locked current-biome catalog entries hide the same
+// ambient ground-cover variants the locator panel hides (pebble, grass, etc.)
+// so the Field Guide only offers "findable" subjects.
+assert(
+  LOCATOR_HIDDEN_FLORA_VARIANTS.has('pebble')
+    && LOCATOR_HIDDEN_FLORA_VARIANTS.has('grassfield')
+    && LOCATOR_HIDDEN_FLORA_VARIANTS.has('water')
+    && !LOCATOR_HIDDEN_FLORA_VARIANTS.has('mushroom'),
+  'Hidden-variant set should exclude ambient ground cover without excluding real catalog subjects.'
+);
 
 assert(
   htmlSource.includes('id="setting-catalog"')
@@ -77,11 +96,9 @@ assert(
 );
 
 assert(
-  uiSource.includes('const LOCATOR_HIDDEN_FLORA_VARIANTS = new Set([')
-    && uiSource.includes('"pebble"')
-    && uiSource.includes('if (inspect?.category === "flora" && LOCATOR_HIDDEN_FLORA_VARIANTS.has(inspect.variant)) return;')
+  uiSource.includes('if (inspect?.category === "flora" && LOCATOR_HIDDEN_FLORA_VARIANTS.has(inspect.variant)) return;')
     && uiSource.includes('const GROUND_COVER = LOCATOR_HIDDEN_FLORA_VARIANTS;'),
-  'Current-biome locked catalog entries should use the same hidden ground-cover exclusions as the locator.'
+  'Current-biome locked catalog entries should use the same imported hidden ground-cover exclusions as the locator.'
 );
 
 assert(

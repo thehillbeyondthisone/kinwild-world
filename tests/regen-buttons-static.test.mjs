@@ -1,9 +1,28 @@
+// QA-009: converts the pure biome-stepping invariant from a source grep to a
+// real import-and-assert behavioral check. Everything else here is DOM/HTML
+// wiring (button ids, help copy, guarded regen flow) that only exists inside
+// ui.js's initUi()/wireRegenButton() closures — those require a full browser
+// DOM to exercise, so they stay as source-text assertions (kept minimal,
+// commented at each assertion) rather than being dropped.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const htmlSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
 const styleSource = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
+
+const { nextEnabledBiomeIdFrom } = await import('../src/ui/constants.js');
+
+// Protected invariant: next-biome regeneration steps through the *enabled*
+// biome list in order and wraps around; it never returns a disabled biome or
+// falls off the end of the array.
+{
+  const enabled = [{ id: 'meadow' }, { id: 'desert' }, { id: 'tundra' }];
+  assert.equal(nextEnabledBiomeIdFrom(enabled, 'meadow'), 'desert', 'should step to the next enabled biome');
+  assert.equal(nextEnabledBiomeIdFrom(enabled, 'tundra'), 'meadow', 'should wrap around after the last enabled biome');
+  assert.equal(nextEnabledBiomeIdFrom(enabled, 'not-enabled'), 'meadow', 'an unrecognized current id should fall back to the first enabled biome');
+  assert.equal(nextEnabledBiomeIdFrom([], 'meadow'), null, 'no enabled biomes should return null rather than throwing');
+}
 
 assert(
   htmlSource.includes('id="regen-same-biome"') && htmlSource.includes('same biome'),
@@ -17,6 +36,8 @@ assert(
   !htmlSource.includes('id="regen"'),
   'The old single regenerate button id should be replaced by explicit split-button ids.'
 );
+// DOM wiring: pickSameBiomeSeed/pickRandomBiomeSeed live inside initUi() and
+// call the shared nextEnabledBiomeIdFrom helper asserted above.
 assert(
   uiSource.includes('function pickSameBiomeSeed()')
     && uiSource.includes('allowedBiomeIds: state.currentBiome ? [state.currentBiome.id] : undefined'),
@@ -27,7 +48,7 @@ assert(
     && uiSource.includes('function nextEnabledBiomeId(currentBiomeId)')
     && uiSource.includes('const nextId = nextEnabledBiomeId(state.currentBiome?.id);')
     && uiSource.includes('allowedBiomeIds: nextId ? [nextId] : undefined'),
-  'Next-biome regeneration should step through enabled biomes in BIOMES order and wrap.'
+  'Next-biome regeneration should call the shared biome-stepping helper and thread its result into newRandomSeed.'
 );
 assert(
   uiSource.includes('wireRegenButton("regen-same-biome", pickSameBiomeSeed)')

@@ -1,3 +1,8 @@
+// QA-009: this file checks pointer-lock suspension/resume wiring for photo
+// review, all inside ui.js's initUi() closures (makeFirstPersonMode's shared
+// state machine). Exercising it behaviorally would need a real
+// PointerEvent/pointer-lock browser environment; no pure logic to extract.
+// Stays a source-text assertion.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

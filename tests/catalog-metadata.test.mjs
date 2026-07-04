@@ -1,3 +1,13 @@
+// Behavioral regression test (audit QA-009) for Field Guide catalog metadata.
+// Protects the invariant that every fauna builder (creature/caterpillar/
+// butterfly/bee/will-o-wisp/bird) stamps `group.userData.catalog.key` with a
+// stable `fauna:<variant>:<biomeId>` subject, which the Field Guide catalog
+// (src/catalog.js) and the photo-mode reticle (src/photoSubject.js) rely on
+// to identify what was captured. The two trailing assertions cover flora/
+// ground-cover catalog attachment in src/world.js and src/environment.js —
+// files outside this test batch's edit ownership — via stable source anchors
+// rather than importing those (DOM-heavy) modules directly.
+
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

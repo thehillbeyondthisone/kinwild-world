@@ -1,19 +1,43 @@
+// Behavioral coverage for the seaweed flora builder (src/flora/garden.js)
+// and its per-biome spawn weighting. Protects: only the coral atoll biome
+// spawns seaweed (double-weighted alongside branching/brain/cup coral), and
+// the builder produces multi-segment wind-swaying blades with the
+// surfaceReachRange/baseHeight metadata world.js needs to clamp seaweed
+// height to water depth. world.js's water-depth placement logic stays as a
+// source-text grep since that file is owned by another concurrent agent.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BIOMES } from '../src/biomes.js';
 
-// src/flora.js is now a registry. The seaweed and grass builders both live in
-// garden.js; the slice (seaweed -> grass) resolves within that one file.
-const floraSource = readFileSync(new URL('../src/flora/garden.js', import.meta.url), 'utf8');
+globalThis.__APP_VERSION__ = 'test';
+globalThis.document = {
+  createElement() {
+    return {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          createImageData(w, h) {
+            return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
+          },
+          putImageData() {},
+        };
+      },
+    };
+  },
+};
+
+globalThis.window = { location: { search: '' }, matchMedia: () => ({ matches: false }) };
+Object.defineProperty(globalThis, 'navigator', { value: { maxTouchPoints: 0 }, configurable: true });
+
+const { FLORA_BUILDERS, withIsolatedFloraPool } = await import('../src/flora.js');
+const { INSPECT_FLORA_KINDS } = await import('../src/inspect.js');
+
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
-const inspectSource = readFileSync(new URL('../src/inspect.js', import.meta.url), 'utf8');
 
 const coral = BIOMES.find((biome) => biome.id === 'coral');
 assert(coral, 'coral atoll biome should exist.');
-assert(
-  coral.flora.includes('seaweed'),
-  'coral atoll should include seaweed in its flora mix.'
-);
+assert(coral.flora.includes('seaweed'), 'coral atoll should include seaweed in its flora mix.');
 assert.equal(
   coral.flora.filter((kind) => kind === 'seaweed').length,
   16,
@@ -37,28 +61,26 @@ assert.equal(
 
 for (const biome of BIOMES) {
   if (biome.id === 'coral') continue;
-  assert.equal(
-    biome.flora.includes('seaweed'),
-    false,
-    `${biome.id} should not spawn seaweed yet.`
-  );
+  assert.equal(biome.flora.includes('seaweed'), false, `${biome.id} should not spawn seaweed yet.`);
 }
 
-const builderStart = floraSource.indexOf('seaweed(biome)');
-const builderEnd = floraSource.indexOf('grass(biome)', builderStart);
-const builderBlock = floraSource.slice(builderStart, builderEnd);
-assert(builderStart >= 0 && builderEnd > builderStart, 'Seaweed builder should live before grass flora.');
-
-assert(
-  builderBlock.includes('const SEAWEED_SEGMENTS = 6')
-    && builderBlock.includes('new THREE.PlaneGeometry(w, h, 1, SEAWEED_SEGMENTS)')
-    && builderBlock.includes('position.setX(i, x + bow * 0.025 * Math.sin(t * Math.PI * 1.5))')
-    && builderBlock.includes('position.setZ(i, z + bow * 0.018 * Math.sin(t * Math.PI * 2.0 + 0.6))')
-    && builderBlock.includes('applyWindSway')
-    && builderBlock.includes('g.userData.surfaceReachRange = [0.5, 0.95]')
-    && builderBlock.includes('g.userData.baseHeight = SEAWEED_BASE_HEIGHT'),
-  'Seaweed should use multi-segment blades with baked curve and wind sway metadata for water-surface fitting.'
+// Build a real seaweed group and inspect the actual blades instead of
+// grepping the builder's source text.
+const seaweed = withIsolatedFloraPool(() => FLORA_BUILDERS.seaweed(coral));
+assert(seaweed.children.length >= 4, 'Seaweed should build at least four blades.');
+const blade = seaweed.children[0];
+assert.equal(blade.geometry.type, 'PlaneGeometry', 'Seaweed blades should be multi-segment planes.');
+assert.equal(
+  blade.geometry.parameters.heightSegments,
+  6,
+  'Seaweed blades should use 6 height segments for a baked curve.'
 );
+assert.deepEqual(
+  seaweed.userData.surfaceReachRange,
+  [0.5, 0.95],
+  'Seaweed should expose a surface-reach range for water-surface fitting.'
+);
+assert.equal(seaweed.userData.baseHeight, 0.8, 'Seaweed should expose its base height for water-surface fitting.');
 
 assert(
   worldSource.includes('const MEDIUM_DEEP_WATER_FLORA = new Set(["seaweed"])')
@@ -75,6 +97,8 @@ assert(
 );
 
 assert(
-  inspectSource.includes('"reed", "seaweed", "grass"'),
+  INSPECT_FLORA_KINDS.includes('seaweed'),
   'Inspect flora catalog should expose the seaweed specimen.'
 );
+
+console.log('seaweed-flora-static.test.mjs passed');

@@ -1,3 +1,8 @@
+// QA-009: this file is almost entirely CSS design tokens/selectors and HTML
+// markup, plus a few ui.js DOM-wiring lines (music button glyph, storage
+// event propagation) that live inside initUi() closures. There's no
+// standalone pure logic to extract — the readability tokens are CSS custom
+// properties, not JS data — so it stays a source-text assertion.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

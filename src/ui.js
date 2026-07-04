@@ -21,6 +21,12 @@ import {
 import { disposePortal, getPortalSideEntryPose, updatePortalPreviewSettings } from "./portal.js";
 import { filterCatalogEntriesForWorld, getBiomeCatalogEntries, makeCatalogStore } from "./catalog.js";
 import { findPhotoCatalogSubject } from "./photoSubject.js";
+import {
+  LOCATOR_HIDDEN_FLORA_VARIANTS,
+  nextEnabledBiomeIdFrom,
+  PHOTO_REVIEW_DIM_RENDER_ORDER,
+  PHOTO_REVIEW_DIM_OPACITY,
+} from "./ui/constants.js";
 // Persistence layer (ARC-003 / QA-004 split): localStorage helpers + schema
 // constants live in src/ui/storage.js. loadSettings is re-exported below so
 // main.js's existing `import { loadSettings } from "./src/ui.js"` keeps working.
@@ -39,10 +45,6 @@ import {
 let followTarget = null;
 let selectingCreature = false;
 const catalogStore = makeCatalogStore();
-const LOCATOR_HIDDEN_FLORA_VARIANTS = new Set([
-  "grassfield", "wildflower", "pebble", "grassblade",
-  "cloudpuff", "shell", "starfish", "water",
-]);
 
 // First-person stroll state — populated when enabled, null otherwise.
 let _stroll = null;
@@ -1683,10 +1685,7 @@ export function initUi({ camera, canvas, controls, renderer }) {
 
   function nextEnabledBiomeId(currentBiomeId) {
     const enabled = BIOMES.filter((biome) => biomeFilter.has(biome.id));
-    if (enabled.length === 0) return null;
-    const currentIdx = enabled.findIndex((biome) => biome.id === currentBiomeId);
-    const nextIdx = currentIdx < 0 ? 0 : (currentIdx + 1) % enabled.length;
-    return enabled[nextIdx].id;
+    return nextEnabledBiomeIdFrom(enabled, currentBiomeId);
   }
 
   function pickRandomBiomeSeed() {
@@ -2110,9 +2109,9 @@ export function initUi({ camera, canvas, controls, renderer }) {
     });
     const dimMesh = new THREE.Mesh(dimGeo, dimMat);
     dimMesh.position.z = -0.03;
-    dimMesh.renderOrder = 998;
+    dimMesh.renderOrder = PHOTO_REVIEW_DIM_RENDER_ORDER;
     group.add(dimMesh);
-    dimMat.opacity = 0.45;
+    dimMat.opacity = PHOTO_REVIEW_DIM_OPACITY;
 
     // Save / Discard buttons
     const actions = document.createElement("div");

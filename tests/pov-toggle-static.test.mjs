@@ -1,3 +1,7 @@
+// QA-009: this file checks HTML markup, CSS selectors, and DOM button-sync
+// wiring inside ui.js's initUi() closures — no pure logic to extract (the
+// stroll/fly-mode predicates themselves are covered behaviorally in
+// tests/main-view-fly-mode-static.test.mjs). Stays a source-text assertion.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

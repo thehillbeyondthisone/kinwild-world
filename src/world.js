@@ -82,6 +82,14 @@ let _generationRunId = 0;
 const STALE_GENERATION = Symbol("stale-generation");
 const GENERATION_FRAME_BUDGET_MS = 8;
 
+// Visual canopy spacing is wider than root/footprint spacing. Trees, bushes,
+// and big mushrooms can have small bases but broad crowns/caps, so they need
+// a separate placement radius to prevent silhouettes from intersecting.
+// Hoisted to module scope (QA-009) so tests can import-and-assert the data
+// invariant instead of grepping the Set literal out of generateWorld's body.
+export const CANOPY_SPACING_KINDS = new Set(["tree", "leafballtree", "pine", "snowpine", "deadtree", "bigmushroom", "fairyring", "portal", "berrybush"]);
+export const CANOPY_SPACING_PAD = 2.8;
+
 function generationNow() {
   return typeof performance !== "undefined" && performance.now
     ? performance.now()
@@ -599,13 +607,11 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
   // Visual canopy spacing is wider than root/footprint spacing. Trees, bushes,
   // and big mushrooms can have small bases but broad crowns/caps, so they need
   // a separate placement radius to prevent silhouettes from intersecting.
-  const CANOPY_SPACING_KINDS = new Set(["tree", "leafballtree", "pine", "snowpine", "deadtree", "bigmushroom", "fairyring", "portal", "berrybush"]);
   const NEST_HOST_KINDS = new Set(["tree", "leafballtree", "pine", "snowpine", "balloontree", "bigmushroom", "pillar"]);
   const biomeHasNestHosts = biome.flora.some((kind) => NEST_HOST_KINDS.has(kind));
   const MIN_NEST_HOST_RADIUS = 0.42;
   const FLYER_NEST_BASE_CLEARANCE = 0.04;
   const FLYER_NEST_MAX_TERRAIN_VARIANCE = 0.30;
-  const CANOPY_SPACING_PAD = 2.8;
   const GRASS_SHORTEN_PAD = 2.6;
   const GRASS_SHORTEN_MIN_RADIUS = 0.42;
   const GRASS_SHORTEN_MAX_RADIUS = 1.2;

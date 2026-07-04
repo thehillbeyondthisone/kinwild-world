@@ -1,5 +1,123 @@
+// QA-009: adds a real behavioral layer on top of the existing source-text
+// assertions (kept below to avoid losing coverage on the cross-file wiring,
+// GLSL shader strings, and world.js/ui.js/main.js/state.js integration glue
+// that this file was already checking — those require either a full browser
+// DOM or reserve grepping for GLSL, per CLAUDE.md/AUDIT.md QA-009). The new
+// block imports portal.js directly (it has no DOM dependency — only THREE.js
+// + a handful of sibling pure modules) and exercises createBiomePortal /
+// updatePortalPreview against real THREE objects: ring placement/sink math,
+// render-target sizing under LOWFX, and the distance/throttle gates that
+// keep preview rendering cheap.
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import * as THREE from 'three';
+
+installHeadlessGlobals();
+const { createBiomePortal, updatePortalPreview } = await import('../src/portal.js');
+const { BIOMES } = await import('../src/biomes.js');
+
+{
+  const sourceBiome = BIOMES[0];
+  const targetBiome = BIOMES[1];
+  const x = 3, y = 0, z = -4, heading = 1.2;
+  const portal = createBiomePortal({
+    sourceBiome, targetBiome, x, y, z, heading,
+    seed: 0x3f2a, targetSeed: 0x4b1c,
+  });
+
+  // Protected invariant: the ring is sunk into the ground by
+  // PORTAL_RING_RADIUS - PORTAL_GROUND_SINK, not floated at the anchor's y.
+  assert.ok(portal.group.position.y > y, 'the portal ring should sit above its ground anchor y (sunk in, not buried).');
+  assert.ok(portal.group.position.y < y + 1.48, 'the portal ring should be substantially sunk in, not floating at full ring height.');
+  assert.equal(portal.group.position.x, x);
+  assert.equal(portal.group.position.z, z);
+  assert.equal(portal.group.rotation.y, heading);
+
+  // Render targets exist and share a headless-LOWFX size (our stubbed
+  // window is small/low-DPR, so LOWFX auto-detects true).
+  assert.ok(portal.frontRt.isWebGLRenderTarget && portal.backRt.isWebGLRenderTarget, 'createBiomePortal should build front/back render targets for the preview.');
+  assert.equal(portal.frontRt.width, portal.backRt.width, 'front/back preview render targets should match in size.');
+
+  // Blocker/obstacle geometry used by world.js flora/creature placement.
+  assert.equal(portal.blocker.kind, 'portal');
+  assert.equal(portal.blocker.x, x);
+  assert.equal(portal.blocker.z, z);
+  assert.ok(portal.blocker.r > 0, 'the portal should reserve a flora-blocking radius.');
+  assert.equal(portal.obstacle.kind, 'portal');
+  assert.ok(portal.obstacle.top > y, 'the portal obstacle canopy top should be above the ground anchor so fliers can pass under it only when clear.');
+
+  // Distance gating: a camera far outside PORTAL_ACTIVE_DISTANCE should never
+  // trigger a render call, however many times it's polled.
+  let renderCalls = 0;
+  const farRenderer = {
+    getRenderTarget() { return null; },
+    setRenderTarget() {},
+    clear() {},
+    render() { renderCalls += 1; },
+  };
+  const farCamera = new THREE.PerspectiveCamera();
+  farCamera.position.set(10000, 0, 10000);
+  updatePortalPreview(portal, farRenderer, farCamera, 1);
+  updatePortalPreview(portal, farRenderer, farCamera, 2);
+  assert.equal(renderCalls, 0, 'a portal far outside the active distance should never render its preview.');
+
+  // Throttling: a camera close enough to render should render once, then
+  // skip immediate re-renders until PORTAL_RENDER_INTERVAL_MS has elapsed.
+  let closeRenderCalls = 0;
+  const closeRenderer = {
+    getRenderTarget() { return null; },
+    setRenderTarget() {},
+    clear() {},
+    render() { closeRenderCalls += 1; },
+  };
+  const closeCamera = new THREE.PerspectiveCamera();
+  closeCamera.position.set(x, portal.group.position.y, z + 2);
+  updatePortalPreview(portal, closeRenderer, closeCamera, 10);
+  assert.equal(closeRenderCalls, 2, 'a nearby portal should render both its front and back preview faces.');
+  updatePortalPreview(portal, closeRenderer, closeCamera, 10.001);
+  assert.equal(closeRenderCalls, 2, 'a re-render within the throttle interval should be skipped.');
+  updatePortalPreview(portal, closeRenderer, closeCamera, 30);
+  assert.equal(closeRenderCalls, 4, 'a re-render after the throttle interval has elapsed should render again.');
+}
+
+function installHeadlessGlobals() {
+  globalThis.__APP_VERSION__ = 'test';
+  globalThis.window = {
+    location: { search: '' }, devicePixelRatio: 1, innerWidth: 1280, innerHeight: 720,
+    addEventListener() {}, dispatchEvent() {},
+  };
+  function gradient() { return { addColorStop() {} }; }
+  const ctx2d = new Proxy(
+    {
+      createRadialGradient: () => gradient(),
+      createLinearGradient: () => gradient(),
+      getImageData: () => ({ data: new Uint8ClampedArray(4) }),
+      getContextAttributes: () => ({ alpha: true }),
+    },
+    { get(target, prop) { return prop in target ? target[prop] : () => null; } }
+  );
+  function stubEl() {
+    return {
+      textContent: '', style: {},
+      classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
+      appendChild() {}, removeChild() {}, setAttribute() {}, dataset: {},
+      getContext: () => ctx2d,
+    };
+  }
+  globalThis.document = {
+    getElementById: () => stubEl(),
+    createElement: () => stubEl(),
+    body: { classList: { contains() { return false; }, add() {}, remove() {} } },
+    documentElement: { style: {} },
+  };
+  globalThis.performance = { now: () => 0 };
+  globalThis.requestAnimationFrame = (cb) => setTimeout(() => cb(0), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Below: the pre-existing source-text assertions, kept for coverage on
+// cross-file wiring and GLSL that the behavioral block above doesn't reach.
+// ---------------------------------------------------------------------------
 
 const portalUrl = new URL('../src/portal.js', import.meta.url);
 assert(existsSync(portalUrl), 'A dedicated portal module should own portal preview rendering.');

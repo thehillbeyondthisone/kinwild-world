@@ -1,3 +1,11 @@
+// QA-009: main.js constructs a THREE.WebGLRenderer at module load time (see
+// CLAUDE.md), so it cannot be imported under plain node without a real
+// canvas/GL context — confirmed by attempting the import, which throws from
+// three.module.js's WebGLRenderer constructor. shouldApplyTiltShift() closes
+// over module-local isPhotoFP()/isStrolling()/isFlyMode()/getFollowTarget()
+// calls and state.userSettings, so extracting it as a standalone pure
+// function would require restructuring main.js beyond this pass's "small
+// moves only" scope. Stays a source-text assertion.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 

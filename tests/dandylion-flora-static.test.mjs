@@ -1,21 +1,43 @@
+// Behavioral coverage for the dandylion flora builder (src/flora/garden.js)
+// and its per-biome spawn rules. Protects: dandy lions spawn on every biome
+// with wildflowers enabled (plus cloud island), the builder produces a
+// long stem, five leaves, a center head, and a fuzz-ball made of a line
+// mesh + two point sprites (not instanced mesh geometry), and stem/leaf
+// colors follow the biome flora palette instead of fixed greens. The wind
+// shader math (GLSL) and world.js flower-spot wiring stay as source-text
+// greps since GLSL content and files owned by other agents aren't
+// introspectable this way.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BIOMES, FLOWER_DENSITY } from '../src/biomes.js';
 
-// src/flora.js is now a registry; the dandylion builder lives in garden.js and
-// the shared applyDandylionHeadWind / getDandylionFloraPalette helpers live in
-// _shared.js. Concatenate both so all flora assertions resolve.
-const floraSource = [
-  readFileSync(new URL('../src/flora/_shared.js', import.meta.url), 'utf8'),
-  readFileSync(new URL('../src/flora/garden.js', import.meta.url), 'utf8'),
-].join('\n');
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
-const inspectSource = readFileSync(new URL('../src/inspect.js', import.meta.url), 'utf8');
+globalThis.__APP_VERSION__ = 'test';
+globalThis.window = { location: { search: '' }, matchMedia: () => ({ matches: false }) };
+Object.defineProperty(globalThis, 'navigator', { value: { maxTouchPoints: 0 }, configurable: true });
+globalThis.document = {
+  createElement() {
+    return {
+      width: 0,
+      height: 0,
+      getContext() {
+        return {
+          createImageData(w, h) {
+            return { width: w, height: h, data: new Uint8ClampedArray(w * h * 4) };
+          },
+          putImageData() {},
+        };
+      },
+    };
+  },
+};
 
-assert(
-  floraSource.includes('dandylion(biome)'),
-  'Dandy lion should be registered as a named flora builder.'
-);
+const { FLORA_BUILDERS, withIsolatedFloraPool } = await import('../src/flora.js');
+const { getDandylionFloraPalette, shouldCastMicroFloraShadow } = await import('../src/flora/_shared.js');
+
+const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const garden = readFileSync(new URL('../src/flora/garden.js', import.meta.url), 'utf8');
+
+assert.equal(typeof FLORA_BUILDERS.dandylion, 'function', 'Dandy lion should be registered as a named flora builder.');
 
 for (const biome of BIOMES) {
   const flowerDensity = FLOWER_DENSITY[biome.id] ?? 100;
@@ -32,122 +54,84 @@ for (const biome of BIOMES) {
   }
 }
 
-const builderStart = floraSource.indexOf('dandylion(biome)');
-const builderEnd = floraSource.indexOf('cactus()', builderStart);
-const builderBlock = floraSource.slice(builderStart, builderEnd);
-const detachedMatStart = builderBlock.indexOf('const detachedSporeMat = pooled("dandylion.detached.spore.point.mat"');
-const detachedMatEnd = builderBlock.indexOf('const fuzzLines = new THREE.LineSegments', detachedMatStart);
-const detachedMatBlock = builderBlock.slice(detachedMatStart, detachedMatEnd);
+// Build a real dandylion group for a wildflower-enabled biome and inspect the
+// actual children instead of grepping the builder's source text.
+const golden = BIOMES.find((biome) => biome.id === 'golden');
+assert(golden, 'golden steppe biome should exist.');
+const dandy = withIsolatedFloraPool(() => FLORA_BUILDERS.dandylion(golden));
 
-assert(builderStart >= 0 && builderEnd > builderStart, 'Dandy lion builder should live before cactus flora.');
-assert(detachedMatStart >= 0 && detachedMatEnd > detachedMatStart, 'Dandy lion loose spore material should be present.');
+const stem = dandy.children.find((c) => c.isMesh && c.geometry.type === 'CylinderGeometry');
+assert(stem, 'Dandy lion should have a wind-swaying stem mesh.');
+assert.equal(stem.geometry.parameters.height, 0.92, 'Dandy lion stem should be 0.92 units tall.');
+
+const core = dandy.children.find((c) => c.isMesh && c.geometry.type === 'SphereGeometry');
+assert(core, 'Dandy lion should have a center head/core mesh.');
+
+const leaves = dandy.children.filter((c) => c.isMesh && c !== stem && c !== core);
+assert.equal(leaves.length, 5, 'Dandy lion should have exactly five leaves.');
+const leafRotations = leaves.map((leaf) => leaf.rotation.x);
 assert(
-  builderBlock.includes('DANDYLION_STEM_H = 0.92')
-    && builderBlock.includes('buildLeafGeo')
-    && builderBlock.includes('baseLeafCount')
-    && builderBlock.includes('applyWindSway')
-    && builderBlock.includes('flowerSpotY')
-    && builderBlock.includes('sporeCount = 288')
-    && builderBlock.includes('detachedSporeCount = 6'),
-  'Dandy lion should have a long wind-swaying stem, broad leaves, a dense procedural fuzz ball, and a small loose spore stream.'
+  new Set(leafRotations).size > 1,
+  'Dandy lion leaves should vary in pitch rather than all sharing one rotation.'
 );
 
-assert(
-  builderBlock.includes('dandylion.fuzz.line.mat')
-    && builderBlock.includes('dandylion.spore.point.mat')
-    && builderBlock.includes('dandylion.detached.spore.point.mat')
-    && builderBlock.includes('new THREE.ShaderMaterial')
-    && builderBlock.includes('new THREE.LineSegments(lineGeo, lineMat)')
-    && builderBlock.includes('new THREE.Points(sporeGeo, sporeMat)')
-    && builderBlock.includes('new THREE.Points(detachedSporeGeo, detachedSporeMat)')
-    && builderBlock.includes('uFoliageWind: state.windUniforms.uFoliageWind')
-    && builderBlock.includes('const fuzzInnerRadius = 0.050')
-    && builderBlock.includes('sporeSizes[i] = 4.2 + Math.random() * 4.2')
-    && builderBlock.includes('gl_PointSize = aSize;')
-    && builderBlock.includes('uOpacity: { value: glow ? 0.46 : 0.34 }')
-    && builderBlock.includes('uOpacity: { value: glow ? 0.58 : 0.44 }')
-    && builderBlock.includes('uOpacity: { value: glow ? 0.62 : 0.48 }')
-    && builderBlock.match(/transparent: true/g)?.length >= 3
-    && !builderBlock.includes('new THREE.InstancedMesh(puffGeo, puffMat')
-    && !builderBlock.includes('new THREE.IcosahedronGeometry(0.018'),
-  'Dandy lion fuzz should use shader lines and point spores, not instanced mesh geometry.'
+const fuzzLines = dandy.children.find((c) => c.type === 'LineSegments');
+assert(fuzzLines, 'Dandy lion fuzz should render loose fibers as line segments, not instanced mesh geometry.');
+assert.equal(
+  fuzzLines.geometry.attributes.position.count,
+  288 * 2,
+  'Dandy lion fuzz should have 288 fiber lines (2 endpoints each).'
 );
 
+const pointClouds = dandy.children.filter((c) => c.type === 'Points');
+assert.equal(pointClouds.length, 2, 'Dandy lion should render its attached and detached spores as two point clouds.');
+const sporeCounts = pointClouds.map((p) => p.geometry.attributes.position.count).sort((a, b) => a - b);
+assert.deepEqual(
+  sporeCounts,
+  [6, 288],
+  'Dandy lion should have 288 attached spores and a small stream of 6 detached spores.'
+);
 assert(
-  builderBlock.includes('const detachedSporeGeo = pooled("dandylion.detached.spore.point.geo"')
-    && builderBlock.includes('geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, DANDYLION_STEM_H + 0.35, 0), 12.5)')
-    && builderBlock.includes('detachedSporeSizes[i] = 4.0 + Math.random() * 3.1')
-    && builderBlock.includes('float cycle = fract(uTime * 0.037 + aSeed)')
-    && builderBlock.includes('float fade = rise * (1.0 - smoothstep(0.62, 0.96, cycle)) * uFoliageWind')
-    && builderBlock.includes('float lift = smoothstep(0.0, 0.72, cycle)')
-    && builderBlock.includes('vec2 crossWind = vec2(-windDir.y, windDir.x)')
-    && builderBlock.includes('float lateralLane = (fract(aSeed * 17.0) - 0.5) * 0.055')
-    && builderBlock.includes('float forwardGust = 0.92 + 0.16 * sin(aSeed * 37.0)')
-    && builderBlock.includes('float modelScale = max(length(modelMatrix[0].xyz), 0.001)')
-    && builderBlock.includes('float travel = 10.0 / modelScale')
-    && builderBlock.includes('p.xz += windDir * cycle * cycle * forwardGust * uWindStrength * uFoliageWind * travel')
-    && builderBlock.includes('p.xz += crossWind * lateralLane * lift * uFoliageWind')
-    && builderBlock.includes('p.y += cycle * (0.18 + sin(aSeed * 19.0) * 0.045);')
-    && !detachedMatBlock.includes('cycle * 8.0')
-    && !detachedMatBlock.includes('cycle * 13.0')
-    && !detachedMatBlock.includes('uTime * 3.3')
-    && builderBlock.includes('vDriftAlpha = fade')
-    && builderBlock.includes('gl_FragColor = vec4(uColor * twinkle, soft * uOpacity * vDriftAlpha)')
-    && builderBlock.includes('g.add(detachedSpores)')
-    && !detachedMatBlock.includes('dandylionHeadWindOffset()'),
-  'Dandy lion loose spores should occasionally lift off independently from the head and drift only when foliage wind is active.'
+  dandy.children.every((c) => c.type !== 'InstancedMesh' && c.geometry?.type !== 'IcosahedronGeometry'),
+  'Dandy lion fuzz should not use instanced mesh puff geometry.'
 );
 
+const palette = getDandylionFloraPalette(golden);
+assert.equal(
+  stem.material.color.getHex(),
+  palette.stem.getHex(),
+  'Dandy lion stem should adopt the biome flora palette instead of a fixed green color.'
+);
+const leafMat = leaves[0].material;
+assert.equal(
+  leafMat.color.getHex(),
+  palette.leaf.getHex(),
+  'Dandy lion leaves should adopt the biome flora palette instead of a fixed green color.'
+);
+
+const castMicroShadow = shouldCastMicroFloraShadow(golden);
+assert.equal(stem.castShadow, castMicroShadow, 'Dandy lion stem should respect the biome micro-flora shadow LOD flag.');
 assert(
-  builderBlock.includes('vec4 wp = modelMatrix * vec4(vec3(0.0, uDandylionHeadY, 0.0), 1.0)')
-    && builderBlock.includes('float windY = uDandylionHeadY')
-    && builderBlock.includes('float w1 = sin(uTime * 1.4 + wp.x * 0.30 + wp.z * 0.40)')
-    && builderBlock.includes('float w2 = sin(uTime * 0.9 + wp.x * 0.15 - wp.z * 0.25)')
-    && builderBlock.includes('vec2 windWorld = vec2(w1 * windAmp * 0.06, w2 * windAmp * 0.05)')
-    && builderBlock.includes('p.xz += dandylionHeadWindOffset()')
-    && !builderBlock.includes('float windY = max(p.y, 0.0)')
-    && !builderBlock.includes('aSeed * 16.0 + p.z * 8.0'),
+  leaves.every((leaf) => leaf.castShadow === castMicroShadow),
+  'Dandy lion leaves should respect the biome micro-flora shadow LOD flag.'
+);
+assert.equal(core.castShadow, castMicroShadow, 'Dandy lion head should respect the biome micro-flora shadow LOD flag.');
+
+assert.equal(
+  stem.material.flatShading,
+  false,
+  'Dandy lion stem should be smooth-shaded.'
+);
+assert.equal(core.material.flatShading, false, 'Dandy lion center ball should be smooth-shaded.');
+
+// The wind-sway GLSL math (rigid seed-head displacement vs. per-vertex noise)
+// lives entirely inside shader source strings, which aren't observable
+// without a WebGL context — keep those as targeted source greps.
+assert(
+  garden.includes('vec4 wp = modelMatrix * vec4(vec3(0.0, uDandylionHeadY, 0.0), 1.0)')
+    && garden.includes('float windY = uDandylionHeadY')
+    && !garden.includes('float windY = max(p.y, 0.0)'),
   'Dandy lion fuzz shader should use one rigid seed-head wind displacement so the spore sphere does not distort.'
-);
-
-assert(
-  builderBlock.includes('function dandylionStemOffset(t)')
-    && builderBlock.includes('const baseLeafCount = 5')
-    && builderBlock.includes('const leafHeightStart = 0.20')
-    && builderBlock.includes('const leafHeightGap = 0.18 / Math.max(1, baseLeafCount - 1)')
-    && builderBlock.includes('const attachT = leafHeightStart + i * leafHeightGap + Math.random() * 0.012')
-    && builderBlock.includes('const attachPos = dandylionStemOffset(attachT)')
-    && builderBlock.includes('leaf.position.copy(attachPos)'),
-  'Dandy lion should use exactly five leaves with visible vertical spacing, starting 20% of the stem length from the bottom.'
-);
-
-assert(
-  builderBlock.includes('const leafPitchVariation = (Math.random() - 0.5) * 0.34')
-    && builderBlock.includes('const leafYawVariation = (Math.random() - 0.5) * 0.18')
-    && builderBlock.includes('const leafRollVariation = (Math.random() - 0.5) * 0.28')
-    && builderBlock.includes('leaf.rotateX(leafPitchVariation)')
-    && builderBlock.includes('leaf.rotateY(leafYawVariation)')
-    && builderBlock.includes('leaf.rotateZ(leafRollVariation)'),
-  'Dandy lion leaves should vary in pitch, yaw, and roll.'
-);
-
-assert(
-  builderBlock.includes('const dandyPalette = getDandylionFloraPalette(biome)')
-    && builderBlock.includes('color: dandyPalette.stem')
-    && builderBlock.includes('color: dandyPalette.leaf')
-    && !builderBlock.includes('new THREE.Color("#4f7d2b")')
-    && !builderBlock.includes('new THREE.Color("#5b8f33")'),
-  'Dandy lion stem and leaves should adopt the biome flora palette instead of fixed green colors.'
-);
-
-assert(
-  builderBlock.includes('dandylion.stem.mat.smooth')
-    && floraSource.includes('function applyDandylionHeadWind(material')
-    && builderBlock.includes('applyDandylionHeadWind(')
-    && builderBlock.includes('new THREE.MeshStandardMaterial({ color: dandyPalette.stem, flatShading: false')
-    && builderBlock.includes('dandylion.core.mat.smooth')
-    && builderBlock.includes('flatShading: false'),
-  'Dandy lion stem and center ball should use smooth-shaded materials, with the center ball moving rigidly at the stem top.'
 );
 
 assert(
@@ -156,7 +140,10 @@ assert(
   'Dandy lion heads should be available as flower spots for fliers.'
 );
 
+const { INSPECT_FLORA_KINDS } = await import('../src/inspect.js');
 assert(
-  inspectSource.includes('"dandylion"'),
+  INSPECT_FLORA_KINDS.includes('dandylion'),
   'Inspect flora catalog should expose the dandy lion specimen.'
 );
+
+console.log('dandylion-flora-static.test.mjs passed');

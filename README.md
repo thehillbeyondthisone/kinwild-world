@@ -1,5 +1,8 @@
 # a small world
 
+[![Deploy to GitHub Pages](https://github.com/paulrobello/small-world/actions/workflows/deploy.yml/badge.svg)](https://github.com/paulrobello/small-world/actions/workflows/deploy.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A Three.js terrarium that grows a tiny floating-island world — biome, terrain, flora, creatures, birds, and weather — from a 16-bit seed. Cute and painterly by design.
 
 **Live demo:** https://small-world.pardev.net/
@@ -85,7 +88,7 @@ Inspect mode (`?inspect=1`):
 
 ## Running it locally
 
-Install dependencies, then start the Vite dev server with hot reload:
+Requires Node.js (see the `engines` field in `package.json` for the supported range) and Python 3 (only needed to run the Python half of the test suite). Install dependencies, then start the Vite dev server with hot reload:
 
 ```sh
 npm install
@@ -107,13 +110,27 @@ Edits to `main.js`, `src/*.js`, `style.css`, and `index.html` are reflected by V
 ## Development notes
 
 - Runtime dependencies are installed via npm and bundled by Vite.
-- `make lint` runs ESLint over `main.js` and `src/`; `make checkall` runs all JS/Python tests, lint, and the production build.
+- `make lint` runs ESLint over `main.js` and `src/`; `make test` runs all JS/Python tests; `make checkall` runs tests, lint, and the production build.
 - Deployment is via GitHub Pages at the live demo URL above; completed enhancements are typically committed and pushed to publish. Original music scores for each biome are served separately from `https://static.pardev.net/small-world/music/` so large MP3 files stay out of git.
 - AI coding agents should start with [`CLAUDE.md`](CLAUDE.md), which is also referenced by `AGENTS.md` and `GEMINI.md` compatibility stubs.
 
+## Troubleshooting
+
+**The screen goes black or the world stops responding after switching tabs or waking the laptop.**
+This is a WebGL context loss, which browsers can trigger under memory pressure or after a GPU driver reset. The app listens for the `webglcontextlost` / `webglcontextrestored` events and rebuilds the renderer automatically — give it a few seconds. If it doesn't recover, reload the page.
+
+**`make dev-start` reports the port is already in use.**
+Run `make dev-stop` first; it kills whatever is bound to port 2001 (including a stale background dev server) before you start a fresh one. `make dev-restart` does both steps in one command.
+
+**No music plays.**
+Music streams from `https://static.pardev.net/small-world/music/`, a separate host from the app itself — check that the host is reachable and not blocked. Browsers also require a user gesture (a click) before they'll allow audio playback; the app resumes music on the first click if it was blocked at page load.
+
+**The app is slow or stutters on a low-end device or older phone.**
+Append `?lowfx=1` to the URL to force the low-FX profile (drops fur, post-FX, and particle counts), or `?midfx=1` for the mid-tier profile (trims heavier depth effects while keeping bloom). Both are auto-detected on weak hardware; the query param lets you force one on for testing regardless of the device.
+
 ## Stack
 
-- [Three.js](https://threejs.org/) r185, bundled by Vite
+- [Three.js](https://threejs.org/), bundled by Vite
 - [simplex-noise](https://github.com/jwagner/simplex-noise.js) for terrain
 - Plain vanilla JS modules with Vite for development and production builds
 

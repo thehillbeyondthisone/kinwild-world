@@ -7,7 +7,17 @@ import { FLORA_BUILDERS, resetFloraPool } from "./flora.js";
 import { mulberry32 } from "./seed.js";
 import { jitterGeo, applyWindSway } from "./util.js";
 import { BLOOM_LAYER } from "./postfx.js";
-import { makeGrassMaterial } from "./grass.js";
+import { makeGrassMaterial, makeGrassBladeGeometry } from "./grass.js";
+import {
+  _wfStemGeo,
+  _wfStemMat,
+  _wfPetalGeo,
+  _wfPetalMat,
+  _wfLeafGeo,
+  _wfLeafMat,
+  _wfPistilGeo,
+  _wfPistilMat,
+} from "./environment/groundcover.js";
 import { createNoise2D } from "simplex-noise";
 
 const _params = new URLSearchParams(window.location.search);
@@ -89,91 +99,19 @@ const INSPECT_SCENERY_BUILDERS = {
     const g = new THREE.Group();
     const glow = !!biome.glowFlowers;
 
-    // Show 3 detailed flowers in a cluster, one per palette color.
-    // Stem geometry (6× scale for inspect distance).
-    const stemGeo = new THREE.CylinderGeometry(0.006, 0.012, 0.44, 5, 3).translate(0, 0.22, 0);
-    const stemMat = applyWindSway(
-      new THREE.MeshStandardMaterial({ color: "#2d5a1e", flatShading: true, roughness: 0.85 }),
-      1.0
-    );
-
-    // Petal geometry (small curved teardrop).
-    const petalGeo = (() => {
-      const segs = 4, wSegs = 3;
-      const pos = [], uvs = [], idx = [];
-      for (let iy = 0; iy <= segs; iy++) {
-        const v = iy / segs;
-        const hw = Math.max(0.004, 0.045 * Math.sin(Math.PI * v) ** 0.6);
-        for (let ix = 0; ix <= wSegs; ix++) {
-          const u = ix / wSegs;
-          const s = u * 2 - 1;
-          const cl = (1 - Math.abs(s)) * 0.006 * (1 - v * 0.4);
-          const tc = 0.025 * v ** 1.3;
-          pos.push(s * hw, v * 0.08, tc + cl);
-          uvs.push(u, v);
-        }
-      }
-      for (let iy = 0; iy < segs; iy++)
-        for (let ix = 0; ix < wSegs; ix++) {
-          const a = iy * (wSegs + 1) + ix, b = a + 1, c = a + wSegs + 1, d = c + 1;
-          idx.push(a, c, b, b, c, d);
-        }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-      geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-      geo.setIndex(idx);
-      geo.computeVertexNormals();
-      return geo;
-    })();
-
-    // Leaf geometry (mini leafball-style).
-    const leafGeo = (() => {
-      const segs = 5, wSegs = 3;
-      const pos = [], uvs = [], idx = [];
-      for (let iy = 0; iy <= segs; iy++) {
-        const v = iy / segs;
-        const hw = Math.max(0.004, 0.06 * Math.sin(Math.PI * v) ** 0.72 * (1 - v * 0.16));
-        for (let ix = 0; ix <= wSegs; ix++) {
-          const u = ix / wSegs;
-          const s = u * 2 - 1;
-          const cl = (1 - Math.abs(s)) * 0.005 * (1 - v * 0.35);
-          const tc = 0.030 * v ** 1.45;
-          const ec = -Math.abs(s) * 0.005 * Math.sin(Math.PI * v);
-          pos.push(s * hw, -v * 0.15, tc + cl + ec);
-          uvs.push(u, v);
-        }
-      }
-      for (let iy = 0; iy < segs; iy++)
-        for (let ix = 0; ix < wSegs; ix++) {
-          const a = iy * (wSegs + 1) + ix, b = a + 1, c = a + wSegs + 1, d = c + 1;
-          idx.push(a, c, b, b, c, d);
-        }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
-      geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-      geo.setIndex(idx);
-      geo.computeVertexNormals();
-      return geo;
-    })();
-    const leafMat = applyWindSway(
-      new THREE.MeshStandardMaterial({ color: "#3a7228", side: THREE.DoubleSide, flatShading: true, roughness: 0.80 }),
-      1.0
-    );
+    // Show 3 detailed flowers in a cluster, one per palette color, built from
+    // the same pooled stem/petal/leaf/pistil geometries + materials as the
+    // production wildflower field (see groundcover.js) so inspect mode can't
+    // drift from what actually gets placed in the world.
+    const stemGeo = _wfStemGeo;
+    const stemMat = _wfStemMat;
+    const petalGeo = _wfPetalGeo;
+    const leafGeo = _wfLeafGeo;
+    const leafMat = _wfLeafMat;
 
     const count = Math.min(3, palette.length);
     for (let fi = 0; fi < count; fi++) {
-      const baseCol = new THREE.Color(palette[fi]);
-      const petalMat = applyWindSway(
-        new THREE.MeshStandardMaterial({
-          color: baseCol,
-          emissive: glow ? baseCol.clone() : 0x000000,
-          emissiveIntensity: glow ? 1.1 : 0,
-          side: THREE.DoubleSide,
-          flatShading: true,
-          roughness: 0.4,
-        }),
-        1.2
-      );
+      const petalMat = _wfPetalMat(palette[fi], glow);
 
       const angle = (fi / count) * Math.PI * 2;
       // Position flowers so that Ry(angle) points local +Z outward from cluster center.
@@ -238,10 +176,7 @@ const INSPECT_SCENERY_BUILDERS = {
       }
 
       // Pistil (yellow center) at stem tip.
-      const pistilGeo = new THREE.SphereGeometry(0.018, 6, 5);
-      pistilGeo.scale(1, 0.55, 1);
-      const pistilMat = new THREE.MeshStandardMaterial({ color: "#ffe135", flatShading: true, roughness: 0.5 });
-      const pistil = new THREE.Mesh(pistilGeo, pistilMat);
+      const pistil = new THREE.Mesh(_wfPistilGeo, _wfPistilMat);
       pistil.scale.setScalar(sc);
       pistil.position.set(tipX, tipY, tipZ);
       pistil.quaternion.copy(stem.quaternion);
@@ -253,18 +188,9 @@ const INSPECT_SCENERY_BUILDERS = {
 
   grassblade(biome) {
     const g = new THREE.Group();
-    const blade = new THREE.PlaneGeometry(0.06, 0.34, 1, 3);
-    const bp = blade.attributes.position;
-    const tipCount = bp.count;
-    const tipFactors = new Float32Array(tipCount);
-    for (let i = 0; i < tipCount; i++) {
-      const y = bp.getY(i) + 0.17;
-      bp.setY(i, y);
-      const taper = 1 - Math.min(1, y / 0.34) * 0.6;
-      bp.setX(i, bp.getX(i) * taper);
-      tipFactors[i] = Math.min(1, y / 0.34);
-    }
-    blade.setAttribute("aTipFactor", new THREE.BufferAttribute(tipFactors, 1));
+    // Same tapered-plane geometry (with aTipFactor) as the production grass
+    // field's blade — see makeGrassBladeGeometry in grass.js.
+    const blade = makeGrassBladeGeometry();
     blade.computeVertexNormals();
 
     const baseCol = new THREE.Color(biome.ground[1]).offsetHSL(0, 0.1, -0.08);

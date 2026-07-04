@@ -122,7 +122,7 @@ export function placeInstanced(geo, mat, count, heightFn, opts = {}) {
 // ─── wildflower geometries (pooled, shared across all calls) ───
 
 // Thin tapered stem.
-const _wfStemGeo = /* @__PURE__ */ (() => {
+export const _wfStemGeo = /* @__PURE__ */ (() => {
   const geo = new THREE.CylinderGeometry(0.006, 0.012, 0.44, 5, 3).translate(0, 0.22, 0);
   // slight organic curve
   const pos = geo.attributes.position;
@@ -137,19 +137,19 @@ const _wfStemGeo = /* @__PURE__ */ (() => {
 })();
 
 // Small pistil (flower center) — flattened yellow sphere.
-const _wfPistilGeo = /* @__PURE__ */ (() => {
+export const _wfPistilGeo = /* @__PURE__ */ (() => {
   const geo = new THREE.SphereGeometry(0.018, 6, 5);
   geo.scale(1, 0.55, 1);
   return geo;
 })();
-const _wfPistilMat = /* @__PURE__ */ new THREE.MeshStandardMaterial({
+export const _wfPistilMat = /* @__PURE__ */ new THREE.MeshStandardMaterial({
   color: "#ffe135",
   flatShading: true,
   roughness: 0.5,
 });
 
 // Small petal — a shorter, wider version of the leafball teardrop.
-const _wfPetalGeo = /* @__PURE__ */ (() => {
+export const _wfPetalGeo = /* @__PURE__ */ (() => {
   const lengthSegs = 4;
   const widthSegs = 3;
   const positions = [];
@@ -185,7 +185,7 @@ const _wfPetalGeo = /* @__PURE__ */ (() => {
 })();
 
 // Small leaf — reused from leafballtree shape but miniaturised.
-const _wfLeafGeo = /* @__PURE__ */ (() => {
+export const _wfLeafGeo = /* @__PURE__ */ (() => {
   const lengthSegs = 5;
   const widthSegs = 3;
   const positions = [];
@@ -222,7 +222,7 @@ const _wfLeafGeo = /* @__PURE__ */ (() => {
 })();
 
 // Pooled materials (green stem/leaf, per-color petal).
-const _wfStemMat = /* @__PURE__ */ applyWindSway(
+export const _wfStemMat = /* @__PURE__ */ applyWindSway(
   new THREE.MeshStandardMaterial({
     color: "#2d5a1e",
     flatShading: true,
@@ -230,7 +230,7 @@ const _wfStemMat = /* @__PURE__ */ applyWindSway(
   }),
   1.0
 );
-const _wfLeafMat = /* @__PURE__ */ applyWindSway(
+export const _wfLeafMat = /* @__PURE__ */ applyWindSway(
   new THREE.MeshStandardMaterial({
     color: "#3a7228",
     side: THREE.DoubleSide,
@@ -240,7 +240,7 @@ const _wfLeafMat = /* @__PURE__ */ applyWindSway(
   1.0
 );
 
-function _wfPetalMat(color, glow) {
+export function _wfPetalMat(color, glow) {
   const baseCol = new THREE.Color(color);
   return applyWindSway(
     new THREE.MeshStandardMaterial({

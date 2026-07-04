@@ -109,6 +109,31 @@ export function grassHeightScaleAt(x, z, index) {
 }
 
 /**
+ * Build a single tapered blade plane (with a per-vertex `aTipFactor` attribute
+ * for the shader's tip-color mix and push-bend weighting). `makeGrassMaterial`
+ * merges two copies of this rotated 90° apart into a "crossed" blade; inspect
+ * mode's single-tuft specimen (`inspect.js`) uses one directly so it shares
+ * the exact same taper/attribute shape as the production field.
+ * @returns {THREE.PlaneGeometry}
+ */
+export function makeGrassBladeGeometry() {
+  const g = new THREE.PlaneGeometry(0.10, 0.34, 1, 3);
+  const pos = g.attributes.position;
+  const tipFactors = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i) + 0.17;
+    pos.setY(i, y);
+    // Quadratic taper: full width at base, pinches to a point at the tip.
+    const t = Math.min(1, y / 0.34);
+    const taper = 1.0 - t * t;
+    pos.setX(i, pos.getX(i) * taper);
+    tipFactors[i] = t;
+  }
+  g.setAttribute("aTipFactor", new THREE.BufferAttribute(tipFactors, 1));
+  return g;
+}
+
+/**
  * Build the crossed-plane blade geometry + grass shader material, shared
  * between the production world field (placed by `pickGroundPoint` across an
  * island) and the inspect-mode disc fill (placed by rejection-sampling a unit
@@ -129,24 +154,8 @@ export function makeGrassMaterial(biome, opts = {}) {
   // apart into a single "crossed" geometry. Each instance draws both
   // planes, so the blade reads as a thick silhouette from any side angle
   // (a single plane disappears edge-on at orbit distance).
-  function makeBladePlane() {
-    const g = new THREE.PlaneGeometry(0.10, 0.34, 1, 3);
-    const pos = g.attributes.position;
-    const tipFactors = new Float32Array(pos.count);
-    for (let i = 0; i < pos.count; i++) {
-      const y = pos.getY(i) + 0.17;
-      pos.setY(i, y);
-      // Quadratic taper: full width at base, pinches to a point at the tip.
-      const t = Math.min(1, y / 0.34);
-      const taper = 1.0 - t * t;
-      pos.setX(i, pos.getX(i) * taper);
-      tipFactors[i] = t;
-    }
-    g.setAttribute("aTipFactor", new THREE.BufferAttribute(tipFactors, 1));
-    return g;
-  }
-  const planeA = makeBladePlane();
-  const planeB = makeBladePlane();
+  const planeA = makeGrassBladeGeometry();
+  const planeB = makeGrassBladeGeometry();
   planeB.rotateY(Math.PI / 2);
   const blade = mergeGeometries([planeA, planeB], false);
   planeA.dispose();

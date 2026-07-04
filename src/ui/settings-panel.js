@@ -455,6 +455,7 @@ export function initSettingsPanel() {
   const depthFogEl = document.getElementById("setting-depthfog");
   const bloomRadiusEl = document.getElementById("setting-bloom-radius");
   const bloomRadiusValueEl = document.getElementById("setting-bloom-radius-value");
+  const pbrEl = document.getElementById("setting-pbr");
   const lowfxHint = document.getElementById("setting-lowfx-hint");
 
   fxDetailsEl.open = !!state.userSettings.fxPanelOpen;
@@ -470,6 +471,7 @@ export function initSettingsPanel() {
   outlineEl.checked = state.userSettings.outline;
   aoEl.checked = state.userSettings.ao;
   depthFogEl.checked = state.userSettings.depthFog;
+  pbrEl.checked = state.userSettings.pbrDetails !== false;
   function syncBiomeOverrideSettings() {
     const bloomOverridden = state.currentBiome?.bloom === false;
     bloomEl.parentElement.hidden = bloomOverridden;
@@ -479,9 +481,10 @@ export function initSettingsPanel() {
   syncBiomeOverrideSettings();
 
   if (LOWFX) {
-    // The depth pre-pass and composer are stubbed out under LOWFX, so every
-    // FX in this section is a no-op there.
-    for (const el of [bloomEl, bloomRadiusEl, tiltEl, outlineEl, aoEl, depthFogEl]) {
+    // The depth pre-pass and composer are stubbed out under LOWFX, and PBR
+    // detail textures are skipped there too (see pbr.js), so every FX in
+    // this section is a no-op.
+    for (const el of [bloomEl, bloomRadiusEl, tiltEl, outlineEl, aoEl, depthFogEl, pbrEl]) {
       el.disabled = true;
     }
     lowfxHint.hidden = false;
@@ -608,6 +611,13 @@ export function initSettingsPanel() {
     state.userSettings.depthFog = depthFogEl.checked;
     if (state.postfx) state.postfx.setDepthFog(depthFogEl.checked);
     saveSettings();
+  });
+  pbrEl.addEventListener("change", () => {
+    // PBR detail textures are baked into materials at world construction
+    // (see pbr.js), so the toggle can't apply live — regen to rebuild them.
+    state.userSettings.pbrDetails = pbrEl.checked;
+    saveSettings();
+    if (!state.isGeneratingWorld) void generateWorld(state.currentSeed);
   });
 
   const fpsToggleEl = document.getElementById("setting-show-fps");

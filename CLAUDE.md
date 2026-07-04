@@ -44,8 +44,8 @@ make dev-restart  # restart the background dev server
 make build        # production build → dist/
 make preview      # preview production build
 make lint         # ESLint over main.js and src/
-make test         # all JS/Python tests
-make checkall     # all JS/Python tests + lint + production build
+make test         # all JS tests
+make checkall     # all JS tests + lint + production build
 make clean        # rm -rf dist
 ```
 
@@ -53,16 +53,15 @@ Runtime dependencies (three.js, simplex-noise) are installed via npm and bundled
 
 ## Testing
 
-`make test` runs the full suite: every `tests/*.test.mjs` file via plain `node` (no test runner/framework — each file asserts with `node:assert/strict` and exits non-zero on failure), then `python3 -m unittest discover -s tests -p 'test_*.py'`. `make checkall` runs `make test` followed by `make lint` and `make build`.
+`make test` runs the full suite: every `tests/*.test.mjs` file via plain `node` (no test runner/framework — each file asserts with `node:assert/strict` and exits non-zero on failure). `make checkall` runs `make test` followed by `make lint` and `make build`.
 
 To run a single test:
 
 ```sh
 node tests/determinism-seed.test.mjs
-python3 -m unittest tests.test_ground_marks_static
 ```
 
-Most `*-static.test.mjs` / `test_*_static.py` files are **static invariant tests** — they import a module (e.g. `BIOMES` from `src/biomes.js`) or read source text and assert on its shape (a biome has a given flag, a constant has a given value, a code path exists). They catch config drift and accidental removal of a documented mechanism, but a pure refactor that preserves behavior can still break one — update the assertion to match the new shape rather than treating the failure as a regression. A smaller set of tests (no `-static` suffix, e.g. `caterpillar-trail-trim.test.mjs`, `fish-speed.test.mjs`, `portal-preview-pool-isolation-runtime.test.mjs`) exercise actual runtime behavior and should be treated as real regressions if they fail.
+Most `*-static.test.mjs` files are **static invariant tests** — they import a module (e.g. `BIOMES` from `src/biomes.js`) or read source text and assert on its shape (a biome has a given flag, a constant has a given value, a code path exists). They catch config drift and accidental removal of a documented mechanism, but a pure refactor that preserves behavior can still break one — update the assertion to match the new shape rather than treating the failure as a regression. A smaller set of tests (no `-static` suffix, e.g. `caterpillar-trail-trim.test.mjs`, `fish-speed.test.mjs`, `portal-preview-pool-isolation-runtime.test.mjs`) exercise actual runtime behavior and should be treated as real regressions if they fail.
 
 `tests/determinism-seed.test.mjs` is the guardrail for any change to world-gen: it verifies that the same seed reproduces the same world across regenerations. Anything that touches the seeded-PRNG window (see "The determinism trick" below) must be checked against this test — a subtle ordering change (a stray `Math.random()`, a re-ordered builder call) shifts the RNG stream for every seed without necessarily throwing an error.
 

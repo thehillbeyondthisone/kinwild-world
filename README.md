@@ -88,7 +88,7 @@ Inspect mode (`?inspect=1`):
 
 ## Running it locally
 
-Requires Node.js (see the `engines` field in `package.json` for the supported range) and Python 3 (only needed to run the Python half of the test suite). Install dependencies, then start the Vite dev server with hot reload:
+Requires Node.js (see the `engines` field in `package.json` for the supported range). Install dependencies, then start the Vite dev server with hot reload:
 
 ```sh
 npm install
@@ -110,7 +110,7 @@ Edits to `main.js`, `src/*.js`, `style.css`, and `index.html` are reflected by V
 ## Development notes
 
 - Runtime dependencies are installed via npm and bundled by Vite.
-- `make lint` runs ESLint over `main.js` and `src/`; `make test` runs all JS/Python tests; `make checkall` runs tests, lint, and the production build.
+- `make lint` runs ESLint over `main.js` and `src/`; `make test` runs all JS tests; `make checkall` runs tests, lint, and the production build.
 - Deployment is via GitHub Pages at the live demo URL above; completed enhancements are typically committed and pushed to publish. Original music scores for each biome are served separately from `https://static.pardev.net/small-world/music/` so large MP3 files stay out of git.
 - AI coding agents should start with [`CLAUDE.md`](CLAUDE.md), which is also referenced by `AGENTS.md` and `GEMINI.md` compatibility stubs.
 
@@ -157,7 +157,7 @@ make dev        # Vite dev server with HMR at http://localhost:2001
 Before opening a PR, run the full check and make sure it passes:
 
 ```sh
-make checkall   # all JS/Python tests + ESLint + production build
+make checkall   # all JS tests + ESLint + production build
 ```
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) — `type(scope): summary`, e.g. `feat(postfx): mip-chain bloom`, `fix(ui): mobile fly controls`. The release commit that bumps `package.json` is `chore(release): X.Y.Z`; always bump the `version` field in `package.json` before pushing to `main` (CI reads it for the deployed build). See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full guide.

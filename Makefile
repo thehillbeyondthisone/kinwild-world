@@ -80,7 +80,6 @@ test:
 		echo "node $$test"; \
 		node "$$test" || exit 1; \
 	done
-	python3 -m unittest discover -s tests -p 'test_*.py'
 
 # Run all tests and local verification
 checkall: test

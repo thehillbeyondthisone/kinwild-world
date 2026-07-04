@@ -7,7 +7,6 @@ Thanks for taking the time to contribute. This is a small, opinionated project �
 ### Prerequisites
 
 - **Node.js** — see the `engines` field in `package.json` for the supported range, and npm.
-- **Python 3** — required to run the Python half of the test suite (`make test` / `make checkall`); no separate dependencies beyond the standard library.
 
 Runtime dependencies (three.js, simplex-noise) are installed via npm and bundled/tree-shaken by Vite — nothing is loaded from a CDN.
 
@@ -24,24 +23,23 @@ Edits to `main.js`, `src/*.js`, `style.css`, and `index.html` are picked up by V
 ## Testing
 
 ```sh
-make test         # all JS/Python tests (no lint, no build)
+make test         # all JS tests (no lint, no build)
 ```
 
-`make test` runs every `tests/*.test.mjs` file with plain `node` (each asserts with `node:assert/strict`), then `python3 -m unittest discover -s tests -p 'test_*.py'`. To run a single test:
+`make test` runs every `tests/*.test.mjs` file with plain `node` (each asserts with `node:assert/strict`). To run a single test:
 
 ```sh
 node tests/determinism-seed.test.mjs
-python3 -m unittest tests.test_ground_marks_static
 ```
 
-Most `*-static.test.mjs` / `test_*_static.py` files assert on the *shape* of the source (a biome flag exists, a constant has a given value) rather than runtime behavior — they catch config drift and accidental removal of a documented mechanism, and a pure refactor may need its assertions updated rather than being treated as broken. Tests without the `-static` suffix (e.g. `caterpillar-trail-trim.test.mjs`, `fish-speed.test.mjs`) exercise real runtime behavior. `tests/determinism-seed.test.mjs` is the guardrail for the world-gen seeded-RNG contract — run it after any change that touches `generateWorld` or world-gen ordering.
+Most `*-static.test.mjs` files assert on the *shape* of the source (a biome flag exists, a constant has a given value) rather than runtime behavior — they catch config drift and accidental removal of a documented mechanism, and a pure refactor may need its assertions updated rather than being treated as broken. Tests without the `-static` suffix (e.g. `caterpillar-trail-trim.test.mjs`, `fish-speed.test.mjs`) exercise real runtime behavior. `tests/determinism-seed.test.mjs` is the guardrail for the world-gen seeded-RNG contract — run it after any change that touches `generateWorld` or world-gen ordering.
 
 ## Verification before a PR
 
 Before opening a pull request, run the full check and make sure it passes end to end:
 
 ```sh
-make checkall     # all JS/Python tests + ESLint + production build
+make checkall     # all JS tests + ESLint + production build
 make lint         # ESLint over main.js and src/ (subset of checkall)
 make build        # optimized production bundle into dist/
 ```

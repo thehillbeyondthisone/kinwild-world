@@ -49,7 +49,7 @@ const { makeCaterpillar, stepCaterpillar } = await import('../src/fauna/caterpil
 
 const DECALS_SRC = readFileSync(new URL('../src/environment/decals.js', import.meta.url), 'utf8');
 const STATE_SRC = readFileSync(new URL('../src/state.js', import.meta.url), 'utf8');
-const WORLD_SRC = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const WORLD_SRC = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 const MAIN_SRC = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
 
 // ---------------------------------------------------------------------------

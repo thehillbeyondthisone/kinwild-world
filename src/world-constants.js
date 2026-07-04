@@ -14,6 +14,15 @@ import { BIOMES } from "./biomes.js";
 // the terrain noise stream is decorrelated from the placement RNG stream.
 export const TERRAIN_NOISE_SEED_XOR = 0x5eed5eed;
 
+// Visual canopy spacing is wider than root/footprint spacing. Trees, bushes,
+// and big mushrooms can have small bases but broad crowns/caps, so they need
+// a separate placement radius to prevent silhouettes from intersecting.
+// Lives here (rather than world.js, which re-exports it for back-compat) so
+// src/world/flora-placement.js can use it without an import cycle back
+// through world.js.
+export const CANOPY_SPACING_KINDS = new Set(["tree", "leafballtree", "pine", "snowpine", "deadtree", "bigmushroom", "fairyring", "portal", "berrybush"]);
+export const CANOPY_SPACING_PAD = 2.8;
+
 // Build the canonical terrain-noise permutation from a world seed. Both the
 // real world and the portal preview must call this with the same seed so the
 // destination terrain matches what the user will actually travel to.

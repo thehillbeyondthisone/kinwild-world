@@ -4,7 +4,7 @@ import { BIOMES } from '../src/biomes.js';
 
 const frozen = BIOMES.find((biome) => biome.id === 'frozen');
 const environmentSource = ["environment.js","environment/_shared.js","environment/particles.js","environment/swarms.js","environment/decals.js","environment/groundcover.js","environment/water.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 // ARC-002: FLORA_FOOTPRINT lives in the shared constants module now.
 const worldConstantsSource = readFileSync(new URL('../src/world-constants.js', import.meta.url), 'utf8');
 const sizeMapStart = environmentSource.indexOf('const sizeMap = {');

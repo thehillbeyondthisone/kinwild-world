@@ -35,7 +35,7 @@ const { FLORA_BUILDERS, withIsolatedFloraPool } = await import('../src/flora.js'
 const { getFlyerNestPalette } = await import('../src/flora/_shared.js');
 const { INSPECT_FLORA_KINDS } = await import('../src/inspect.js');
 
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 const worldConstantsSource = readFileSync(new URL('../src/world-constants.js', import.meta.url), 'utf8');
 const creatureSource = ["fauna/creature.js","fauna/creature-mound.js","fauna/creature-perch.js","fauna/creature-sleep.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 

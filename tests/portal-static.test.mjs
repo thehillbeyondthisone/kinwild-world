@@ -124,7 +124,7 @@ assert(existsSync(portalUrl), 'A dedicated portal module should own portal previ
 
 const portalSource = readFileSync(portalUrl, 'utf8');
 const stateSource = readFileSync(new URL('../src/state.js', import.meta.url), 'utf8');
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 // ARC-002: world-construction constants live in a single shared module that
 // both world.js and portal.js import from.
 const constantsSource = readFileSync(new URL('../src/world-constants.js', import.meta.url), 'utf8');
@@ -383,7 +383,7 @@ assert(
     && worldSource.includes('makeVerdantGroveDetails(biome, worldState.heightFn, groundCoverExclusions)')
     && worldSource.includes('worldState.obstacles.push(portal.obstacle)')
     && worldSource.includes('PLACEMENT_BLOCK_KINDS = new Set(["lavafissure", "portal"])')
-    && worldSource.includes('"portal", "berrybush"')
+    && constantsSource.includes('"portal", "berrybush"')
     && worldSource.includes('GROUND_CREATURE_BLOCK_KINDS = new Set(["lavafissure", "fairyring", "portal"])')
     && worldSource.includes('CRAWLER_BLOCK_KINDS = new Set(["lavafissure", "fairyring", "portal"])')
     && worldSource.includes('makeSeededPortalPlacement')

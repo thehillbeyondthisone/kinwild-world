@@ -29,7 +29,7 @@ const desert = BIOMES.find((biome) => biome.id === 'desert');
 const golden = BIOMES.find((biome) => biome.id === 'golden');
 const ashen = BIOMES.find((biome) => biome.id === 'ashen');
 const environmentSource = ["environment.js","environment/_shared.js","environment/particles.js","environment/swarms.js","environment/decals.js","environment/groundcover.js","environment/water.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 const sizeMapStart = environmentSource.indexOf('const sizeMap = {');
 const sizeMapEnd = environmentSource.indexOf('const opacityMap = {', sizeMapStart);
 const sizeMapBlock = environmentSource.slice(sizeMapStart, sizeMapEnd);

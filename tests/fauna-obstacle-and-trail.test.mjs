@@ -15,7 +15,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const WORLD_SRC = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const WORLD_SRC = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 const CATERPILLAR_SRC = readFileSync(new URL('../src/fauna/caterpillar.js', import.meta.url), 'utf8');
 const SHARED_SRC = readFileSync(new URL('../src/fauna/shared.js', import.meta.url), 'utf8');
 

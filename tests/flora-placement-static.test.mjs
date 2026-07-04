@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 globalThis.__APP_VERSION__ = 'test';
 globalThis.performance = { now: () => 0 };
 
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 
 const { CANOPY_SPACING_KINDS, CANOPY_SPACING_PAD } = await import('../src/world.js');
 

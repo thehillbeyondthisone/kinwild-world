@@ -11,7 +11,7 @@ const { makeFloraShortGrassIndex, grassHeightScaleAt } = await import('../src/gr
 // World generation (grassRadius/GRASS_SHORTEN_MIN_HEIGHT/makeGrassField wiring)
 // lives in src/world.js, owned by another QA-009 agent — kept as a source
 // check here.
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 
 // No circles -> no shortening anywhere.
 const emptyIndex = makeFloraShortGrassIndex([]);

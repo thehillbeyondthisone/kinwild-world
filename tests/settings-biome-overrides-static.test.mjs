@@ -16,7 +16,7 @@ const { state } = await import('../src/state.js');
 const htmlSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const environmentSource = readFileSync(new URL('../src/environment.js', import.meta.url), 'utf8');
 const uiSource = readFileSync(new URL('../src/ui/settings-panel.js', import.meta.url), 'utf8');
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 const skySource = readFileSync(new URL('../src/sky.js', import.meta.url), 'utf8');
 const goldenSteppe = BIOMES.find((biome) => biome.id === 'golden');
 const mossyRuins = BIOMES.find((biome) => biome.id === 'mossy');

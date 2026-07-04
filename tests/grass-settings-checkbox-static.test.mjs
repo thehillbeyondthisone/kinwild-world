@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 
 const ui = readFileSync("src/ui/settings-panel.js", "utf8");
-const world = readFileSync("src/world.js", "utf8");
+const world = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync("src/" + p, "utf8")).join("\n");
 
 assert.match(
   ui,

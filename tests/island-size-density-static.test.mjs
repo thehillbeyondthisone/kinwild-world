@@ -11,7 +11,7 @@ const environmentSource = ["environment.js","environment/_shared.js","environmen
 const grassSource = readFileSync(new URL('../src/grass.js', import.meta.url), 'utf8');
 // Flora/creature count scaling itself lives in src/world.js, owned by
 // another QA-009 agent — kept as a source check here.
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 
 assert.equal(ISLAND_SIZE_BASE, 100, 'Base island size should be doubled through the shared island-size constant.');
 assert.equal(

@@ -31,6 +31,21 @@ function readSrc(rel) {
   return readFileSync(new URL(rel, import.meta.url), 'utf8');
 }
 
+function readWorldSrc() {
+  // generateWorld was split into src/world/ phase modules (QA-008); join
+  // them with world.js so assertions that need two markers in the same blob
+  // resolve regardless of which phase module the text now lives in.
+  return [
+    '../src/world.js',
+    '../src/world-constants.js',
+    '../src/world/atmosphere.js',
+    '../src/world/flora-placement.js',
+    '../src/world/fauna-population.js',
+    '../src/world/ground-cover.js',
+    '../src/world/portal-placement.js',
+  ].map(readSrc).join('\n');
+}
+
 function readFloraSrc() {
   // src/flora.js is a thin registry; builders were split out under
   // src/flora/. Join all seven files so assertions that need two markers
@@ -79,7 +94,7 @@ function readFloraSrc() {
 
 // test_world_places_verdant_detail_layers
 {
-  const worldSrc = readSrc('../src/world.js');
+  const worldSrc = readWorldSrc();
   const envSrc = readSrc('../src/environment.js');
   const floraSrc = readFloraSrc();
   const inspectSrc = readSrc('../src/inspect.js');
@@ -93,7 +108,7 @@ function readFloraSrc() {
 
 // test_tree_and_large_mushroom_canopies_block_each_other
 {
-  const worldSrc = readSrc('../src/world.js');
+  const worldSrc = readWorldSrc();
   assert.match(worldSrc, /CANOPY_SPACING_KINDS/);
   assert.match(worldSrc, /"tree", "leafballtree", "pine", "snowpine", "deadtree", "bigmushroom"/);
   assert.match(worldSrc, /CANOPY_SPACING_PAD/);
@@ -147,7 +162,7 @@ function readFloraSrc() {
 // test_mushroom_perches_follow_wind_sway
 {
   const floraSrc = readFloraSrc();
-  const worldSrc = readSrc('../src/world.js');
+  const worldSrc = readWorldSrc();
   const creatureSrc = ['../src/fauna/creature.js','../src/fauna/creature-mound.js','../src/fauna/creature-perch.js','../src/fauna/creature-sleep.js'].map(readSrc).join('\n');
 
   assert.match(floraSrc, /g\.userData\.perchWind/);
@@ -184,7 +199,7 @@ function readFloraSrc() {
 // test_leafballtree_trunk_height_varies_up_to_twenty_five_percent
 {
   const floraSrc = readFloraSrc();
-  const worldSrc = readSrc('../src/world.js');
+  const worldSrc = readWorldSrc();
 
   assert.match(floraSrc, /leafballtreeTrunkHeightMul = 1 \+ Math\.random\(\) \* 0\.25/);
   assert.match(floraSrc, /canopyYOffset = 1\.45 \* \(leafballtreeTrunkHeightMul - 1\)/);
@@ -270,7 +285,7 @@ function readFloraSrc() {
 // test_verdant_uses_leafballtree_with_custom_leaf_wind
 {
   const floraSrc = readFloraSrc();
-  const worldSrc = readSrc('../src/world.js');
+  const worldSrc = readWorldSrc();
   const inspectSrc = readSrc('../src/inspect.js');
   const verdant = BIOMES.find((b) => b.id === 'verdant');
 

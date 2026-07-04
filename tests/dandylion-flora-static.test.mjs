@@ -34,7 +34,7 @@ globalThis.document = {
 const { FLORA_BUILDERS, withIsolatedFloraPool } = await import('../src/flora.js');
 const { getDandylionFloraPalette, shouldCastMicroFloraShadow } = await import('../src/flora/_shared.js');
 
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 const garden = readFileSync(new URL('../src/flora/garden.js', import.meta.url), 'utf8');
 
 assert.equal(typeof FLORA_BUILDERS.dandylion, 'function', 'Dandy lion should be registered as a named flora builder.');

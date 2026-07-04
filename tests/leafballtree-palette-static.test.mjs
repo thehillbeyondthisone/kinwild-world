@@ -36,7 +36,7 @@ const { getLeafballTreePalette, getLeafballOutlineColor, shouldUseLeafballCanopy
 const { FLORA_BUILDERS, withIsolatedFloraPool } = await import('../src/flora.js');
 
 const floraSource = readFileSync(new URL('../src/flora/trees.js', import.meta.url), 'utf8');
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 // ARC-002: FLORA_FOOTPRINT lives in the shared constants module now.
 const worldConstantsSource = readFileSync(new URL('../src/world-constants.js', import.meta.url), 'utf8');
 
@@ -118,7 +118,7 @@ assert(
   'leafballtree slope-plant footprint should describe the trunk base, not the canopy width, so bases stay near the terrain surface.'
 );
 assert(
-  worldSource.includes('CANOPY_SPACING_KINDS = new Set(["tree", "leafballtree"'),
+  worldConstantsSource.includes('CANOPY_SPACING_KINDS = new Set(["tree", "leafballtree"'),
   'leafballtree broad-canopy spacing should remain handled by canopy spacing, not slope-plant footprint.'
 );
 assert(

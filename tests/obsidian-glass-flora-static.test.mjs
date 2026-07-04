@@ -38,7 +38,7 @@ const { INSPECT_FLORA_KINDS } = await import('../src/inspect.js');
 const obsidian = BIOMES.find((biome) => biome.id === 'obsidian');
 const floraSource = readFileSync(new URL('../src/flora/volcanic.js', import.meta.url), 'utf8');
 const uiSource = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 const worldConstantsSource = readFileSync(new URL('../src/world-constants.js', import.meta.url), 'utf8');
 const fissureStart = floraSource.indexOf('lavafissure(biome)');
 const fissureEnd = floraSource.indexOf('obsidianglass()', fissureStart);

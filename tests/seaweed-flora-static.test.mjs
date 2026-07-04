@@ -33,7 +33,7 @@ Object.defineProperty(globalThis, 'navigator', { value: { maxTouchPoints: 0 }, c
 const { FLORA_BUILDERS, withIsolatedFloraPool } = await import('../src/flora.js');
 const { INSPECT_FLORA_KINDS } = await import('../src/inspect.js');
 
-const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
+const worldSource = ["world.js","world/atmosphere.js","world/flora-placement.js","world/fauna-population.js","world/ground-cover.js","world/portal-placement.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\\n");
 
 const coral = BIOMES.find((biome) => biome.id === 'coral');
 assert(coral, 'coral atoll biome should exist.');

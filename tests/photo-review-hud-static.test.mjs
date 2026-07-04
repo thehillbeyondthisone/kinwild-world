@@ -7,16 +7,16 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const uiSource = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 const cssSource = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
 
 assert(
-  uiSource.includes('photoHudEl.setAttribute("aria-hidden", "true");\n    _photoReview ='),
+  uiSource.includes('photoHudEl.setAttribute("aria-hidden", "true");\n    ctx.photoReview ='),
   'Showing the photo review should hide the photo HUD/center reticle before storing review state.'
 );
 
 assert(
-  uiSource.includes('photoSeedEl.setAttribute("aria-hidden", "true");\n    photoHudEl.setAttribute("aria-hidden", "true");\n    _photoReview ='),
+  uiSource.includes('photoSeedEl.setAttribute("aria-hidden", "true");\n    photoHudEl.setAttribute("aria-hidden", "true");\n    ctx.photoReview ='),
   'Showing the photo review should hide the photo seed and hint row so review actions do not overlap it.'
 );
 

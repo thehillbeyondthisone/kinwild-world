@@ -20,7 +20,7 @@ const { state } = await import('../src/state.js');
 const { CONTACT_SHADOW_LOD_DISTANCE, stepShadowDisks } = await import('../src/shadows.js');
 
 const mainSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const uiSource = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
 
 // --- rendererPixelRatioCap / isMobileViewport -------------------------------

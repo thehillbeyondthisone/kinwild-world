@@ -13,7 +13,7 @@ const { MAX_DENSITY_MULTIPLIER } = await import('../src/grass.js');
 // and src/ui.js, both DOM-touching UI modules owned by another QA-009 agent —
 // kept as source-text checks here.
 const storageSource = readFileSync(new URL('../src/ui/storage.js', import.meta.url), 'utf8');
-const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const uiSource = readFileSync(new URL('../src/ui/settings-panel.js', import.meta.url), 'utf8');
 
 assert.equal(
   GRASS_DENSITY_BASE,
@@ -45,7 +45,7 @@ assert(
 );
 
 assert(
-  uiSource.includes('GRASS_DENSITY_BASE') && uiSource.includes('from "./state.js"'),
+  uiSource.includes('GRASS_DENSITY_BASE') && uiSource.includes('from "../state.js"'),
   'ui.js should import GRASS_DENSITY_BASE from the canonical state.js source.'
 );
 

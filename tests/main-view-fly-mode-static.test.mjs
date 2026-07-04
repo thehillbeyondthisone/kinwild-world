@@ -22,7 +22,7 @@ globalThis.window = {
 globalThis.document = { getElementById() { return null; } };
 globalThis.localStorage = globalThis.window.localStorage;
 
-const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const uiSource = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 const mainSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
 const indexSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
@@ -37,10 +37,10 @@ assert.equal(isStrolling(), false, 'stroll should be off until entered');
 assert.equal(isPhotoFP(), false, 'photo first-person should be off until entered');
 
 assert(
-  uiSource.includes('let _flyFP = null;')
+  uiSource.includes('flyFP: null,')
     && uiSource.includes('export function isFlyMode()')
-    && uiSource.includes('return _flyFP !== null;')
-    && uiSource.includes('return _stroll !== null || _flyFP !== null || _photoFP !== null;'),
+    && uiSource.includes('return ctx.flyFP !== null;')
+    && uiSource.includes('return ctx.stroll !== null || ctx.flyFP !== null || ctx.photoFP !== null;'),
   'ui.js should track main-view fly mode as a first-person camera state distinct from stroll and photo mode.'
 );
 
@@ -56,9 +56,9 @@ assert(
 
 assert(
   uiSource.includes('e.key === "v" || e.key === "V"')
-    && uiSource.includes('if (_flyFP) exitFlyMode();')
+    && uiSource.includes('if (ctx.flyFP) exitFlyMode();')
     && uiSource.includes('else enterFlyMode();')
-    && uiSource.includes('if (_flyFP) exitFlyMode();'),
+    && uiSource.includes('if (ctx.flyFP) exitFlyMode();'),
   'The global keyboard handler should toggle main-view fly mode with V and let Escape exit it.'
 );
 

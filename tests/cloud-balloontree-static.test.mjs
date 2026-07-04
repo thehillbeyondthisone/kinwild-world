@@ -34,7 +34,7 @@ const floraSource = [
 ].join('\n');
 const environmentSource = readFileSync(new URL('../src/environment.js', import.meta.url), 'utf8');
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
-const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const uiSource = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 
 assert(cloud, 'cloud island biome should exist.');
 assert.equal(

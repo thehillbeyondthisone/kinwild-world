@@ -60,7 +60,7 @@ const biome = BIOMES.find((b) => (b.furProbability ?? 0) === 0 && b.creatureKind
 // wiring in inspect.js/ui.js/main.js, none of which run outside a browser.
 {
   const inspectSrc = readFileSync(new URL('../src/inspect.js', import.meta.url), 'utf8');
-  const uiSrc = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+  const uiSrc = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
   const mainSrc = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
   const styleSrc = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
 
@@ -92,7 +92,7 @@ const biome = BIOMES.find((b) => (b.furProbability ?? 0) === 0 && b.creatureKind
   // in-function check was unreachable dead code and was removed. Normal UI
   // shortcuts are disabled in inspect mode because initUi() never runs at
   // all in that mode.
-  assert.match(uiSrc, /import \{ INSPECT \} from "\.\/inspect\.js"/);
+  assert.match(uiSrc, /import \{ INSPECT \} from "\.\.\/inspect\.js"/);
   assert.doesNotMatch(uiSrc, /if \(INSPECT\) return;/);
 
   // test_normal_ui_is_not_initialized_in_inspect_mode

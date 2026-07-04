@@ -21,7 +21,7 @@ const music = readFileSync("src/music.js", "utf8");
 // The UI wiring (select element, PERSISTED_KEYS) lives in src/ui.js and
 // src/ui/storage.js, both DOM-touching modules owned by another QA-009
 // agent — kept as source checks here.
-const ui = readFileSync("src/ui.js", "utf8");
+const ui = readFileSync("src/ui/settings-panel.js", "utf8");
 const storage = readFileSync("src/ui/storage.js", "utf8");
 const html = readFileSync("index.html", "utf8");
 const gitignore = readFileSync(".gitignore", "utf8");

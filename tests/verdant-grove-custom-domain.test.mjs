@@ -115,7 +115,7 @@ function readFloraSrc() {
 {
   const stateSrc = readSrc('../src/state.js');
   const skySrc = readSrc('../src/sky.js');
-  const uiSrc = readSrc('../src/ui.js');
+  const uiSrc = readSrc('../src/ui/settings-panel.js');
   const htmlSrc = readSrc('../index.html');
 
   assert.doesNotMatch(stateSrc, /grassEdgeDiscs/);
@@ -137,7 +137,7 @@ function readFloraSrc() {
 // test_settings_panel_has_reset_to_defaults_button
 {
   const htmlSrc = readSrc('../index.html');
-  const uiSrc = readSrc('../src/ui.js');
+  const uiSrc = readSrc('../src/ui/settings-panel.js');
   assert.match(htmlSrc, /setting-reset-defaults/);
   assert.match(htmlSrc, /reset all to defaults/);
   assert.match(uiSrc, /localStorage\.removeItem\(SETTINGS_KEY\)/);

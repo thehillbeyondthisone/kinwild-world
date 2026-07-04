@@ -96,7 +96,7 @@ assert.ok(worldState.revealStart >= 0, 'reveal animation timestamp should be arm
 // The remaining checks are static HTML/CSS/ui.js wiring that cannot run
 // without a full browser DOM.
 const indexSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const uiSource = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 const cssSource = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
 
 assert(
@@ -141,6 +141,6 @@ assert(
 assert(
   indexSource.includes('<button class="eyebrow-button" id="locator-eyebrow" type="button">field notes</button>')
     && uiSource.includes('const locatorEyebrow = document.getElementById("locator-eyebrow")')
-    && uiSource.includes('locatorEyebrow?.addEventListener("click", () => setLocatorOpen(!_locatorOpen))'),
+    && uiSource.includes('locatorEyebrow?.addEventListener("click", () => setLocatorOpen(!ctx.locatorOpen))'),
   'field notes eyebrow text should open the creature/flora locator.'
 );

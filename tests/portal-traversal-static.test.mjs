@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 const portalSource = readFileSync(new URL('../src/portal.js', import.meta.url), 'utf8');
 const mainSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
-const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const uiSource = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 
 globalThis.__APP_VERSION__ = 'test';
 globalThis.window = {
@@ -90,19 +90,19 @@ assert(
 
 assert(
   uiSource.includes('export function setStrollLocalPose')
-    && uiSource.includes('if (!_stroll) return false')
-    && uiSource.includes('_stroll.camera.position.set(localX * ws, groundY + 1.9 * ws, localZ * ws)')
-    && uiSource.includes('_stroll.keys = { w: false, a: false, s: false, d: false, shift: false }')
+    && uiSource.includes('if (!ctx.stroll) return false')
+    && uiSource.includes('ctx.stroll.camera.position.set(localX * ws, groundY + 1.9 * ws, localZ * ws)')
+    && uiSource.includes('ctx.stroll.keys = { w: false, a: false, s: false, d: false, shift: false }')
     && uiSource.includes('export function enterStrollFromPortal'),
   'ui.js should be able to start/reposition the first-person stroll camera after portal travel.'
 );
 
 assert(
-  uiSource.includes('let _requestStrollPointerLock = () => {};')
+  uiSource.includes('ctx.requestStrollPointerLock = requestStrollPointerLock;')
     && uiSource.includes('function requestStrollPointerLock(armRetry = false)')
     && uiSource.includes('strollMode.requestPointerLock(armRetry);')
     && uiSource.includes('canvas.addEventListener("pointerdown", retryPointerLock, { once: true })')
-    && uiSource.includes('_requestStrollPointerLock(true);')
+    && uiSource.includes('ctx.requestStrollPointerLock(true);')
     && uiSource.includes('if (document.pointerLockElement !== canvas) return;')
     && uiSource.includes('hasPointerLock: false')
     // QA-007: the pointer-lock state machine is now shared (makeFirstPersonMode)

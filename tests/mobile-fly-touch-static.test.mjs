@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 
 const indexSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
-const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const uiSource = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 const touchControls = indexSource.slice(
   indexSource.indexOf('id="fly-touch-controls"'),
   indexSource.indexOf('<div class="fps-counter"')
@@ -35,7 +35,7 @@ assert(
     && uiSource.includes('const flyTouchJoystick = document.getElementById("fly-touch-look");')
     && uiSource.includes('const flyTouchButtons = [...flyTouchControls.querySelectorAll("[data-fly-key]")];')
     && uiSource.includes('function setFlyTouchKey(key, down)')
-    && uiSource.includes('_flyFP.keys[key] = down;')
+    && uiSource.includes('ctx.flyFP.keys[key] = down;')
     && uiSource.includes('document.body.classList.toggle("fly-mode", on);')
     && uiSource.includes('syncFlyTouchControls();'),
   'Touch controls should sync with the same fly-mode state and key map as keyboard controls.'
@@ -56,8 +56,8 @@ assert(
   uiSource.includes('canvas.addEventListener("pointerdown", (e) => {')
     && uiSource.includes('if (e.pointerType !== "touch" && e.pointerType !== "pen") return;')
     && uiSource.includes('flyTouchLookPointer = e.pointerId;')
-    && uiSource.includes('_flyFP.yaw -= (e.clientX - flyTouchLookX) * sens;')
-    && uiSource.includes('clampFirstPersonPitch(_flyFP);'),
+    && uiSource.includes('ctx.flyFP.yaw -= (e.clientX - flyTouchLookX) * sens;')
+    && uiSource.includes('clampFirstPersonPitch(ctx.flyFP);'),
   'Mobile fly mode should let touch/pen drags on the open view look around without pointer lock.'
 );
 

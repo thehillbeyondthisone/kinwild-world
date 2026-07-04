@@ -107,7 +107,7 @@ const walkerBiome = BIOMES.find((b) => b.creatureKind !== 'fish') ?? BIOMES[0];
 // suite can drive. Pinning the "looksAsleep" condition and its wakeCreature
 // call site by source is the direct way to protect it.
 {
-  const uiSrc = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+  const uiSrc = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
   assert.match(uiSrc, /const looksAsleep =/);
   assert.match(uiSrc, /c\.isSleeper \|\|/);
   assert.match(uiSrc, /\(!c\.flies && c\.sleepiness > 0\.4\) \|\|/);

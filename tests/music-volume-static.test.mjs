@@ -43,7 +43,7 @@ const { MAX_VOLUME, setMusicVolume, switchMusic } = await import("../src/music.j
 
 // The volume-slider UI wiring lives in src/ui.js, a DOM-touching module
 // owned by another QA-009 agent — kept as a source check here.
-const ui = readFileSync("src/ui.js", "utf8");
+const ui = readFileSync("src/ui/settings-panel.js", "utf8");
 const html = readFileSync("index.html", "utf8");
 
 assert.equal(state.userSettings.musicVolume, 0.5, "Default persisted music volume should be 50%.");

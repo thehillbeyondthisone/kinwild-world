@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 
 const indexSource = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../style.css', import.meta.url), 'utf8');
-const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const uiSource = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 
 assert(
   indexSource.includes('id="stroll-toggle"')

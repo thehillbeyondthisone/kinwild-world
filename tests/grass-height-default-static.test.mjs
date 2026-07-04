@@ -9,7 +9,7 @@ const { state, GRASS_HEIGHT_BASE } = await import('../src/state.js');
 
 // The slider wiring lives in src/ui.js, a DOM-touching UI module owned by
 // another QA-009 agent — kept as a source check here.
-const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const uiSource = readFileSync(new URL('../src/ui/settings-panel.js', import.meta.url), 'utf8');
 
 assert.equal(
   GRASS_HEIGHT_BASE,
@@ -24,6 +24,6 @@ assert.equal(
 );
 
 assert(
-  uiSource.includes('GRASS_HEIGHT_BASE') && uiSource.includes('from "./state.js"'),
+  uiSource.includes('GRASS_HEIGHT_BASE') && uiSource.includes('from "../state.js"'),
   'The grass height slider 100% baseline should import the canonical GRASS_HEIGHT_BASE from state.js instead of redeclaring it.'
 );

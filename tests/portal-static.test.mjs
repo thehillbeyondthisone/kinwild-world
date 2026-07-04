@@ -129,7 +129,7 @@ const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'u
 // both world.js and portal.js import from.
 const constantsSource = readFileSync(new URL('../src/world-constants.js', import.meta.url), 'utf8');
 const mainSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
-const uiSource = readFileSync(new URL('../src/ui.js', import.meta.url), 'utf8');
+const uiSource = ["ui.js","ui/context.js","ui/constants.js","ui/storage.js","ui/settings-panel.js","ui/help-panel.js","ui/catalog-panel.js","ui/locator-panel.js","ui/first-person.js","ui/photo-mode.js","ui/input.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 // PERSISTED_KEYS (the list of persisted setting names) moved to src/ui/storage.js
 // as part of ARC-003 / QA-004 (ui.js split). Portal-persistence assertions now
 // read the storage module.

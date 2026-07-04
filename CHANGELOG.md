@@ -5,6 +5,61 @@
 > folded into the adjacent 1.3.3 and 1.3.6 entries — which is why the history
 > below jumps from 1.3.3 to 1.3.6.
 
+## 1.6.0 - 2026-07-04
+
+The deferred structural backlog from the 1.5.9 audit (AUDIT.md Phase 4), executed in
+dependency order: test-suite conversion first so the refactors land against behavioral
+coverage, then the three god-module splits, then documentation.
+
+### Added
+
+- "pbr surface detail" checkbox in the settings FX panel (applies on regen); the
+  `pbrDetails` setting is now persisted to localStorage and disabled under LOWFX
+  (ARC-L02).
+- JSDoc on ~265 exported symbols across 67 `src/` files — contract one-liners,
+  param units/ranges, return shapes, and signature-invisible invariants such as
+  the seeded-RNG-window rules and the pool reset-every-regen contract (DOC-006).
+- New behavioral tests replacing source-grep assertions: real creatures driven
+  through `stepCreature`/`stepCaterpillar` (edge recovery, course correction,
+  wake transitions), real flora built via `FLORA_BUILDERS` with isolated pools,
+  real PBR canvas painting with pixel-variance checks, and headless
+  `generateWorld` runs for build-context and loading-order invariants (QA-009).
+
+### Changed
+
+- `src/ui.js` (2,764 lines) split into `src/ui/` sub-modules — context, settings
+  panel, first-person modes, photo mode, input glue, locator/follow/tour, help
+  panel, catalog panel — behind an unchanged 83-line public entry (ARC-001).
+- `src/fauna/creature.js` (2,020 → 1,365 lines): burrower mound, perch/landing
+  FSM, and sleep systems extracted to `creature-mound.js` / `creature-perch.js` /
+  `creature-sleep.js`; `stepCreature` is now a thin dispatcher over
+  `stepThink`/`moveCreature`/`positionCreatureY`/`animateCreature` (ARC-002,
+  QA-010).
+- `src/environment.js` is a 31-line barrel over `src/environment/` — particles,
+  swarms, decals, groundcover, water (ARC-002).
+- `generateWorld` decomposed into `src/world/` phase modules — atmosphere,
+  flora placement, portal placement, ground cover, fauna population — with every
+  `Math.random()` draw and `yieldIfNeeded()` await at its exact prior position;
+  `world.js` drops to 413 lines (QA-008).
+- Python test suite ported to node `.mjs`; `make test` no longer requires
+  Python 3 (QA-023).
+- Inspect mode reuses the production wildflower/grass-blade geometry builders
+  instead of hand-rolled copies that had drifted slightly (ARC-013).
+
+### Verified
+
+- `make checkall` green after every stage: full test suite, ESLint, production
+  build.
+- Determinism gates (`determinism-seed`, `portal-world-rng-parity`,
+  `world-build-context`) run after each extraction stage of every split — the
+  same seed still reproduces the identical world.
+- QA-019 grass pre-allocation measured live (`?perf=1`, verdant, seed 0x0001):
+  265,875 allocated slots ≈ 16 MB instance matrix (not the ~130 MB the audit
+  estimated), 120 fps at 8.3 ms/frame, and the ceiling exactly equals the
+  density slider's 300% maximum — left unchanged by design.
+- pbr toggle verified in a live browser: persists, respects the LOWFX disable,
+  and regenerates the world on change.
+
 ## 1.5.9 - 2026-07-03
 
 Second audit-driven remediation pass (four-domain audit in `AUDIT.md`): two runtime correctness bugs, two per-frame performance bugs, security hardening, dedup/consistency cleanups, and a documentation sync. No new user-facing features.

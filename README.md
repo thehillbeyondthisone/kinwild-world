@@ -26,7 +26,7 @@ A fairy ring in the verdant grove:
 ## Features
 
 - **Twelve biomes** — each with a unique palette, weather, flora mix, creature variants, and original instrumental music score.
-- **Procedural fauna** — big-eyed creatures that wander, sleep, burrow, and travel in families; caterpillars, butterflies, bees, will-o'-wisps, and flocks of birds. Fuzzy biomes (mossy ruins, cloud island, frozen vale, mushroom grove) give walkers and caterpillars a shell-fur shader for a soft hairy silhouette.
+- **Procedural fauna** — big-eyed creatures that wander, sleep, burrow, and travel in families; caterpillars, butterflies, bees, will-o'-wisps, and flocks of birds. Many biomes give walkers and caterpillars a shell-fur shader for a soft hairy silhouette, with per-biome fur probability (from a light dusting up to a full coat).
 - **Day/night cycle** — 120-second cycle with per-biome dusk and night palettes. Creatures respond to darkness: walkers curl up and sleep, fliers descend and grow drowsy, each personality (shy, bold, sleepy, bouncy) has a different sleep threshold.
 - **Visual polish** — mip-chain selective bloom on emissive elements (glow flowers, lanterns, sun), optional tilt-shift miniature blur, soft circular shadows under every creature, sky reflections on water biomes, parallax mountain backdrop, GPU-particle shader with per-particle life/size, dust kicks under footsteps, and procedural PBR detail textures on terrain, bark, and stone.
 - **Camera modes** — orbit the island, switch to fly camera with `V` for free movement, stroll in first person among the creatures, or freeze the sim in photo mode to save PNGs and fill the Field Guide.
@@ -113,7 +113,7 @@ Edits to `main.js`, `src/*.js`, `style.css`, and `index.html` are reflected by V
 
 ## Stack
 
-- [Three.js](https://threejs.org/) r184, bundled by Vite
+- [Three.js](https://threejs.org/) r185, bundled by Vite
 - [simplex-noise](https://github.com/jwagner/simplex-noise.js) for terrain
 - Plain vanilla JS modules with Vite for development and production builds
 

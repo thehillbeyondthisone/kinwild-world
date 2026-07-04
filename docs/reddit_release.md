@@ -10,7 +10,7 @@
 
 ## Post Draft
 
-I just put the first public version of Small World online:
+I just put a new release of Small World online:
 
 Live demo: https://small-world.pardev.net/
 GitHub: https://github.com/paulrobello/small-world

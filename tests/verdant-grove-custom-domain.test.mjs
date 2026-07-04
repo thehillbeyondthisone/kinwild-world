@@ -148,7 +148,7 @@ function readFloraSrc() {
 {
   const floraSrc = readFloraSrc();
   const worldSrc = readSrc('../src/world.js');
-  const creatureSrc = readSrc('../src/fauna/creature.js');
+  const creatureSrc = ['../src/fauna/creature.js','../src/fauna/creature-mound.js','../src/fauna/creature-perch.js','../src/fauna/creature-sleep.js'].map(readSrc).join('\n');
 
   assert.match(floraSrc, /g\.userData\.perchWind/);
   assert.match(worldSrc, /perchWind: f\.userData\.perchWind/);
@@ -196,7 +196,7 @@ function readFloraSrc() {
 
 // test_verdant_walker_palette_is_softer_and_walker_parts_are_smooth
 {
-  const creatureSrc = readSrc('../src/fauna/creature.js');
+  const creatureSrc = ['../src/fauna/creature.js','../src/fauna/creature-mound.js','../src/fauna/creature-perch.js','../src/fauna/creature-sleep.js'].map(readSrc).join('\n');
   const verdant = BIOMES.find((b) => b.id === 'verdant');
 
   assert.deepEqual(
@@ -219,7 +219,7 @@ function readFloraSrc() {
 // is no black-box behavior to observe here beyond the order of two source
 // statements, so this stays a grep by nature, not by convenience.
 {
-  const creatureSrc = readSrc('../src/fauna/creature.js');
+  const creatureSrc = ['../src/fauna/creature.js','../src/fauna/creature-mound.js','../src/fauna/creature-perch.js','../src/fauna/creature-sleep.js'].map(readSrc).join('\n');
   assert.match(creatureSrc, /const furRoll = furProb > 0 \? Math\.random\(\) : 1/);
   assert.match(creatureSrc, /const wantsFur = isBumblebee \|\| \(!isFish && \(opts\.furry \?\? \(furProb > 0 && furRoll < furProb\)\)\)/);
   assert.ok(creatureSrc.indexOf('const furRoll') < creatureSrc.indexOf('const bodyGeo'));
@@ -248,7 +248,7 @@ function readFloraSrc() {
 
 // test_verdant_fur_is_readable_in_live_world
 {
-  const creatureSrc = readSrc('../src/fauna/creature.js');
+  const creatureSrc = ['../src/fauna/creature.js','../src/fauna/creature-mound.js','../src/fauna/creature-perch.js','../src/fauna/creature-sleep.js'].map(readSrc).join('\n');
   const furSrc = readSrc('../src/fur.js');
   const verdant = BIOMES.find((b) => b.id === 'verdant');
 
@@ -262,7 +262,7 @@ function readFloraSrc() {
 
 // test_verdant_fliers_get_fur_but_fish_do_not
 {
-  const creatureSrc = readSrc('../src/fauna/creature.js');
+  const creatureSrc = ['../src/fauna/creature.js','../src/fauna/creature-mound.js','../src/fauna/creature-perch.js','../src/fauna/creature-sleep.js'].map(readSrc).join('\n');
   assert.match(creatureSrc, /const wantsFur = isBumblebee \|\| \(!isFish && \(opts\.furry \?\? \(furProb > 0 && furRoll < furProb\)\)\)/);
   assert.match(creatureSrc, /Fish never get fur; fliers use the same/);
 }

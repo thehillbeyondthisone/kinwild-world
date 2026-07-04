@@ -37,7 +37,7 @@ const { INSPECT_FLORA_KINDS } = await import('../src/inspect.js');
 
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
 const worldConstantsSource = readFileSync(new URL('../src/world-constants.js', import.meta.url), 'utf8');
-const creatureSource = readFileSync(new URL('../src/fauna/creature.js', import.meta.url), 'utf8');
+const creatureSource = ["fauna/creature.js","fauna/creature-mound.js","fauna/creature-perch.js","fauna/creature-sleep.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 
 assert.equal(typeof FLORA_BUILDERS.flyer_nest, 'function', 'flyer_nest should be registered as a named flora builder.');
 

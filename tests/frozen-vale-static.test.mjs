@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { BIOMES } from '../src/biomes.js';
 
 const frozen = BIOMES.find((biome) => biome.id === 'frozen');
-const environmentSource = readFileSync(new URL('../src/environment.js', import.meta.url), 'utf8');
+const environmentSource = ["environment.js","environment/_shared.js","environment/particles.js","environment/swarms.js","environment/decals.js","environment/groundcover.js","environment/water.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
 // ARC-002: FLORA_FOOTPRINT lives in the shared constants module now.
 const worldConstantsSource = readFileSync(new URL('../src/world-constants.js', import.meta.url), 'utf8');

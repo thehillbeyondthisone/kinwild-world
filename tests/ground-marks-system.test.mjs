@@ -47,7 +47,7 @@ const { makeGroundMarks, emitGroundMark, stepGroundMarks } = await import('../sr
 const { makeCreature, stepCreature } = await import('../src/fauna/creature.js');
 const { makeCaterpillar, stepCaterpillar } = await import('../src/fauna/caterpillar.js');
 
-const ENV_SRC = readFileSync(new URL('../src/environment.js', import.meta.url), 'utf8');
+const DECALS_SRC = readFileSync(new URL('../src/environment/decals.js', import.meta.url), 'utf8');
 const STATE_SRC = readFileSync(new URL('../src/state.js', import.meta.url), 'utf8');
 const WORLD_SRC = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
 const MAIN_SRC = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
@@ -215,9 +215,10 @@ const MAIN_SRC = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
 //    separately invokable functions. Grepping is the direct way to pin them.
 // ---------------------------------------------------------------------------
 {
-  const start = ENV_SRC.indexOf('// ─── soft-ground creature marks');
-  const end = ENV_SRC.indexOf('// ─── fly swarms', start);
-  const section = ENV_SRC.slice(start, end);
+  // Ground marks now live in their own module (src/environment/decals.js);
+  // the whole file is the section that used to be delimited by the
+  // "soft-ground creature marks" / "fly swarms" comment markers.
+  const section = DECALS_SRC;
 
   assert.match(section, /export function makeGroundMarks/);
   assert.match(section, /export function emitGroundMark/);

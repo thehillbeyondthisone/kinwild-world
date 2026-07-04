@@ -1,0 +1,211 @@
+import * as THREE from "three";
+import { sampleSlopes } from "./shared.js";
+
+// Shared single-"z" texture for the night-sleep particles. Built lazily on
+// first drowsy creature, then reused across every spawned z for the session.
+let _zTexture = null;
+function getZTexture() {
+  if (_zTexture) return _zTexture;
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 64;
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, 64, 64);
+  ctx.fillStyle = "#fafaf2";
+  ctx.font = "italic bold 44px 'Quicksand', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,0.45)";
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 1;
+  ctx.fillText("z", 32, 34);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _zTexture = tex;
+  return tex;
+}
+
+// One rising z particle. Stream is managed per-creature: spawn cadence,
+// per-particle life, sideways drift, fade in then fade out as it climbs.
+const Z_LIFE = 2.4;
+const Z_SPAWN_INTERVAL = 0.9;
+const Z_RISE = 0.9;
+// Cached template — each sprite still needs its own material instance (opacity
+// animates independently per particle over its staggered life), but cloning
+// from one pre-built template avoids re-specifying the constant options object
+// (map/transparent/depthWrite) on every spawn.
+let _zMatTemplate = null;
+function getZMaterialTemplate() {
+  if (_zMatTemplate) return _zMatTemplate;
+  _zMatTemplate = new THREE.SpriteMaterial({
+    map: getZTexture(),
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  return _zMatTemplate;
+}
+function spawnZ(c) {
+  const mat = getZMaterialTemplate().clone();
+  const s = new THREE.Sprite(mat);
+  const scale = 0.26 + Math.random() * 0.16;
+  s.scale.set(scale, scale, 1);
+  const startX = 0.15 + (Math.random() - 0.5) * 0.12;
+  s.position.set(startX, 0.85, 0);
+  s.userData.life = 0;
+  s.userData.startX = startX;
+  s.userData.driftX = (Math.random() - 0.5) * 0.25;
+  s.userData.wobblePhase = Math.random() * Math.PI * 2;
+  c.group.add(s);
+  c.zSprites.push(s);
+}
+
+// Sleepiness target — driven by the global night factor and the personality
+// threshold. Sleepy creatures yawn earlier; bold ones tough it out until
+// it's properly dark. Walkers apply a smoothstep on/off so the body curl
+// animates rather than snapping; fliers skip the smoothstep (they only get
+// drowsy + descend toward rest). The alert window after being woken forces
+// the target to 0 so a freshly-woken creature doesn't immediately re-curl.
+// (QA-010: dedupes the previously copy-pasted walker/flier sleepiness curves.)
+function sleepinessTarget(c, nf, smoothstep) {
+  const a = c.nightThresh - 0.08;
+  const b = c.nightThresh + 0.08;
+  let target = (nf - a) / Math.max(0.001, b - a);
+  if (target < 0) target = 0;
+  else if (target > 1) target = 1;
+  else if (smoothstep) target = target * target * (3 - 2 * target);
+  // Alert window after being woken — keep them out of sleep even at night.
+  if (c.alertUntil && c.age < c.alertUntil) target = 0;
+  return target;
+}
+
+// Ease each creature's sleepiness toward the current night-driven target at
+// ~0.6/s so dawn/dusk transitions are smooth. Walkers smoothstep; fliers
+// (except fish) don't. Extracted from stepCreature's per-frame head.
+export function updateSleepiness(c, dt, nightFactor) {
+  if (!c.isSleeper && !c.flies) {
+    const target = sleepinessTarget(c, nightFactor, true);
+    c.sleepiness += (target - c.sleepiness) * Math.min(1, dt * 0.6);
+  } else if (c.flies && !c.isFish) {
+    const target = sleepinessTarget(c, nightFactor, false);
+    c.sleepiness += (target - c.sleepiness) * Math.min(1, dt * 0.6);
+  }
+}
+
+// Rising-z particle stream. Spawn while actively sleeping (either a spawned-
+// asleep isSleeper or a walker that's curled up at night); existing particles
+// always tick so they finish their fade after wake. Extracted from
+// stepCreature's per-frame head.
+export function stepZParticles(c, dt) {
+  const sleepStrength = c.isSleeper ? 1 : c.sleepiness;
+  if (!c.flies && sleepStrength > 0.6) {
+    c.zSpawnTimer -= dt;
+    if (c.zSpawnTimer <= 0) {
+      spawnZ(c);
+      c.zSpawnTimer = Z_SPAWN_INTERVAL * (0.7 + Math.random() * 0.6);
+    }
+  }
+  if (c.zSprites.length > 0) {
+    for (let i = c.zSprites.length - 1; i >= 0; i--) {
+      const s = c.zSprites[i];
+      s.userData.life += dt;
+      const u = s.userData.life / Z_LIFE;
+      if (u >= 1) {
+        c.group.remove(s);
+        s.material.dispose();
+        c.zSprites.splice(i, 1);
+        continue;
+      }
+      const fadeIn = Math.min(1, u / 0.18);
+      const fadeOut = u > 0.55 ? 1 - (u - 0.55) / 0.45 : 1;
+      s.material.opacity = 0.7125 * fadeIn * fadeOut;
+      s.position.y = 0.85 + u * Z_RISE;
+      s.position.x =
+        s.userData.startX +
+        s.userData.driftX * s.userData.life +
+        Math.sin(s.userData.wobblePhase + u * Math.PI * 2) * 0.06;
+    }
+  }
+}
+
+// Rotate a walker/sleeper group to lie flat on the terrain underfoot. Samples
+// the slope along the creature's heading + perpendicular and writes pitch/roll
+// into rotation.x/.z (YXZ order — these resolve in the body frame after yaw).
+// (QA-010: dedupes the sleeper + night-sleep slope-pose blocks.)
+function plantOnSlope(c, heightFn) {
+  const p = c.group.position;
+  const ds = 0.25 * c.scale;
+  const slopes = sampleSlopes(p.x, p.z, c.heading, ds, heightFn);
+  c.group.rotation.y = -c.heading + Math.PI / 2;
+  c.group.rotation.x = slopes.pitchTarget;
+  c.group.rotation.z = slopes.rollTarget;
+}
+
+// ── sleeper mode ──────────────────────────────────────────────────────────
+// A creature spawned asleep (isSleeper). Curled, eyes closed, no motion — owns
+// its full frame (slow breath + slope pose) and always early-exits the
+// dispatcher. Extracted from stepCreature (QA-001).
+export function stepSleeper(c, dt, t, heightFn) {
+  // slow "breathing" — body bob on y axis, very small amplitude
+  const breath = Math.sin(t * 1.1 + c.flapPhase) * 0.03;
+  c.body.scale.y = c.bodyBaseY * 0.55 + breath;
+  c.body.scale.x = c.bodyBaseX * (1.18 - breath * 0.3);
+  // legs/feet tucked under the body (set in makeCreature) — keep them
+  // there in case anything else perturbed them
+  for (let i = 0; i < c.legs.length; i++) {
+    c.legs[i].scale.y = 0.02;
+    c.feet[i].position.y = -0.15;
+  }
+  // belly hidden — sphere would poke out below the squashed body
+  if (c.belly) c.belly.scale.set(0, 0, 0);
+  // antennae retracted so they don't float disconnected above the body
+  if (c.antennae) for (const a of c.antennae) a.scale.setScalar(0);
+  // Fur shells are children of the body and inherit its squash — they stay
+  // visible while sleeping (a curled fuzzy creature should still read as
+  // fuzzy, just compressed).
+  // keep planted at ground height
+  const ground = heightFn(c.group.position.x, c.group.position.z);
+  c.group.position.y = ground + 0.28 * c.scale;
+  // Rotate to match terrain slope so sleepers lie flat on hillsides.
+  plantOnSlope(c, heightFn);
+}
+
+// ── night-sleep mode (walkers only) ───────────────────────────────────────
+// High sleepiness curls a walker down on the spot. Returns true once fully
+// curled (s > 0.6) — that state owns the slope pose and the dispatcher must
+// skip the trailing motion/animation. Extracted from stepCreature (QA-001).
+export function stepNightSleep(c, dt, t, heightFn) {
+  const s = c.sleepiness;
+  // Curl reaches full posture at s=0.6 (the same threshold the zZz sprite
+  // fades in on) so motion stops the moment the creature reads as sleeping.
+  const curl = Math.min(1, s / 0.6);
+  const eyeOpen = Math.max(0, 1 - curl * 1.2);
+  for (const e of c.eyeParts) e.scale.setScalar(eyeOpen);
+  c.body.scale.y = c.bodyBaseY * (1 + (0.55 - 1) * curl);
+  c.body.scale.x = c.bodyBaseX * (1 + (1.18 - 1) * curl);
+  // Legs and feet retract as the creature curls
+  for (let i = 0; i < c.legs.length; i++) {
+    c.legs[i].scale.y = 0.22 + (0.02 - 0.22) * curl;
+    c.feet[i].position.y = -0.32 + (-0.15 - -0.32) * curl;
+  }
+  // Belly shrinks toward zero as the body squashes flat over it
+  if (c.belly) {
+    const bs = c.belly.userData.baseScale;
+    const open = 1 - curl;
+    c.belly.scale.set(bs.x * open, bs.y * open, bs.z * open);
+  }
+  // Antennae fold down toward the body
+  if (c.antennae) for (const a of c.antennae) a.scale.setScalar(1 - curl);
+  if (s > 0.6) {
+    // fully curled — slow breath, no motion, planted on the ground
+    const breath = Math.sin(t * 1.1 + c.flapPhase) * 0.03;
+    c.body.scale.y = c.bodyBaseY * 0.55 + breath;
+    c.body.scale.x = c.bodyBaseX * (1.18 - breath * 0.3);
+    const ground = heightFn(c.group.position.x, c.group.position.z);
+    c.group.position.y = ground + 0.28 * c.scale + c.hopOffset;
+    // Rotate to match terrain slope so night-sleepers lie flat on hillsides.
+    plantOnSlope(c, heightFn);
+    return true;
+  }
+  return false;
+}

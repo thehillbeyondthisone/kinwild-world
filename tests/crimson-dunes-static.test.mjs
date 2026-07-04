@@ -28,7 +28,7 @@ const { FLORA_BUILDERS, withIsolatedFloraPool } = await import('../src/flora.js'
 const desert = BIOMES.find((biome) => biome.id === 'desert');
 const golden = BIOMES.find((biome) => biome.id === 'golden');
 const ashen = BIOMES.find((biome) => biome.id === 'ashen');
-const environmentSource = readFileSync(new URL('../src/environment.js', import.meta.url), 'utf8');
+const environmentSource = ["environment.js","environment/_shared.js","environment/particles.js","environment/swarms.js","environment/decals.js","environment/groundcover.js","environment/water.js"].map((p) => readFileSync(new URL("../src/" + p, import.meta.url), "utf8")).join("\n");
 const worldSource = readFileSync(new URL('../src/world.js', import.meta.url), 'utf8');
 const sizeMapStart = environmentSource.indexOf('const sizeMap = {');
 const sizeMapEnd = environmentSource.indexOf('const opacityMap = {', sizeMapStart);

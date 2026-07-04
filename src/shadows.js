@@ -34,8 +34,8 @@ const CONTACT_SHADOW_LOD_DISTANCE_SQ = CONTACT_SHADOW_LOD_DISTANCE * CONTACT_SHA
 
 function isWithinContactShadowLod(position, focus) {
   if (!focus) return true;
-  const dx = position.x - (focus?.x ?? 0);
-  const dz = position.z - (focus?.z ?? 0);
+  const dx = position.x - focus.x;
+  const dz = position.z - focus.z;
   return dx * dx + dz * dz <= CONTACT_SHADOW_LOD_DISTANCE_SQ;
 }
 

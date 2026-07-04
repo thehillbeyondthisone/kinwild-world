@@ -6,14 +6,13 @@
 // constants. It has NO dependency on initUi()'s closures or the mode/panel
 // state machine — it only touches localStorage, state.userSettings, and the
 // BIOMES table. Callers import { loadSettings, saveSettings, ... } from here.
-import { state } from "../state.js";
+import { state, GRASS_DENSITY_BASE, GRASS_HEIGHT_BASE } from "../state.js";
 import { BIOMES } from "../biomes.js";
 
 // Persisted settings ----------------------------------------------------------
 // Only fields explicitly listed here are read/written; unknown keys in
 // localStorage are ignored so we can change the schema later without breaking.
 const SETTINGS_KEY = "smallworld:settings:v1";
-const GRASS_DENSITY_BASE = 25;
 const PERSISTED_KEYS = [
   "fogMultiplier",
   "autoCycle",
@@ -57,6 +56,69 @@ const BOOKMARKS_KEY = "smallworld:bookmarks:v1";
 const BIOME_FILTER_KEY = "smallworld:biomefilter:v1";
 const HELP_SEEN_KEY = "smallworld:help-seen:v1";
 
+// SEC-004: persisted settings are allowlisted by key but were previously
+// trusted as-is. Clamp numeric settings to the range their slider allows
+// (see index.html min/max + ui.js's slider->internal-unit conversion) and
+// coerce booleans, so a corrupted/hand-edited localStorage value can't push
+// out-of-range numbers (e.g. negative fog, NaN scale) into live state.
+// Ranges are expressed in the settings' internal units, not raw slider %.
+const NUMERIC_SETTING_RANGES = {
+  fogMultiplier: [0, 2],
+  manualDayFactor: [0, 1],
+  ambientBoost: [0, 1],
+  worldScale: [0.5, 2],
+  autoRegenMinutes: [1, 20],
+  bloomRadius: [0, 3],
+  windStrength: [0, 2],
+  windNoiseScale: [0.2, 3],
+  grassDensity: [0, 3 * GRASS_DENSITY_BASE],
+  grassHeight: [0.3 * GRASS_HEIGHT_BASE, 2 * GRASS_HEIGHT_BASE],
+  groundMarkLifeScale: [0.25, 4],
+  musicVolume: [0, 1],
+};
+const BOOLEAN_SETTING_KEYS = new Set([
+  "autoCycle",
+  "autoRotate",
+  "autoRegen",
+  "bloom",
+  "tiltShift",
+  "outline",
+  "ao",
+  "depthFog",
+  "fxPanelOpen",
+  "portalEnabled",
+  "portalDoublePlacement",
+  "portalPreviewGrass",
+  "portalPreviewFlora",
+  "portalPreviewCreatures",
+  "portalPreviewFx",
+  "portalPanelOpen",
+  "showFps",
+  "windEnabled",
+  "windPanelOpen",
+  "foliageWindEnabled",
+  "grassEnabled",
+  "grassPanelOpen",
+  "musicEnabled",
+]);
+
+// Coerces a persisted value for `key` to a safe type/range. Returns
+// `undefined` when the value can't be salvaged, so the caller can skip
+// assignment and keep the existing default.
+function coerceSettingValue(key, value) {
+  if (BOOLEAN_SETTING_KEYS.has(key)) return Boolean(value);
+  const range = NUMERIC_SETTING_RANGES[key];
+  if (range) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return undefined;
+    return Math.min(range[1], Math.max(range[0], n));
+  }
+  // Keys with no explicit range (grassDensityBase, musicTrackOverrides) pass
+  // through unvalidated: grassDensityBase is immediately overwritten below,
+  // and musicTrackOverrides is re-validated downstream in music.js.
+  return value;
+}
+
 function shouldUseMobileHud() {
   const mobileParam = new URLSearchParams(window.location.search).get("mobile");
   if (mobileParam === "1") return true;
@@ -74,7 +136,9 @@ export function loadSettings() {
     if (!raw) return;
     const saved = JSON.parse(raw);
     for (const k of PERSISTED_KEYS) {
-      if (k in saved) state.userSettings[k] = saved[k];
+      if (!(k in saved)) continue;
+      const coerced = coerceSettingValue(k, saved[k]);
+      if (coerced !== undefined) state.userSettings[k] = coerced;
     }
     const savedGrassDensityBase = Number(saved.grassDensityBase ?? 12.5);
     if ("grassDensity" in saved && savedGrassDensityBase > 0 && savedGrassDensityBase !== GRASS_DENSITY_BASE) {
@@ -149,7 +213,6 @@ function saveBiomeFilter(set) {
 
 export {
   SETTINGS_KEY,
-  GRASS_DENSITY_BASE,
   PERSISTED_KEYS,
   BOOKMARKS_KEY,
   BIOME_FILTER_KEY,

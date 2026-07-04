@@ -9,7 +9,7 @@
 // regen — pooled handles are disposed when the previous world's group is
 // torn down, so a stale get() would return disposed objects.
 import * as THREE from "three";
-import { state } from "../state.js";
+import { state, disposePoolResources } from "../state.js";
 import { jitterGeo, TRUNK } from "../util.js";
 import { BLOOM_LAYER } from "../postfx.js";
 import { makePool } from "../pool.js";
@@ -103,7 +103,36 @@ export function addCapsuleNeedles(parent, radius, length) {
 // `rock`, `pillar`, and `archstone` keep their per-instance jitter.
 const _floraPool = makePool();
 export const resetFloraPool = _floraPool.reset;
-export const pooled = _floraPool.get;
+// Indirection so portal previews (src/portal.js) can redirect every builder's
+// pooled() calls to an isolated pool instance instead of this shared one
+// (QA-001: previews used to build with the TARGET biome before the real
+// world's flora loop ran, so shared flora kinds got cached under the wrong
+// biome's palette, then the live world rendered from that contaminated
+// entry). _activeFloraPool defaults to the shared per-regen pool and is only
+// ever swapped by withIsolatedFloraPool below.
+let _activeFloraPool = _floraPool;
+export const pooled = (key, factory) => _activeFloraPool.get(key, factory);
+
+// Runs `fn(isolatedPool)` with every pooled() call in this module (and every
+// flora builder that imports it) redirected to a fresh, disposable pool.
+// `fn` receives the isolated pool so a caller building several one-off
+// preview objects (portal.js) can check `isolatedPool.values()` before
+// disposing an individual object's non-pooled resources, without disposing
+// entries other objects in the same preview build still share. Once `fn`
+// returns, every resource cached in the isolated pool is disposed — nothing
+// outside the preview build ever references it (QA-002/QA-026: replaces the
+// old per-object full-scene retained-set scan).
+export function withIsolatedFloraPool(fn) {
+  const isolated = makePool();
+  const previous = _activeFloraPool;
+  _activeFloraPool = isolated;
+  try {
+    return fn(isolated);
+  } finally {
+    _activeFloraPool = previous;
+    disposePoolResources(isolated);
+  }
+}
 
 export function applyLeafPlateWind(material, strength = 0.16) {
   const prev = material.onBeforeCompile;

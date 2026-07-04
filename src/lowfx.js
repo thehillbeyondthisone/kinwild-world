@@ -7,7 +7,7 @@
 //   neither    auto-detect from genuinely weak signals only
 //
 // Auto-detect heuristics: low device pixel ratio (< 1.5) combined with
-// a small screen (< 480px short side). Modern phones (DPR 2–3) are
+// a small screen (< 768px short side). Modern phones (DPR 2–3) are
 // powerful enough for the full pipeline even at small viewport sizes,
 // so small screen alone is no longer a reliable weakness signal.
 // Read once at import time so every module sees the same flag without

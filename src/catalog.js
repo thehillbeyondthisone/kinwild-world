@@ -1,4 +1,4 @@
-import { BEACHCOMB_DENSITY, BIOMES, FLOWER_DENSITY, GRASS_DENSITY, PEBBLE_DENSITY } from "./biomes.js";
+import { BEACHCOMB_DENSITY, FLOWER_DENSITY, GRASS_DENSITY, PEBBLE_DENSITY } from "./biomes.js";
 import { formatSeed } from "./seed.js";
 
 const CATALOG_METADATA_KEY = "smallworld:catalog:v1";
@@ -129,7 +129,7 @@ export function getBiomeCatalogEntries(biome) {
   if (nectarCanExist(biome)) {
     addSubject(entries, buildCatalogSubject({ category: "fauna", variant: "bee", biomeId: biome.id }));
   }
-  if (biome.id === "verdant") {
+  if (biome.hasWillowisps) {
     addSubject(entries, buildCatalogSubject({ category: "fauna", variant: "willowisp", biomeId: biome.id }));
   }
   addSubject(entries, buildCatalogSubject({ category: "fauna", variant: "bird", biomeId: biome.id }));
@@ -142,10 +142,6 @@ export function getBiomeCatalogEntries(biome) {
 export function filterCatalogEntriesForWorld(entries, { availableKeys, savedKeys = new Set() }) {
   if (!availableKeys?.size) return entries;
   return entries.filter((entry) => availableKeys.has(entry.key) || savedKeys.has(entry.key));
-}
-
-export function getAllCatalogEntries(biomes = BIOMES) {
-  return biomes.flatMap((biome) => getBiomeCatalogEntries(biome));
 }
 
 function parseMetadata(raw) {
@@ -192,13 +188,40 @@ async function putBlob(blobStorage, id, blob) {
     fallbackBlobs.set(id, blob);
     return;
   }
-  await new Promise((resolve) => {
-    const tx = db.transaction(PHOTO_STORE, "readwrite");
-    tx.objectStore(PHOTO_STORE).put(blob, id);
-    tx.oncomplete = resolve;
-    tx.onerror = resolve;
-  });
-  db.close();
+  try {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(PHOTO_STORE, "readwrite");
+      tx.objectStore(PHOTO_STORE).put(blob, id);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error ?? new Error("catalog putBlob transaction failed"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function deleteBlob(blobStorage, id) {
+  if (!id) return;
+  if (blobStorage instanceof Map) {
+    blobStorage.delete(id);
+    return;
+  }
+  const db = await openCatalogDb();
+  if (!db) {
+    fallbackBlobs.delete(id);
+    return;
+  }
+  try {
+    // Best-effort cleanup: nothing more we can do if this also fails.
+    await new Promise((resolve) => {
+      const tx = db.transaction(PHOTO_STORE, "readwrite");
+      tx.objectStore(PHOTO_STORE).delete(id);
+      tx.oncomplete = resolve;
+      tx.onerror = resolve;
+    });
+  } finally {
+    db.close();
+  }
 }
 
 async function getBlob(blobStorage, id) {
@@ -261,18 +284,35 @@ export function makeCatalogStore({
       const existing = metadata.entries[subject.key];
       if (existing) return { status: "exists", entry: existing };
       const entry = makeEntry({ subject, seed, now: now() });
-      metadata.entries[subject.key] = entry;
+      // Write the blob first, then the metadata that references it. If the
+      // metadata write throws (e.g. localStorage quota), delete the blob we
+      // just wrote so it doesn't strand as an unreferenced entry.
       await putBlob(blobStorage, entry.photoBlobId, blob);
-      write(metadata);
+      try {
+        metadata.entries[subject.key] = entry;
+        write(metadata);
+      } catch (err) {
+        await deleteBlob(blobStorage, entry.photoBlobId);
+        throw err;
+      }
       return { status: "created", entry };
     },
     async replacePhoto({ subject, seed, blob, now: overrideNow = null }) {
       const metadata = read();
       const existing = metadata.entries[subject.key] ?? null;
       const entry = makeEntry({ subject, seed, now: overrideNow ?? now(), previous: existing });
-      metadata.entries[subject.key] = entry;
+      // Same ordering as savePhoto. Note: photoBlobId is stable per subject,
+      // so on replace the previous blob is already overwritten by the time
+      // metadata write could fail — there's no prior blob left to restore,
+      // only the newly-written one to roll back when there was no existing entry.
       await putBlob(blobStorage, entry.photoBlobId, blob);
-      write(metadata);
+      try {
+        metadata.entries[subject.key] = entry;
+        write(metadata);
+      } catch (err) {
+        if (!existing) await deleteBlob(blobStorage, entry.photoBlobId);
+        throw err;
+      }
       return { status: existing ? "replaced" : "created", entry };
     },
     async keepCurrent(key) {

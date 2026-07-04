@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { state } from "./state.js";
 import { jitterGeo } from "./util.js";
 import { buildCatalogSubject } from "./catalog.js";
+import { integrateVelocity, capVelocitySpeed, orientToVelocity } from "./fauna/shared.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Birds — small bodies + flapping wings, flocking with boid behaviour
@@ -185,13 +186,9 @@ export function stepFlock(flock, dt, t) {
     b.velocity.z += fz * dt;
 
     const sp = b.velocity.length();
-    if (sp > MAX_SPEED) b.velocity.multiplyScalar(MAX_SPEED / sp);
-    else if (sp < MIN_SPEED && sp > 1e-4)
-      b.velocity.multiplyScalar(MIN_SPEED / sp);
+    capVelocitySpeed(b.velocity, MAX_SPEED, MIN_SPEED);
 
-    pos.x += b.velocity.x * dt;
-    pos.y += b.velocity.y * dt;
-    pos.z += b.velocity.z * dt;
+    integrateVelocity(pos, b.velocity, dt);
 
     // Ground avoidance — keep birds well clear of the terrain. heightFn drops
     // to large negatives in the void beyond the islands, so we also clamp to
@@ -206,8 +203,7 @@ export function stepFlock(flock, dt, t) {
       b.velocity.y += 1.2 * dt;
     }
 
-    _flockTarget.copy(pos).add(b.velocity);
-    b.group.lookAt(_flockTarget);
+    orientToVelocity(b.group, pos, b.velocity, _flockTarget);
 
     // flap — left/right wings mirrored
     const flapRate = b.flapSpeed + sp * 1.5;

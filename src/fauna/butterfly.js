@@ -1,6 +1,13 @@
 import * as THREE from "three";
 import { buildCatalogSubject } from "../catalog.js";
-import { pushOutOfObstacles, applyWaterFloorAndSteer } from "./shared.js";
+import {
+  pushOutOfObstacles,
+  applyWaterFloorAndSteer,
+  integrateVelocity,
+  dampVelocity,
+  capVelocitySpeed,
+  orientToVelocity,
+} from "./shared.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Butterflies — small bright fliers that flutter between flowers
@@ -150,19 +157,13 @@ export function stepButterfly(b, dt, t, flowerSpots, heightFn) {
   b.velocity.z += Math.cos(wt * 1.3) * 1.4 * dt;
 
   // damping
-  const damp = Math.pow(0.78, dt * 60);
-  b.velocity.x *= damp;
-  b.velocity.y *= damp;
-  b.velocity.z *= damp;
+  dampVelocity(b.velocity, 0.78, dt);
 
   // cap speed (slower when hovering)
-  const sp = b.velocity.length();
   const maxSp = b.state === "hovering" ? 1.4 : 3.0;
-  if (sp > maxSp) b.velocity.multiplyScalar(maxSp / sp);
+  capVelocitySpeed(b.velocity, maxSp);
 
-  pos.x += b.velocity.x * dt;
-  pos.y += b.velocity.y * dt;
-  pos.z += b.velocity.z * dt;
+  integrateVelocity(pos, b.velocity, dt);
 
   // Water + terrain floor — over water, stay clear of the waves; over
   // land, stay just above the grass blades. Also steer back toward the
@@ -181,10 +182,7 @@ export function stepButterfly(b, dt, t, flowerSpots, heightFn) {
 
   // orient toward velocity — Object3D.lookAt() points local +Z at the target,
   // so the larger forewing pair (placed at +Z) leads the direction of motion.
-  if (b.velocity.lengthSq() > 0.08) {
-    _bflyTarget.copy(pos).add(b.velocity);
-    b.group.lookAt(_bflyTarget);
-  }
+  orientToVelocity(b.group, pos, b.velocity, _bflyTarget, 0.08);
 
   // fast wing flap; back pair lags slightly behind the front
   for (const w of b.wings) {

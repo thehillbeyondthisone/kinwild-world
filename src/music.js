@@ -50,6 +50,7 @@ const DEFAULT_TRACK = "Default.mp3";
 let _audio = null; // lazy-created <audio> element
 let _currentSrc = null; // currently-loaded track path (avoid redundant loads)
 let _fadeId = 0;
+let _switchId = 0; // bumped on every switchMusic call to cancel a superseded crossfade
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -90,6 +91,12 @@ function ensureAudio() {
   _audio.loop = true;
   _audio.volume = 0;
   _audio.preload = "none"; // stream, don't download upfront
+  // Playback failures (bad host, missing file, decode error) otherwise vanish
+  // silently — surface them and clear _currentSrc so the same biome can retry.
+  _audio.addEventListener?.("error", () => {
+    console.warn(`[music] failed to load track: ${_audio?.src ?? "(unknown)"}`);
+    _currentSrc = null;
+  });
   return _audio;
 }
 
@@ -145,11 +152,13 @@ export function switchMusic(biome) {
 
   const el = ensureAudio();
   _currentSrc = src;
+  const switchId = ++_switchId;
 
   // If music is currently playing, fade out then swap.
   if (!el.paused && el.volume > 0.001) {
     fadeTo(0, FADE_MS);
     setTimeout(() => {
+      if (switchId !== _switchId) return; // superseded by a later switchMusic call
       el.src = src;
       el.load(); // start streaming new track
       playIfEnabled();

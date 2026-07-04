@@ -90,6 +90,24 @@ export function randInt(lo, hi) {
 }
 
 /**
+ * String.replace against three.js' generated shader source, but warns instead
+ * of silently no-op'ing when the anchor doesn't match (e.g. after a three.js
+ * upgrade changes an `#include` chunk's surrounding text).
+ *
+ * @param {string} source - shader source to patch
+ * @param {string} anchor - exact substring to find
+ * @param {string} replacement - replacement text (same shape as String.replace)
+ * @param {string} label - short identifier for the warning message
+ */
+export function replaceOrWarn(source, anchor, replacement, label) {
+  if (!source.includes(anchor)) {
+    console.warn(`[replaceOrWarn] anchor not found for "${label}" — shader patch skipped`);
+    return source;
+  }
+  return source.replace(anchor, replacement);
+}
+
+/**
  * Build a curved leaf BufferGeometry from a parametric grid.
  * Used by leafballtree, berrybush, and any other flora with flat leaf plates.
  *

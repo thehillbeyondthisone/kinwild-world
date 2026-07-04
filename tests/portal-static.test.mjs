@@ -132,13 +132,22 @@ assert(
   portalSource.includes('buildPortalPreviewScene')
     && portalSource.includes('makeHeightFn')
     && portalSource.includes('pickLayout')
-    && portalSource.includes('Math.random(); // consume the biome roll exactly like generateWorld')
+    // ARC-003/QA-013: the biome-roll + pickLayout() RNG prefix is now a
+    // shared helper (rollBiomeAndLayout) in world-constants.js, consumed by
+    // both world.js and the portal preview, instead of a hand-copied
+    // `Math.random()` call kept in sync only by a comment.
+    && constantsSource.includes('export function rollBiomeAndLayout(pickLayoutFn)')
+    && portalSource.includes('rollBiomeAndLayout(pickLayout)')
     // ARC-002: terrain-noise derivation is shared via src/world-constants.js
     // so the portal preview cannot drift from the real destination world.
     && constantsSource.includes('TERRAIN_NOISE_SEED_XOR = 0x5eed5eed')
     && constantsSource.includes('export function terrainNoiseFromSeed(seed)')
     && portalSource.includes('terrainNoiseFromSeed(seed)')
-    && portalSource.includes('const terrainAmp = targetBiome.cloudlike ? 2.15 : 3.2')
+    // ARC-003/QA-013: terrainAmp is a shared helper (terrainAmpFor) so the
+    // preview's amplitude cannot diverge from the real world's.
+    && constantsSource.includes('export function terrainAmpFor(biome)')
+    && constantsSource.includes('biome.cloudlike ? 2.15 : 3.2')
+    && portalSource.includes('terrainAmpFor(targetBiome)')
     && portalSource.includes('targetBiome.water')
     && portalSource.includes('export function makeSeededPortalPlacement')
     && portalSource.includes('const rngSeed = ((seed >>> 0)')
@@ -153,16 +162,24 @@ assert(
     && portalSource.includes('const baseAngle = preferredAngle ?? (mulberry32(rngSeed)() * Math.PI * 2)')
     && portalSource.includes('const heading = Math.atan2(-p.x, -p.z)')
     && portalSource.includes('flatZones: [')
-    && portalSource.includes('function applyPreviewFlatZones')
+    // ARC-003/QA-013: flat-zone application on a heightFn is shared with
+    // world.js via applyFlatZonesToHeightFn instead of a hand-copied
+    // applyPreviewFlatZones.
+    && constantsSource.includes('export function applyFlatZonesToHeightFn(heightFn, flatZones)')
+    && portalSource.includes('applyFlatZonesToHeightFn(rawHeightFn, portalAnchor.flatZones)')
     && portalSource.includes('const portalAnchor = makeSeededPortalPlacement({ seed, index: 0, layout, heightFn: rawHeightFn })')
     && portalSource.includes('function isInPortalPreviewSightline')
     && portalSource.includes('targetBiome.flora[Math.floor(rng() * targetBiome.flora.length)]')
-    && portalSource.includes('import { FLORA_BUILDERS }')
-    // QA-009: builder original is captured, cloned, then disposed so its
-    // per-instance GPU resources don't leak each placement.
+    && portalSource.includes('import { FLORA_BUILDERS, withIsolatedFloraPool }')
+    // QA-001/QA-002/QA-026: builder original is captured, cloned, then
+    // disposed so its per-instance GPU resources don't leak each placement,
+    // and the whole build runs against an isolated pool so a different
+    // target biome's palette never contaminates the shared per-regen pool.
     && portalSource.includes('const original = builder(targetBiome)')
     && portalSource.includes('const obj = clonePreviewObjectUnique(original)')
-    && portalSource.includes('disposePreviewOriginal(original)')
+    && portalSource.includes('disposeUnpooledPreviewOriginal(original, pool)')
+    && portalSource.includes('withIsolatedFloraPool((pool) =>')
+    && portalSource.includes('withIsolatedCreaturePool((pool) =>')
     && portalSource.includes('makeGrassField(targetBiome, heightFn')
     && portalSource.includes('makeCreature(targetBiome).group')
     && portalSource.includes('function makePreviewFloraGroundY')
@@ -264,8 +281,14 @@ assert(
     && worldSource.includes('const footprintBase = FLORA_FOOTPRINT[kind] ?? FLORA_FOOTPRINT_DEFAULT')
     && worldSource.includes('let fp = footprintBase * s')
     && worldSource.includes('const giantFp = footprintBase * giantS')
-    && worldSource.includes('if (blocksFloraPlacement(p.x, p.z, giantFp * 1.2, placementBlockKinds)) continue')
-    && worldSource.includes('fp = giantFp')
+    // ARC-010/QA-014: the grove/verdant giant-flora promotion blocks were
+    // consolidated into computeGiantFloraPromotion, shared across biomes via
+    // the giantFlora flag instead of duplicated per-biome-id branches.
+    && worldSource.includes('function computeGiantFloraPromotion(kind, p, footprintBase, s, placementBlockKinds)')
+    && worldSource.includes('blocksFloraPlacement(p.x, p.z, giantFp * 1.2, placementBlockKinds)')
+    && worldSource.includes('if (promotion?.tooFar || promotion?.blocked) continue')
+    && worldSource.includes('s = promotion.s')
+    && worldSource.includes('fp = promotion.fp')
     && grassSource.includes('function pointInExcludedCapsule')
     && grassSource.includes('const along = Math.max(-c.halfLength, Math.min(c.halfLength, dx * c.nx + dz * c.nz))')
     && grassSource.includes('for (const c of excludedCapsules)')

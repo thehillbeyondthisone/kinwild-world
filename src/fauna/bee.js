@@ -1,6 +1,13 @@
 import * as THREE from "three";
 import { buildCatalogSubject } from "../catalog.js";
-import { pushOutOfObstacles, applyWaterFloorAndSteer } from "./shared.js";
+import {
+  pushOutOfObstacles,
+  applyWaterFloorAndSteer,
+  integrateVelocity,
+  dampVelocity,
+  capVelocitySpeed,
+  orientToVelocity,
+} from "./shared.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bee swarms — small fast fliers that orbit a shared flower target.
@@ -148,19 +155,12 @@ export function stepBee(b, dt, t, flowerSpots, heightFn) {
   b.velocity.z += (Math.random() - 0.5) * 1.0 * dt;
 
   // damping (bees are tighter / less drifty than butterflies)
-  const damp = Math.pow(0.7, dt * 60);
-  b.velocity.x *= damp;
-  b.velocity.y *= damp;
-  b.velocity.z *= damp;
+  dampVelocity(b.velocity, 0.7, dt);
 
   // cap speed — faster top end than butterflies
-  const sp = b.velocity.length();
-  const maxSp = 4.5;
-  if (sp > maxSp) b.velocity.multiplyScalar(maxSp / sp);
+  capVelocitySpeed(b.velocity, 4.5);
 
-  pos.x += b.velocity.x * dt;
-  pos.y += b.velocity.y * dt;
-  pos.z += b.velocity.z * dt;
+  integrateVelocity(pos, b.velocity, dt);
 
   const ground = heightFn(pos.x, pos.z);
   applyWaterFloorAndSteer(pos, b.velocity, ground, {
@@ -173,10 +173,7 @@ export function stepBee(b, dt, t, flowerSpots, heightFn) {
   pushOutOfObstacles(pos, b.velocity, 0.1);
 
   // orient — same trick as butterflies: lookAt(pos + velocity)
-  if (b.velocity.lengthSq() > 0.05) {
-    _beeTarget.copy(pos).add(b.velocity);
-    b.group.lookAt(_beeTarget);
-  }
+  orientToVelocity(b.group, pos, b.velocity, _beeTarget, 0.05);
 
   // very fast wing buzz
   for (const w of b.wings) {

@@ -16,5 +16,11 @@ export function makePool() {
   const reset = () => {
     map = new Map();
   };
-  return { get, reset };
+  // Snapshot of currently-cached resources. Used by portal preview pool
+  // isolation (disposing an isolated pool wholesale once its preview build
+  // finishes) and by pool-aware disposal on individual-reject placement paths
+  // (skip-list so rejecting one consumer doesn't dispose a resource other
+  // consumers already share via the pool map).
+  const values = () => map.values();
+  return { get, reset, values };
 }

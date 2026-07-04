@@ -8,10 +8,16 @@ export const APP_VERSION = __APP_VERSION__;
 export const ISLAND_SIZE_BASE = 100;
 export const ISLAND_RADIUS_BASE = ISLAND_SIZE_BASE * 0.462;
 // Density anchor for biome flora/creature counts and ground cover. The biome
-// tables were tuned against a 38-unit base, but the current island radius is
-// intentionally doubled for more breathing room. Keep this doubled too so the
-// absolute spawn counts stay near the old world size instead of doubling.
+// tables were tuned against this 76-unit base, but the current island radius
+// is intentionally doubled for more breathing room. Keep this doubled too so
+// the absolute spawn counts stay near the old world size instead of doubling.
 export const DENSITY_BASE = 76;
+
+// Canonical baselines for the grass density/height settings sliders (100% on
+// each slider maps to these internal units). Single source of truth for
+// src/state.js, src/ui/storage.js, and src/ui.js — see ARC-007 in AUDIT.md.
+export const GRASS_DENSITY_BASE = 25;
+export const GRASS_HEIGHT_BASE = 0.96;
 
 export const state = {
   ISLAND_SIZE: ISLAND_SIZE_BASE,
@@ -141,9 +147,9 @@ export const state = {
     windNoiseScale: 1.0,
     windPanelOpen: false,
     grassEnabled: true,
-    grassDensity: 25,
-    grassDensityBase: 25,
-    grassHeight: 0.96,
+    grassDensity: GRASS_DENSITY_BASE,
+    grassDensityBase: GRASS_DENSITY_BASE,
+    grassHeight: GRASS_HEIGHT_BASE,
     groundMarkLifeScale: 2.0,
     grassPanelOpen: false,
     foliageWindEnabled: true,
@@ -203,17 +209,41 @@ function disposeMaterial(material, disposedMaterials, disposedTextures) {
   material.dispose();
 }
 
-export function disposeGroup(g) {
+// ARC-004: `skip` is an optional Set of geometries/materials to leave alone.
+// Individual-reject placement paths (world.js placeOnGround/placeCrawler/etc.)
+// pass a live snapshot of the relevant pool's cached resources so rejecting
+// one creature doesn't dispose a geometry/material another already-placed
+// creature (or the pool map itself) still references. Full-regen teardown
+// (disposeGroup(worldState.world) with no skip set) is unaffected — pools are
+// reset separately every regen, so disposing everything there is correct.
+export function disposeGroup(g, { skip } = {}) {
   const disposedMaterials = new Set();
   const disposedTextures = new Set();
   g.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
+    if (o.geometry && !(skip && skip.has(o.geometry))) o.geometry.dispose();
     if (o.material) {
-      if (Array.isArray(o.material)) {
-        o.material.forEach((m) => disposeMaterial(m, disposedMaterials, disposedTextures));
-      } else {
-        disposeMaterial(o.material, disposedMaterials, disposedTextures);
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) {
+        if (skip && skip.has(m)) continue;
+        disposeMaterial(m, disposedMaterials, disposedTextures);
       }
     }
   });
+}
+
+// Disposes every geometry/material currently cached in a src/pool.js pool
+// instance. Used to tear down an isolated portal-preview pool (QA-001/QA-002)
+// once its preview build finishes — nothing outside that build references
+// the pool's contents, so bulk disposal is safe and needs no scene traversal.
+export function disposePoolResources(pool) {
+  const disposedMaterials = new Set();
+  const disposedTextures = new Set();
+  for (const resource of pool.values()) {
+    if (!resource) continue;
+    if (resource.isMaterial) {
+      disposeMaterial(resource, disposedMaterials, disposedTextures);
+    } else if (typeof resource.dispose === "function") {
+      resource.dispose();
+    }
+  }
 }

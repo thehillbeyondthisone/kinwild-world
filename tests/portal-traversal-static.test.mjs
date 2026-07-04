@@ -92,12 +92,17 @@ assert(
 assert(
   uiSource.includes('let _requestStrollPointerLock = () => {};')
     && uiSource.includes('function requestStrollPointerLock(armRetry = false)')
+    && uiSource.includes('strollMode.requestPointerLock(armRetry);')
     && uiSource.includes('canvas.addEventListener("pointerdown", retryPointerLock, { once: true })')
     && uiSource.includes('_requestStrollPointerLock(true);')
     && uiSource.includes('if (document.pointerLockElement !== canvas) return;')
     && uiSource.includes('hasPointerLock: false')
-    && uiSource.includes('_stroll.hasPointerLock = true')
-    && uiSource.includes('if (_stroll.hasPointerLock) exitStroll();'),
+    // QA-007: the pointer-lock state machine is now shared (makeFirstPersonMode)
+    // across stroll/fly/photo, so it sets/reads `fp.hasPointerLock` generically
+    // rather than `_stroll.hasPointerLock` directly.
+    && uiSource.includes('fp.hasPointerLock = true;')
+    && uiSource.includes('if (fp.hasPointerLock) exitFn();')
+    && uiSource.includes('strollMode.setExitFn(() => exitStroll());'),
   'Portal arrival should request pointer lock again on the next canvas gesture and ignore mouse-look deltas until locked.'
 );
 

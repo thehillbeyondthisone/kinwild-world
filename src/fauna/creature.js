@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { state } from "../state.js";
+import { state, disposePoolResources } from "../state.js";
 import { jitterGeo } from "../util.js";
 import { nearestCenter } from "../terrain.js";
 import { makeDirtPuff, makeDustKick, emitGroundMark } from "../environment.js";
@@ -233,7 +233,36 @@ function claimPerchForFlier(c, perch) {
 // would allocate its own copies of identical resources.
 const _creaturePool = makePool();
 export const resetCreaturePool = _creaturePool.reset;
-const pooled = _creaturePool.get;
+// Indirection so portal previews (src/portal.js) can redirect every pooled()
+// call in this module to an isolated pool instead of this shared one
+// (QA-001) — see the matching comment in src/flora/_shared.js for the full
+// rationale. _activeCreaturePool defaults to the shared per-regen pool and is
+// only ever swapped by withIsolatedCreaturePool below.
+let _activeCreaturePool = _creaturePool;
+const pooled = (key, factory) => _activeCreaturePool.get(key, factory);
+
+// See withIsolatedFloraPool in src/flora/_shared.js — same contract, applied
+// to the creature pool.
+export function withIsolatedCreaturePool(fn) {
+  const isolated = makePool();
+  const previous = _activeCreaturePool;
+  _activeCreaturePool = isolated;
+  try {
+    return fn(isolated);
+  } finally {
+    _activeCreaturePool = previous;
+    disposePoolResources(isolated);
+  }
+}
+
+// ARC-004: a live snapshot of the currently-active pool's cached resources.
+// Individual-reject placement paths in world.js (placeOnGround/placeCrawler/
+// placeFishUnderwater/family-kid spawn) pass this as disposeGroup's `skip`
+// set so rejecting one creature never disposes a geometry/material the pool
+// map — and therefore other already-placed creatures — still holds.
+export function creaturePoolResources() {
+  return new Set(_activeCreaturePool.values());
+}
 
 // Shared single-"z" texture for the night-sleep particles. Built lazily on
 // first drowsy creature, then reused across every spawned z for the session.
@@ -264,13 +293,23 @@ function getZTexture() {
 const Z_LIFE = 2.4;
 const Z_SPAWN_INTERVAL = 0.9;
 const Z_RISE = 0.9;
-function spawnZ(c) {
-  const mat = new THREE.SpriteMaterial({
+// Cached template — each sprite still needs its own material instance (opacity
+// animates independently per particle over its staggered life), but cloning
+// from one pre-built template avoids re-specifying the constant options object
+// (map/transparent/depthWrite) on every spawn.
+let _zMatTemplate = null;
+function getZMaterialTemplate() {
+  if (_zMatTemplate) return _zMatTemplate;
+  _zMatTemplate = new THREE.SpriteMaterial({
     map: getZTexture(),
     transparent: true,
     opacity: 0,
     depthWrite: false,
   });
+  return _zMatTemplate;
+}
+function spawnZ(c) {
+  const mat = getZMaterialTemplate().clone();
   const s = new THREE.Sprite(mat);
   const scale = 0.26 + Math.random() * 0.16;
   s.scale.set(scale, scale, 1);
@@ -1030,7 +1069,7 @@ export function wakeCreature(c) {
   c.heading = Math.random() * Math.PI * 2;
   c.nextThink = 0.3 + Math.random() * 0.6;
   if (drowsyFlier) {
-    if (drowsyFlier && (c.landState === "landed" || c.landState === "descending")) {
+    if (c.landState === "landed" || c.landState === "descending") {
       c.landState = "ascending";
       c.landTimer = 8 + Math.random() * 6;
     }
@@ -1796,10 +1835,10 @@ export function stepCreature(c, dt, t, heightFn) {
         pos.z -= n.z * sinkDist;
       } else {
         // fallback: sample normal on the fly
-        const n = sampleTerrainNormal(pos.x, pos.z, heightFn);
-        pos.x -= n.x * sinkDist;
-        pos.y -= n.y * sinkDist;
-        pos.z -= n.z * sinkDist;
+        const fallbackNormal = sampleTerrainNormal(pos.x, pos.z, heightFn);
+        pos.x -= fallbackNormal.x * sinkDist;
+        pos.y -= fallbackNormal.y * sinkDist;
+        pos.z -= fallbackNormal.z * sinkDist;
       }
     }
   }

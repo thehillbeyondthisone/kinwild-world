@@ -3,6 +3,12 @@ import {
   terrainNoiseFromSeed,
   FLORA_FOOTPRINT,
   FLORA_FOOTPRINT_DEFAULT,
+  rollBiomeAndLayout,
+  terrainAmpFor,
+  WATER_SURFACE_Y,
+  applyWaterWetDepth,
+  applyFlatZonesToHeightFn,
+  sampleFootprintHeights,
 } from "./world-constants.js";
 import {
   state,
@@ -33,6 +39,9 @@ import {
   makeSwarm,
   makeWillOWisp,
   resetCreaturePool,
+  creaturePoolResources,
+  resetCaterpillarPool,
+  caterpillarPoolResources,
 } from "./fauna.js";
 import { makeFlock } from "./birds.js";
 import { makeShadowDisks } from "./shadows.js";
@@ -294,14 +303,10 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
   context.setLoading(true);
   await nextGenerationFrame();
   if (runId !== _generationRunId) {
-    // Superseded by a newer regen before we even started building. The
-    // superseding run owns isGeneratingWorld, but only while it is still
-    // current — if it has already finished (or thrown) we must release the
-    // flag here so the loading state can't deadlock. See QA-003.
-    if (runId === _generationRunId) {
-      worldState.isGeneratingWorld = false;
-      context.setLoading(false);
-    }
+    // Superseded by a newer regen before we even started building. That
+    // newer run already owns isGeneratingWorld/loading-state (set at its own
+    // entry, mirroring the lines above) and will release them in its own
+    // finally block, so this stale call must return without touching either.
     return;
   }
 
@@ -337,7 +342,11 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
   // Pick biome from the seed itself, so one number reproduces everything.
   // Forced-biome catalog navigation still consumes this roll before swapping
   // the biome, preserving the rest of the seed's layout/random stream.
-  const seedBiome = BIOMES[Math.floor(Math.random() * BIOMES.length)];
+  // Layout (size + shape + island count) is picked right after the biome so
+  // it stays inside the deterministic Math.random window — rollBiomeAndLayout
+  // (ARC-003/QA-013, world-constants.js) is the single source of truth for
+  // this ordering, shared with the portal preview's RNG replay.
+  const { biome: seedBiome, layout } = rollBiomeAndLayout(pickLayout);
   const forcedBiome = options.biomeId ? BIOMES.find((candidate) => candidate.id === options.biomeId) : null;
   const biome = forcedBiome ?? seedBiome;
   function attachCatalogMetadata(object) {
@@ -346,9 +355,6 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
     if (!object.userData.catalog) delete object.userData.catalog;
   }
 
-  // Layout (size + shape + island count) — must be picked right after the
-  // biome so it stays inside the deterministic Math.random window.
-  const layout = pickLayout();
   worldState.currentLayout = layout;
   worldState.ISLAND_SIZE = layout.planeSize;
   worldState.ISLAND_RADIUS = layout.boundRadius;
@@ -406,6 +412,7 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
   // reuse them
   resetFloraPool();
   resetCreaturePool();
+  resetCaterpillarPool();
   resetPBRTextureCache();
 
   worldState.currentBiome = biome;
@@ -519,21 +526,10 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
 
   // terrain
   const noise2D = terrainNoiseFromSeed(seed);
-  // Cloud islands should read as soft puffs rather than rocky mountains.
-  // Lowering the amplitude keeps the silhouette pillowy while preserving the
-  // seeded terrain function for creature placement.
-  const terrainAmp = biome.cloudlike ? 2.15 : 3.2;
+  const terrainAmp = terrainAmpFor(biome);
   const baseHeightFn = makeHeightFn(noise2D, layout, terrainAmp);
   worldState.heightFn = biome.water
-    ? (x, z) => {
-      const h = baseHeightFn(x, z);
-      const waterY = -0.12;
-      const depth = waterY - h;
-      if (depth <= 0) return h;
-      const wet = Math.min(1, depth / 1.6);
-      const smoothWet = wet * wet * (3 - 2 * wet);
-      return h - smoothWet * (0.45 + depth * 0.28);
-    }
+    ? applyWaterWetDepth(baseHeightFn, WATER_SURFACE_Y)
     : baseHeightFn;
   const terrain = makeTerrain(biome, worldState.heightFn, worldState);
   worldState.world.add(terrain);
@@ -567,9 +563,9 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
   let coralPlaced = 0;
   const CRYSTAL_CAP = 4;
   const FISSURE_LIGHT_CAP = LOWFX ? 4 : 9;
-  // Density compensation: biome counts were tuned against a 38-unit base; the
-  // current ISLAND_SIZE may be larger. Scale linearly with width so a bigger
-  // world still feels populated rather than empty.
+  // Density compensation: biome counts were tuned against the DENSITY_BASE
+  // (76-unit) anchor; the current ISLAND_SIZE may be larger. Scale linearly
+  // with width so a bigger world still feels populated rather than empty.
   const densityScale = worldState.ISLAND_SIZE / DENSITY_BASE;
   const floraTarget = LOWFX
     ? Math.max(8, Math.round(biome.floraCount * densityScale * LOWFX_DENSITY))
@@ -727,21 +723,15 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
     return false;
   }
   function sampleTerrainFootprint(x, z, r) {
-    const diagonal = r * Math.SQRT1_2;
-    const samples = [
-      [0, 0],
-      [r, 0], [-r, 0], [0, r], [0, -r],
-      [diagonal, diagonal], [-diagonal, diagonal],
-      [diagonal, -diagonal], [-diagonal, -diagonal],
-    ];
-    return samples.map(([dx, dz]) => worldState.heightFn(x + dx, z + dz));
+    return sampleFootprintHeights(worldState.heightFn, x, z, r);
   }
   function getFlyerNestGroundPose(x, z, r, scale) {
     const heights = sampleTerrainFootprint(x, z, r);
     const minY = Math.min(...heights);
     const maxY = Math.max(...heights);
     if (heights[0] < -0.3 || maxY - minY > FLYER_NEST_MAX_TERRAIN_VARIANCE * scale) return null;
-    const y = Math.max(...heights) - FLYER_NEST_BASE_CLEARANCE * scale;
+    // QA-L04: reuse the maxY already computed above instead of re-scanning.
+    const y = maxY - FLYER_NEST_BASE_CLEARANCE * scale;
     return { groundY: heights[0], y };
   }
   function nestTouchesWater(x, z, r) {
@@ -801,10 +791,7 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
     f.scale.setScalar(s);
     worldState.world.add(f);
 
-    const grassShortenRadius = Math.min(
-      GRASS_SHORTEN_MAX_RADIUS,
-      Math.max(GRASS_SHORTEN_MIN_RADIUS, fp * GRASS_SHORTEN_PAD)
-    );
+    const grassShortenRadius = clampGrassShortenRadius(fp);
     const floraBlock = {
       kind,
       x: p.x,
@@ -872,9 +859,8 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
     );
     group.quaternion.copy(align.multiply(spin));
   }
-  // Water-plane surface Y — matches makeWaterPlane in environment.js. Used to
-  // separate underwater coral spawns from above-water flora in water biomes.
-  const WATER_SURFACE_Y = -0.12;
+  // WATER_SURFACE_Y (ARC-008, imported from world-constants.js) separates
+  // underwater coral spawns from above-water flora in water biomes.
   // Local-space top of a coral at scale=1 (base height + tilted branch + tip
   // ball). Used to compute the max scale that still fits beneath the water
   // surface so corals never poke through.
@@ -949,23 +935,8 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
 
   // Patch heightFn to reflect flattened terrain pads so all subsequent
   // flora placement and conformSurfaceChildren see the real mesh heights.
-  if (terrainFlatZones.length) {
-    const rawHeightFn = worldState.heightFn;
-    worldState.heightFn = (x, z) => {
-      const h = rawHeightFn(x, z);
-      let out = h;
-      for (const { cx, cz, r, flatY } of terrainFlatZones) {
-        const dx = x - cx, dz = z - cz;
-        const d2 = dx * dx + dz * dz;
-        const r2 = r * r;
-        if (d2 >= r2) continue;
-        const t = 1 - d2 / r2;
-        const blend = t * t * (3 - 2 * t);
-        out += (flatY - out) * blend;
-      }
-      return out;
-    };
-  }
+  // Shared with the portal preview's identical patch (ARC-003/QA-013).
+  worldState.heightFn = applyFlatZonesToHeightFn(worldState.heightFn, terrainFlatZones);
 
   // Pre-build the PBR detail-texture families this biome's flora needs, one
   // family per frame-budget slice. Each family paints several canvases
@@ -977,8 +948,42 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
     await yieldIfNeeded(true);
   }
 
-  let groveGiantPlaced = false;
-  let verdantGiantPlaced = false;
+  // QA-014: the grass-shorten-radius clamp is repeated at every flora
+  // placement site (flyer nests, normal flora, giant-flora promotion).
+  function clampGrassShortenRadius(footprintRadius) {
+    return Math.min(
+      GRASS_SHORTEN_MAX_RADIUS,
+      Math.max(GRASS_SHORTEN_MIN_RADIUS, footprintRadius * GRASS_SHORTEN_PAD)
+    );
+  }
+  // ARC-010/QA-014: a biome may declare one `giantFlora` kind that gets
+  // promoted to an oversized landmark instance the first time it's rolled
+  // near the island center (grove's bigmushroom, verdant's leafballtree).
+  // Replaces the old `biome.id === "grove"` / `biome.id === "verdant"`
+  // branches with a single shared promotion check driven by the biome flag.
+  function computeGiantFloraPromotion(kind, p, footprintBase, s, placementBlockKinds) {
+    const giant = biome.giantFlora;
+    if (!giant || kind !== giant.kind) return null;
+    const centers = worldState.currentLayout.centers;
+    let bestDx = p.x - centers[0].cx, bestDz = p.z - centers[0].cz;
+    for (let ci = 1; ci < centers.length; ci++) {
+      const ddx = p.x - centers[ci].cx, ddz = p.z - centers[ci].cz;
+      if (ddx * ddx + ddz * ddz < bestDx * bestDx + bestDz * bestDz) { bestDx = ddx; bestDz = ddz; }
+    }
+    const distFromCenter = Math.sqrt(bestDx * bestDx + bestDz * bestDz);
+    if (distFromCenter > worldState.ISLAND_RADIUS * giant.maxRadiusFrac) return { tooFar: true };
+    const giantS = s * giant.scaleMul;
+    const giantFp = footprintBase * giantS;
+    if (
+      blocksFloraPlacement(p.x, p.z, giantFp * 1.2, placementBlockKinds) ||
+      (CANOPY_SPACING_KINDS.has(kind) && blocksFloraPlacement(p.x, p.z, giantFp * CANOPY_SPACING_PAD, CANOPY_SPACING_KINDS))
+    ) {
+      return { blocked: true };
+    }
+    return { s: giantS, fp: giantFp, grassShortenRadius: clampGrassShortenRadius(giantFp) };
+  }
+
+  let giantFloraPlaced = false;
   while (placed < floraTarget && attempts < floraTarget * 6) {
     attempts++;
     if ((attempts & 7) === 0) await yieldIfNeeded();
@@ -992,7 +997,9 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
     const waterFloraDepthRange = isShallowWaterFlora || isMediumDeepWaterFlora
       ? WATER_FLORA_DEPTH_RANGE[kind]
       : null;
-    const normalFloraRadius = biome.id === "golden" && (kind === "tree" || kind === "leafballtree") ? 0.98 : 0.88;
+    const normalFloraRadius = biome.treeFloraRadiusFrac !== undefined && (kind === "tree" || kind === "leafballtree")
+      ? biome.treeFloraRadiusFrac
+      : 0.88;
     let p = pickWorldGroundPoint(isReefCoral || waterFloraDepthRange ? 1.0 : normalFloraRadius);
     let y0 = worldState.heightFn(p.x, p.z);
     if (isReefCoral) {
@@ -1035,10 +1042,7 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
         y0 = nestGroundPose.groundY;
       }
     }
-    let grassShortenRadius = Math.min(
-      GRASS_SHORTEN_MAX_RADIUS,
-      Math.max(GRASS_SHORTEN_MIN_RADIUS, fp * GRASS_SHORTEN_PAD)
-    );
+    let grassShortenRadius = clampGrassShortenRadius(fp);
     const placementBlockKinds = kind === "lavafissure" ? null : PLACEMENT_BLOCK_KINDS;
     if (kind === "flyer_nest" && !nestHost && blocksNestPlacement(p.x, p.z, fp * 1.2)) continue;
     if (kind !== "flyer_nest" && blocksFloraPlacement(p.x, p.z, fp * 1.2, placementBlockKinds)) continue;
@@ -1076,96 +1080,58 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
       f.rotation.y = yaw;
     }
     f.scale.setScalar(s);
-    // Mushroom grove gets one giant bigmushroom (4× scale)
-    if (kind === "bigmushroom" && biome.id === "grove" && !groveGiantPlaced) {
-      // Only place in the inner 1/3 of the island so the giant cap
-      // doesn't overhang the edge.
-      const centers = worldState.currentLayout.centers;
-      let bDx = p.x - centers[0].cx, bDz = p.z - centers[0].cz;
-      for (let ci = 1; ci < centers.length; ci++) {
-        const ddx = p.x - centers[ci].cx, ddz = p.z - centers[ci].cz;
-        if (ddx * ddx + ddz * ddz < bDx * bDx + bDz * bDz) { bDx = ddx; bDz = ddz; }
-      }
-      if (Math.sqrt(bDx * bDx + bDz * bDz) > worldState.ISLAND_RADIUS / 3) continue;
-      const giantS = s * 4;
-      const giantFp = footprintBase * giantS;
-      if (blocksFloraPlacement(p.x, p.z, giantFp * 1.2, placementBlockKinds)) continue;
-      if (CANOPY_SPACING_KINDS.has(kind) && blocksFloraPlacement(p.x, p.z, giantFp * CANOPY_SPACING_PAD, CANOPY_SPACING_KINDS)) continue;
-      s = giantS;
-      fp = giantFp;
-      grassShortenRadius = Math.min(
-        GRASS_SHORTEN_MAX_RADIUS,
-        Math.max(GRASS_SHORTEN_MIN_RADIUS, fp * GRASS_SHORTEN_PAD)
-      );
-      f.scale.setScalar(s);
-      // Disable wind on the giant mushroom — at 4× scale the sway
-      // amplitude looks exaggerated and comical. Clone materials first
-      // so other bigmushroom instances (which share pooled materials)
-      // are not affected.
-      f.traverse((child) => {
-        if (child.isMesh && child.material) {
-          const prev = child.material.onBeforeCompile;
-          child.material = child.material.clone();
-          child.material.onBeforeCompile = (shader) => {
-            prev(shader);
-            if (shader.uniforms.uWindStrength) shader.uniforms.uWindStrength.value = 0;
-          };
+    // Giant-flora promotion (ARC-010/QA-014): a biome's declared `giantFlora`
+    // kind gets promoted to one oversized landmark instance near the island
+    // center. See computeGiantFloraPromotion above.
+    if (!giantFloraPlaced) {
+      const promotion = computeGiantFloraPromotion(kind, p, footprintBase, s, placementBlockKinds);
+      if (promotion?.tooFar || promotion?.blocked) continue;
+      if (promotion) {
+        s = promotion.s;
+        fp = promotion.fp;
+        grassShortenRadius = promotion.grassShortenRadius;
+        f.scale.setScalar(s);
+        giantFloraPlaced = true;
+        if (biome.giantFlora.effect === "muteWind") {
+          // Disable wind on the giant mushroom — at 4× scale the sway
+          // amplitude looks exaggerated and comical. Clone materials first
+          // so other bigmushroom instances (which share pooled materials)
+          // are not affected.
+          f.traverse((child) => {
+            if (child.isMesh && child.material) {
+              const prev = child.material.onBeforeCompile;
+              child.material = child.material.clone();
+              child.material.onBeforeCompile = (shader) => {
+                prev(shader);
+                if (shader.uniforms.uWindStrength) shader.uniforms.uWindStrength.value = 0;
+              };
+            }
+          });
+          // Zero perchWind so creatures perched on the cap don't bob.
+          f.userData.perchWind = { strength: 0, localY: f.userData.perchWind?.localY ?? 0 };
+        } else if (biome.giantFlora.effect === "willowisp") {
+          // Will-o-wisp that orbits and flies above the giant tree.
+          // Avoidance sphere keeps it outside the canopy volume.
+          // Canopy center: y + 1.46 * s, canopy max radius: 0.88 * s ≈ 2.64 at 3×
+          const canopyCenterY = y + 1.46 * s;
+          const canopyR = 1.3 * s + 0.5; // full canopy extent + padding
+          const wisp = makeWillOWisp(p.x, canopyCenterY, p.z, canopyR + 0.8, biome);
+          wisp.innerRadius = canopyR;
+          wisp.avoidX = p.x;
+          wisp.avoidY = canopyCenterY;
+          wisp.avoidZ = p.z;
+          wisp.avoidR = canopyR;
+          // Start outside the canopy
+          const startAngle = Math.random() * Math.PI * 2;
+          wisp.group.position.set(
+            p.x + Math.cos(startAngle) * (canopyR + 0.5),
+            canopyCenterY + canopyR,
+            p.z + Math.sin(startAngle) * (canopyR + 0.5)
+          );
+          worldState.world.add(wisp.group);
+          worldState.willowisps.push(wisp);
         }
-      });
-      // Zero perchWind so creatures perched on the cap don't bob.
-      f.userData.perchWind = { strength: 0, localY: f.userData.perchWind?.localY ?? 0 };
-      groveGiantPlaced = true;
-    }
-    // Verdant grove gets one giant leafballtree (3× scale) with a will-o-wisp
-    if (kind === "leafballtree" && biome.id === "verdant" && !verdantGiantPlaced) {
-      // Only place in the inner 2/3 of the island so the giant canopy doesn't
-      // overhang the edge.
-      const centers = worldState.currentLayout.centers;
-      let bestDx = p.x - centers[0].cx, bestDz = p.z - centers[0].cz;
-      for (let ci = 1; ci < centers.length; ci++) {
-        const ddx = p.x - centers[ci].cx, ddz = p.z - centers[ci].cz;
-        if (ddx * ddx + ddz * ddz < bestDx * bestDx + bestDz * bestDz) {
-          bestDx = ddx; bestDz = ddz;
-        }
       }
-      const distFromCenter = Math.sqrt(bestDx * bestDx + bestDz * bestDz);
-      const maxR = worldState.ISLAND_RADIUS * (2 / 3);
-      if (distFromCenter > maxR) {
-        // Skip this placement — keep verdantGiantPlaced false so we retry
-        continue;
-      }
-      const giantS = s * 3;
-      const giantFp = footprintBase * giantS;
-      if (blocksFloraPlacement(p.x, p.z, giantFp * 1.2, placementBlockKinds)) continue;
-      if (CANOPY_SPACING_KINDS.has(kind) && blocksFloraPlacement(p.x, p.z, giantFp * CANOPY_SPACING_PAD, CANOPY_SPACING_KINDS)) continue;
-      s = giantS;
-      fp = giantFp;
-      grassShortenRadius = Math.min(
-        GRASS_SHORTEN_MAX_RADIUS,
-        Math.max(GRASS_SHORTEN_MIN_RADIUS, fp * GRASS_SHORTEN_PAD)
-      );
-      f.scale.setScalar(s);
-      verdantGiantPlaced = true;
-      // Will-o-wisp that orbits and flies above the giant tree
-      // Avoidance sphere keeps it outside the canopy volume
-      // Canopy center: y + 1.46 * s, canopy max radius: 0.88 * s ≈ 2.64 at 3×
-      const canopyCenterY = y + 1.46 * s;
-      const canopyR = 1.3 * s + 0.5; // full canopy extent + padding
-      const wisp = makeWillOWisp(p.x, canopyCenterY, p.z, canopyR + 0.8, biome);
-      wisp.innerRadius = canopyR;
-      wisp.avoidX = p.x;
-      wisp.avoidY = canopyCenterY;
-      wisp.avoidZ = p.z;
-      wisp.avoidR = canopyR;
-      // Start outside the canopy
-      const startAngle = Math.random() * Math.PI * 2;
-      wisp.group.position.set(
-        p.x + Math.cos(startAngle) * (canopyR + 0.5),
-        canopyCenterY + canopyR,
-        p.z + Math.sin(startAngle) * (canopyR + 0.5)
-      );
-      worldState.world.add(wisp.group);
-      worldState.willowisps.push(wisp);
     }
     if (kind === "lavafissure" || kind === "mushroom" || kind === "bigmushroom") conformSurfaceChildrenToTerrain(f);
     if (kind === "crystal") {
@@ -1332,11 +1298,11 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
     .map(b => b.grassClearance);
   const grass = makeGrassField(biome, worldState.heightFn, coverExclusions, grassShorteners, portalGrassClearances);
   if (grass) worldState.world.add(grass);
-  if (worldState._reapplyGrassSettings) worldState._reapplyGrassSettings();
-  // QA-008: reapply wind settings synchronously on regen so the user's slider
-  // values take effect this frame instead of waiting on the 250ms ui.js
-  // seed-watcher poll (which caused a visible wind flicker on every regen).
-  if (worldState._reapplyWindSettings) worldState._reapplyWindSettings();
+  // ARC-005: wind/grass settings are re-applied by ui.js's "world-ready"
+  // listener (dispatched at the end of every generateWorld call, see
+  // finalizeWorldHud in world-hud.js) instead of world.js reaching directly
+  // into ui.js-owned state hooks. dispatchEvent is synchronous, so this
+  // still lands within the same tick — no visible flicker on regen.
   if (grass) attachCatalogMetadata(grass);
   await yieldIfNeeded(true);
   for (const m of makeWildflowerField(biome, worldState.heightFn, groundCoverExclusions)) {
@@ -1376,7 +1342,7 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
   // so the actual headcount can be slightly higher than the configured range.
   const ncreatures = Math.max(1, Math.round(randInt(...biome.creatureCount) * densityScale));
   const allowGroundVariants = biome.creatureKind !== "fish";
-  const shouldGuaranteeBurrower = biome.id === "marsh" && allowGroundVariants;
+  const shouldGuaranteeBurrower = biome.guaranteeBurrower === true && allowGroundVariants;
   let budget = ncreatures;
   // In water biomes, raise the minimum-Y threshold so ground creatures don't
   // spawn submerged. Fish are the exception: they spawn on underwater shelves
@@ -1412,7 +1378,11 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
   function placeOnGround(c, { maxTries = 40 } = {}) {
     if (c.isFish && biome.water) {
       const placedFish = placeFishUnderwater(c);
-      if (!placedFish) disposeGroup(c.group);
+      // ARC-004: skip the creature pool's currently-cached geometries/
+      // materials — c.group may be the only consumer that hasn't been added
+      // to worldState.world yet, but the pool map itself (and therefore any
+      // other already-placed creature sharing a key) still holds them.
+      if (!placedFish) disposeGroup(c.group, { skip: creaturePoolResources() });
       return placedFish;
     }
     let p = { x: 0, z: 0 };
@@ -1427,7 +1397,7 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
       }
     }
     if (!found) {
-      disposeGroup(c.group);
+      disposeGroup(c.group, { skip: creaturePoolResources() });
       return false;
     }
     c.group.position.set(p.x, y + 0.4, p.z);
@@ -1472,7 +1442,7 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
           kidPlaced = true;
           break;
         }
-        if (!kidPlaced) disposeGroup(kid.group);
+        if (!kidPlaced) disposeGroup(kid.group, { skip: creaturePoolResources() });
       }
     } else if (allowGroundVariants && r < 0.30) {
       if (placeOnGround(makeCreature(biome, { sleeper: true }))) budget--;
@@ -1502,7 +1472,7 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
       if (placeFishUnderwater(angler)) {
         anglersPlaced++;
       } else {
-        disposeGroup(angler.group);
+        disposeGroup(angler.group, { skip: creaturePoolResources() });
       }
     }
   }
@@ -1530,7 +1500,11 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
         worldState.caterpillars.push(crawler);
         return true;
       }
-      disposeGroup(crawler.group);
+      // QA-L05/ARC-004: skip the now-pooled eye/pupil geometries/materials —
+      // this crawler may be the only consumer that hasn't been added to
+      // worldState.world yet, but the pool map (and any other already-placed
+      // caterpillar sharing a key) still holds them.
+      disposeGroup(crawler.group, { skip: caterpillarPoolResources() });
     }
     return false;
   }

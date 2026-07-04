@@ -20,12 +20,17 @@ assert(
   'Photo review should suspend first-person movement while the save/discard prompt is visible.'
 );
 assert(
-  uiSource.includes('if (_photoFP.reviewOpen) return;'),
+  uiSource.includes('ignoreLockLossIf: (fp) => fp.reviewOpen,'),
   'Pointer-lock changes caused by photo review should not exit photo mode.'
 );
 assert(
-  uiSource.includes('else if (k === "s") _photoFP.keys.s = down;'),
-  'S key should remain backward movement in first-person photo mode.'
+  uiSource.includes('if (ignoreLockLossIf?.(fp)) return;'),
+  'The shared first-person pointer-lock state machine should honor each mode\'s lock-loss guard (QA-007).'
+);
+assert(
+  uiSource.includes('const knownKeys = new Set(["w", "a", "s", "d", "shift", ...extraKeys]);')
+    && uiSource.includes('fp.keys[k] = down;'),
+  'S key should remain backward movement in first-person photo mode via the shared WASD key handler (QA-007).'
 );
 assert(
   !uiSource.includes('if (k === "s" && down) { capturePhoto(); e.preventDefault(); return; }'),

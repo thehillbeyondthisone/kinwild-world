@@ -119,7 +119,7 @@ assert(
     && worldSource.includes('function nestTouchesWater(x, z, r)')
     && worldSource.includes('function sampleTerrainFootprint(x, z, r)')
     && worldSource.includes('function getFlyerNestGroundPose(x, z, r, scale)')
-    && worldSource.includes('Math.max(...heights) - FLYER_NEST_BASE_CLEARANCE * scale')
+    && worldSource.includes('maxY - FLYER_NEST_BASE_CLEARANCE * scale')
     && worldSource.includes('function pickNestHost')
     && worldSource.includes('if (!choices.length) return null')
     && worldSource.includes('if (nestTouchesWater(host.x, host.z, r * 1.2)) continue')

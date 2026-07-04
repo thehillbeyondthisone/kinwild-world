@@ -7,7 +7,7 @@ import { buildObstacleGrid, wakeCreature, lookAtCreature } from "./fauna.js";
 import { BIOMES } from "./biomes.js";
 import { LOWFX, rendererPixelRatioCap } from "./lowfx.js";
 import { INSPECT } from "./inspect.js";
-import { APP_VERSION } from "./state.js";
+import { APP_VERSION, GRASS_DENSITY_BASE, GRASS_HEIGHT_BASE } from "./state.js";
 import {
   AVAILABLE_MUSIC_TRACKS,
   defaultTrackForBiome,
@@ -26,7 +26,6 @@ import { findPhotoCatalogSubject } from "./photoSubject.js";
 // main.js's existing `import { loadSettings } from "./src/ui.js"` keeps working.
 import {
   SETTINGS_KEY,
-  GRASS_DENSITY_BASE,
   shouldUseMobileHud,
   shouldShowFirstVisitHelp,
   loadSettings,
@@ -55,6 +54,12 @@ let _photoReview = null;
 let _catalogPanel = null;
 let _catalogOpen = false;
 let _catalogObjectUrls = [];
+// QA-022: renderCatalogPanel is async with a per-entry await inside its loop
+// (blob fetch); bumped on every call and checked after each await so an
+// overlapping run (panel re-opened, or a save triggering a re-render mid-fetch)
+// bails out instead of interleaving DOM clears/appends and object-URL revokes
+// with a stale run.
+let _catalogRenderGen = 0;
 // Bound exit function for the Escape handler; set inside initUi().
 let _exitStroll = () => {};
 let _enterStroll = () => {};
@@ -133,6 +138,77 @@ function clampFirstPersonPitch(fp) {
   const lim = Math.PI / 2 - 0.05;
   if (fp.pitch > lim) fp.pitch = lim;
   if (fp.pitch < -lim) fp.pitch = -lim;
+}
+
+// QA-007: stroll, main-view fly, and photo mode each re-implemented the same
+// mouse-look handler (identical sensitivity constant + pitch clamp), WASD(+
+// extra) key-mapping bookkeeping, and pointer-lock state machine (including
+// the retry-on-next-click fallback needed when pointer lock is requested
+// outside a user gesture, e.g. portal arrival). One factory instance per
+// mode keeps each mode's own extras — stroll's ground snap + eye height, fly's
+// touch joystick, photo's review-mode lock-loss guard — in that mode's own
+// enter/exit function; only the genuinely duplicated plumbing lives here, so
+// a fix to it (like the pointer-lock retry) reaches all three automatically.
+// `getFp` reads the mode's own module-scope state variable (`_stroll` /
+// `_flyFP` / `_photoFP`) so this factory never needs to be told when a mode
+// starts or stops — the enter/exit functions just assign that variable as
+// they already did.
+function makeFirstPersonMode({ canvas, getFp, extraKeys = [], ignoreLockLossIf, sens = 0.0022 }) {
+  const knownKeys = new Set(["w", "a", "s", "d", "shift", ...extraKeys]);
+  let exitFn = () => {};
+
+  function onMove(e) {
+    const fp = getFp();
+    if (!fp) return;
+    if (document.pointerLockElement !== canvas) return;
+    fp.yaw -= e.movementX * sens;
+    fp.pitch -= e.movementY * sens;
+    clampFirstPersonPitch(fp);
+  }
+  function makeKeyHandler(down) {
+    return (e) => {
+      const fp = getFp();
+      if (!fp) return;
+      const k = e.key.toLowerCase();
+      if (!knownKeys.has(k)) return;
+      fp.keys[k] = down;
+      e.preventDefault();
+    };
+  }
+  const onKeyDown = makeKeyHandler(true);
+  const onKeyUp = makeKeyHandler(false);
+  function onLockChange() {
+    const fp = getFp();
+    if (!fp) return;
+    if (document.pointerLockElement === canvas) {
+      fp.hasPointerLock = true;
+      return;
+    }
+    if (ignoreLockLossIf?.(fp)) return;
+    if (fp.hasPointerLock) exitFn();
+  }
+  function requestPointerLock(armRetry = false) {
+    canvas.requestPointerLock?.().catch(() => {});
+    if (!armRetry) return;
+    const retryPointerLock = () => {
+      const fp = getFp();
+      if (fp && document.pointerLockElement !== canvas) {
+        canvas.requestPointerLock?.().catch(() => {});
+      }
+    };
+    canvas.addEventListener("pointerdown", retryPointerLock, { once: true });
+  }
+
+  return {
+    onMove,
+    onKeyDown,
+    onKeyUp,
+    onLockChange,
+    requestPointerLock,
+    setExitFn(fn) {
+      exitFn = fn;
+    },
+  };
 }
 
 export function setStrollLocalPose(localX, localZ, yaw) {
@@ -436,6 +512,7 @@ export function initUi({ camera, canvas, controls, renderer }) {
   }
 
   async function renderCatalogPanel() {
+    const myGen = ++_catalogRenderGen;
     clearCatalogObjectUrls();
     catalogList.innerHTML = "";
     const currentId = state.currentBiome?.id ?? null;
@@ -500,6 +577,7 @@ export function initUi({ camera, canvas, controls, renderer }) {
 
           if (saved) {
             const blob = await catalogStore.getPhotoBlob(entry.key);
+            if (myGen !== _catalogRenderGen) return;
             if (blob) {
               const url = URL.createObjectURL(blob);
               _catalogObjectUrls.push(url);
@@ -679,9 +757,7 @@ export function initUi({ camera, canvas, controls, renderer }) {
     strollBtn.querySelector(".setting-button-label").textContent = on
       ? "exit stroll mode"
       : "first-person stroll";
-    strollBtn.querySelector(".setting-button-hint").textContent = on
-      ? "wasd · mouse-look · esc to exit"
-      : "wasd · mouse-look · esc to exit";
+    strollBtn.querySelector(".setting-button-hint").textContent = "wasd · mouse-look · esc to exit";
     strollToggle.classList.toggle("active", on);
     strollToggle.setAttribute("aria-pressed", on ? "true" : "false");
     strollToggle.setAttribute("aria-label", on ? "exit first-person stroll" : "enter first-person stroll");
@@ -704,15 +780,10 @@ export function initUi({ camera, canvas, controls, renderer }) {
     document.body.classList.toggle("fly-mode", on);
     syncFlyTouchControls();
   }
+  const strollMode = makeFirstPersonMode({ canvas, getFp: () => _stroll });
+  strollMode.setExitFn(() => exitStroll());
   function requestStrollPointerLock(armRetry = false) {
-    canvas.requestPointerLock?.().catch(() => {});
-    if (!armRetry) return;
-    const retryPointerLock = () => {
-      if (_stroll && document.pointerLockElement !== canvas) {
-        canvas.requestPointerLock?.().catch(() => {});
-      }
-    };
-    canvas.addEventListener("pointerdown", retryPointerLock, { once: true });
+    strollMode.requestPointerLock(armRetry);
   }
   function enterStroll() {
     if (_stroll) return;
@@ -790,59 +861,28 @@ export function initUi({ camera, canvas, controls, renderer }) {
         autoRotate: savedAutoRotate,
       },
       savedTarget: controls.target,
-      handlers: {},
       hasPointerLock: false,
     };
     camera.position.y = groundY + 1.9 * ws0;
 
     // Pointer lock so the mouse can move infinitely without leaving the
     // canvas. Browsers require this from a user gesture (button click).
-    canvas.requestPointerLock?.().catch(() => {});
+    strollMode.requestPointerLock();
 
-    const onMove = (e) => {
-      if (!_stroll) return;
-      if (document.pointerLockElement !== canvas) return;
-      const sens = 0.0022;
-      _stroll.yaw -= e.movementX * sens;
-      _stroll.pitch -= e.movementY * sens;
-      clampFirstPersonPitch(_stroll);
-    };
-    const onKey = (down) => (e) => {
-      if (!_stroll) return;
-      const k = e.key.toLowerCase();
-      if (k === "w") _stroll.keys.w = down;
-      else if (k === "a") _stroll.keys.a = down;
-      else if (k === "s") _stroll.keys.s = down;
-      else if (k === "d") _stroll.keys.d = down;
-      else if (k === "shift") _stroll.keys.shift = down;
-      else return;
-      e.preventDefault();
-    };
-    const onKeyDown = onKey(true);
-    const onKeyUp = onKey(false);
-    const onLockChange = () => {
-      if (!_stroll) return;
-      if (document.pointerLockElement === canvas) {
-        _stroll.hasPointerLock = true;
-        return;
-      }
-      if (_stroll.hasPointerLock) exitStroll();
-    };
-    document.addEventListener("mousemove", onMove);
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    document.addEventListener("pointerlockchange", onLockChange);
-    _stroll.handlers = { onMove, onKeyDown, onKeyUp, onLockChange };
+    document.addEventListener("mousemove", strollMode.onMove);
+    window.addEventListener("keydown", strollMode.onKeyDown);
+    window.addEventListener("keyup", strollMode.onKeyUp);
+    document.addEventListener("pointerlockchange", strollMode.onLockChange);
     applyStrollVisualComfort(true);
     syncStrollButton();
   }
   function exitStroll() {
     if (!_stroll) return;
-    const { handlers, savedCam } = _stroll;
-    document.removeEventListener("mousemove", handlers.onMove);
-    window.removeEventListener("keydown", handlers.onKeyDown);
-    window.removeEventListener("keyup", handlers.onKeyUp);
-    document.removeEventListener("pointerlockchange", handlers.onLockChange);
+    const { savedCam } = _stroll;
+    document.removeEventListener("mousemove", strollMode.onMove);
+    window.removeEventListener("keydown", strollMode.onKeyDown);
+    window.removeEventListener("keyup", strollMode.onKeyUp);
+    document.removeEventListener("pointerlockchange", strollMode.onLockChange);
     if (document.pointerLockElement === canvas) document.exitPointerLock?.();
     // Restore the orbit anchor and camera. Re-enable orbit controls so the
     // user can rotate again from where they left off.
@@ -864,6 +904,8 @@ export function initUi({ camera, canvas, controls, renderer }) {
   });
   syncStrollButton();
 
+  const flyMode = makeFirstPersonMode({ canvas, getFp: () => _flyFP, extraKeys: ["e", "q"] });
+  flyMode.setExitFn(() => exitFlyMode());
   function enterFlyMode() {
     if (_flyFP) return;
     if (_stroll) exitStroll();
@@ -894,58 +936,25 @@ export function initUi({ camera, canvas, controls, renderer }) {
       fly: true,
       savedCam: { autoRotate: savedAutoRotate },
       savedTarget: controls.target,
-      handlers: {},
       hasPointerLock: false,
     };
 
-    canvas.requestPointerLock?.().catch(() => {});
+    flyMode.requestPointerLock();
 
-    const onMove = (e) => {
-      if (!_flyFP) return;
-      if (document.pointerLockElement !== canvas) return;
-      const sens = 0.0022;
-      _flyFP.yaw -= e.movementX * sens;
-      _flyFP.pitch -= e.movementY * sens;
-      clampFirstPersonPitch(_flyFP);
-    };
-    const onKey = (down) => (e) => {
-      if (!_flyFP) return;
-      const k = e.key.toLowerCase();
-      if (k === "w") _flyFP.keys.w = down;
-      else if (k === "a") _flyFP.keys.a = down;
-      else if (k === "s") _flyFP.keys.s = down;
-      else if (k === "d") _flyFP.keys.d = down;
-      else if (k === "shift") _flyFP.keys.shift = down;
-      else if (k === "e") _flyFP.keys.e = down;
-      else if (k === "q") _flyFP.keys.q = down;
-      else return;
-      e.preventDefault();
-    };
-    const onKeyDown = onKey(true);
-    const onKeyUp = onKey(false);
-    const onLockChange = () => {
-      if (!_flyFP) return;
-      if (document.pointerLockElement === canvas) {
-        _flyFP.hasPointerLock = true;
-        return;
-      }
-      if (_flyFP.hasPointerLock) exitFlyMode();
-    };
-    document.addEventListener("mousemove", onMove);
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-    document.addEventListener("pointerlockchange", onLockChange);
-    _flyFP.handlers = { onMove, onKeyDown, onKeyUp, onLockChange };
+    document.addEventListener("mousemove", flyMode.onMove);
+    window.addEventListener("keydown", flyMode.onKeyDown);
+    window.addEventListener("keyup", flyMode.onKeyUp);
+    document.addEventListener("pointerlockchange", flyMode.onLockChange);
     applyStrollVisualComfort(true);
     syncFlyModeButton();
   }
   function exitFlyMode() {
     if (!_flyFP) return;
-    const { handlers, savedCam } = _flyFP;
-    document.removeEventListener("mousemove", handlers.onMove);
-    window.removeEventListener("keydown", handlers.onKeyDown);
-    window.removeEventListener("keyup", handlers.onKeyUp);
-    document.removeEventListener("pointerlockchange", handlers.onLockChange);
+    const { savedCam } = _flyFP;
+    document.removeEventListener("mousemove", flyMode.onMove);
+    window.removeEventListener("keydown", flyMode.onKeyDown);
+    window.removeEventListener("keyup", flyMode.onKeyUp);
+    document.removeEventListener("pointerlockchange", flyMode.onLockChange);
     if (document.pointerLockElement === canvas) document.exitPointerLock?.();
     controls.autoRotate = savedCam.autoRotate && state.userSettings.autoRotate;
     controls.enabled = true;
@@ -1215,9 +1224,8 @@ export function initUi({ camera, canvas, controls, renderer }) {
     saveSettings();
   });
 
-  // Expose so world.js / regen flow can re-apply after generateWorld rebuilds
-  // state.grass.uniforms. The seed-watcher interval below picks up regen
-  // events generically and re-baselines.
+  // Expose so the "world-ready" listener below can re-apply after
+  // generateWorld rebuilds state.grass.uniforms on every regen (ARC-005).
   state._reapplyWindSettings = () => {
     _grassWindBase = null;
     applyWindSettings();
@@ -1267,7 +1275,6 @@ export function initUi({ camera, canvas, controls, renderer }) {
   // — only the slider display is rescaled. Conversion:
   //   sliderValue = internalValue / BASE * 100
   //   internalValue = sliderValue / 100 * BASE
-  const HEIGHT_BASE = 0.96;
   grassDetailsEl.open = !!state.userSettings.grassPanelOpen;
   grassEnabledEl.checked = state.userSettings.grassEnabled !== false;
   grassDensityEl.value = String(
@@ -1275,7 +1282,7 @@ export function initUi({ camera, canvas, controls, renderer }) {
   );
   grassDensityValueEl.textContent = grassDensityEl.value + "%";
   grassHeightEl.value = String(
-    Math.round(((state.userSettings.grassHeight ?? HEIGHT_BASE) / HEIGHT_BASE) * 100)
+    Math.round(((state.userSettings.grassHeight ?? GRASS_HEIGHT_BASE) / GRASS_HEIGHT_BASE) * 100)
   );
   grassHeightValueEl.textContent = grassHeightEl.value + "%";
   syncGrassControls();
@@ -1300,7 +1307,7 @@ export function initUi({ camera, canvas, controls, renderer }) {
   });
   grassHeightEl.addEventListener("input", () => {
     const v = Number(grassHeightEl.value);
-    state.userSettings.grassHeight = (v / 100) * HEIGHT_BASE;
+    state.userSettings.grassHeight = (v / 100) * GRASS_HEIGHT_BASE;
     grassHeightValueEl.textContent = v + "%";
     applyGrassSettings();
     saveSettings();
@@ -1327,6 +1334,16 @@ export function initUi({ camera, canvas, controls, renderer }) {
   };
   applyGrassSettings();
   syncGrassControls();
+
+  // ARC-005: re-baseline wind/grass settings on every regen via the
+  // "world-ready" event generateWorld dispatches at the end of every build
+  // (initial load and regen alike), instead of world.js reaching into ui.js
+  // state directly. dispatchEvent is synchronous, so this still runs within
+  // the same tick as the old direct calls from world.js — no visible delay.
+  window.addEventListener("world-ready", () => {
+    if (state._reapplyWindSettings) state._reapplyWindSettings();
+    if (state._reapplyGrassSettings) state._reapplyGrassSettings();
+  });
 
   grassDetailsEl.insertAdjacentHTML("afterend", `
       <details class="fx-details" id="setting-portal-details">
@@ -1722,7 +1739,9 @@ export function initUi({ camera, canvas, controls, renderer }) {
   let _copyResetTimer = 0;
   copyBtn.addEventListener("click", async () => {
     const url = window.location.href;
-    let ok = false; // eslint-disable-line no-useless-assignment
+    // Not initialized here: every path below (both try branches and the
+    // catch) assigns before `ok` is read, so a starting value would be dead.
+    let ok;
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
@@ -1847,10 +1866,10 @@ export function initUi({ camera, canvas, controls, renderer }) {
       _lastSeenSeed = state.currentSeed;
       syncBookmarkButton();
       photoSeedValueEl.textContent = formatSeed(state.currentSeed);
-      // state.grass.uniforms is a new object after every regen — re-baseline
-      // and re-apply user wind/grass settings so they survive across worlds.
-      if (state._reapplyWindSettings) state._reapplyWindSettings();
-      if (state._reapplyGrassSettings) state._reapplyGrassSettings();
+      // Wind/grass re-baselining now happens via the "world-ready" listener
+      // above (ARC-005) — this poll still exists to catch other seed-change
+      // side effects (bookmark label, photo HUD seed, biome overrides, music
+      // track select, locator reset).
       syncBiomeOverrideSettings();
       refreshMusicTrackSelect();
       // Close the locator on regen — entity references are stale.
@@ -1995,8 +2014,17 @@ export function initUi({ camera, canvas, controls, renderer }) {
       replace.type = "button";
       replace.textContent = "replace";
       replace.addEventListener("click", async () => {
-        await saveCatalogPhoto(subject, dataUrl, "replace", status);
-        closePhotoReview();
+        const priorStatus = status.textContent;
+        try {
+          await saveCatalogPhoto(subject, dataUrl, "replace", status);
+          closePhotoReview();
+        } catch (error) {
+          // QA-020: an IndexedDB failure would otherwise leave the status
+          // label stuck on "saving catalog photo..." forever.
+          console.error("Failed to replace catalog photo", error);
+          status.textContent = "save failed — try again";
+          setTimeout(() => { status.textContent = priorStatus; }, 1800);
+        }
       });
       catalogEl.append(keep, replace);
     } else {
@@ -2005,8 +2033,15 @@ export function initUi({ camera, canvas, controls, renderer }) {
       save.type = "button";
       save.textContent = "save to catalog";
       save.addEventListener("click", async () => {
-        await saveCatalogPhoto(subject, dataUrl, "save", status);
-        closePhotoReview();
+        const priorStatus = status.textContent;
+        try {
+          await saveCatalogPhoto(subject, dataUrl, "save", status);
+          closePhotoReview();
+        } catch (error) {
+          console.error("Failed to save catalog photo", error);
+          status.textContent = "save failed — try again";
+          setTimeout(() => { status.textContent = priorStatus; }, 1800);
+        }
       });
       catalogEl.appendChild(save);
     }
@@ -2172,6 +2207,13 @@ export function initUi({ camera, canvas, controls, renderer }) {
     photoModeBtn.classList.toggle("active", on);
     photoModeLabel.textContent = on ? "exit photo mode" : "photo mode";
   }
+  const photoMode = makeFirstPersonMode({
+    canvas,
+    getFp: () => _photoFP,
+    extraKeys: ["e", "q"],
+    ignoreLockLossIf: (fp) => fp.reviewOpen,
+  });
+  photoMode.setExitFn(() => setPhotoMode(false));
   function setPhotoMode(on) {
     if (on) {
       if (_stroll) exitStroll();
@@ -2211,8 +2253,7 @@ export function initUi({ camera, canvas, controls, renderer }) {
         pitch,
         fly: true, // free-flight — no terrain lock
         keys: { w: false, a: false, s: false, d: false, shift: false, space: false, ctrl: false, e: false, q: false },
-        handlers: {},
-        _hadLock: false,
+        hasPointerLock: false,
         reviewOpen: false,
       };
       camera.fov = PHOTO_BASE_FOV;
@@ -2222,17 +2263,8 @@ export function initUi({ camera, canvas, controls, renderer }) {
       photoSeedEl.setAttribute("aria-hidden", "false");
       photoHudEl.setAttribute("aria-hidden", "false");
       _updatePhotoZoom();
-      canvas.requestPointerLock?.().catch(() => {});
+      photoMode.requestPointerLock();
 
-      const onMove = (e) => {
-        if (!_photoFP) return;
-        const sens = 0.0022;
-        _photoFP.yaw -= e.movementX * sens;
-        _photoFP.pitch -= e.movementY * sens;
-        const lim = Math.PI / 2 - 0.05;
-        if (_photoFP.pitch > lim) _photoFP.pitch = lim;
-        if (_photoFP.pitch < -lim) _photoFP.pitch = -lim;
-      };
       const onWheel = (e) => {
         if (!_photoFP) return;
         e.preventDefault();
@@ -2241,53 +2273,29 @@ export function initUi({ camera, canvas, controls, renderer }) {
         camera.updateProjectionMatrix();
         _updatePhotoZoom();
       };
-      const onKey = (down) => (e) => {
-        if (!_photoFP) return;
-        const k = e.key.toLowerCase();
-        if (k === "w") _photoFP.keys.w = down;
-        else if (k === "a") _photoFP.keys.a = down;
-        else if (k === "s") _photoFP.keys.s = down;
-        else if (k === "d") _photoFP.keys.d = down;
-        else if (k === "shift") _photoFP.keys.shift = down;
-        else if (k === "e") _photoFP.keys.e = down;
-        else if (k === "q") _photoFP.keys.q = down;
-        else return;
-        e.preventDefault();
-      };
-      const onLockChange = () => {
-        if (!_photoFP) return;
-        if (document.pointerLockElement === canvas) {
-          _photoFP._hadLock = true;
-        } else if (_photoFP.reviewOpen) return;
-        else if (_photoFP._hadLock) {
-          setPhotoMode(false);
-        }
-      };
       const onClick = (e) => {
         if (!_photoFP) return;
         if (e.button === 0) capturePhoto();
       };
-      const onKeyDown = onKey(true);
-      const onKeyUp = onKey(false);
-      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mousemove", photoMode.onMove);
       canvas.addEventListener("wheel", onWheel, { passive: false });
       canvas.addEventListener("mousedown", onClick);
-      window.addEventListener("keydown", onKeyDown);
-      window.addEventListener("keyup", onKeyUp);
-      document.addEventListener("pointerlockchange", onLockChange);
-      _photoFP.handlers = { onMove, onWheel, onClick, onKeyDown, onKeyUp, onLockChange };
+      window.addEventListener("keydown", photoMode.onKeyDown);
+      window.addEventListener("keyup", photoMode.onKeyUp);
+      document.addEventListener("pointerlockchange", photoMode.onLockChange);
+      _photoFP.handlers = { onWheel, onClick };
       applyStrollVisualComfort(true);
     } else {
       // Close any open photo review first
       if (_photoReview) closePhotoReview({ resumePhotoFp: false });
       if (!_photoFP) { syncPhotoModeButton(); return; }
       const { handlers, savedCam } = _photoFP;
-      document.removeEventListener("mousemove", handlers.onMove);
+      document.removeEventListener("mousemove", photoMode.onMove);
       canvas.removeEventListener("wheel", handlers.onWheel);
       canvas.removeEventListener("mousedown", handlers.onClick);
-      window.removeEventListener("keydown", handlers.onKeyDown);
-      window.removeEventListener("keyup", handlers.onKeyUp);
-      document.removeEventListener("pointerlockchange", handlers.onLockChange);
+      window.removeEventListener("keydown", photoMode.onKeyDown);
+      window.removeEventListener("keyup", photoMode.onKeyUp);
+      document.removeEventListener("pointerlockchange", photoMode.onLockChange);
       if (document.pointerLockElement === canvas) document.exitPointerLock?.();
 
       camera.position.copy(savedCam.pos);
@@ -2680,11 +2688,13 @@ export function initUi({ camera, canvas, controls, renderer }) {
   });
 
   window.addEventListener("keydown", (e) => {
-    // Ignore keys when an input/textarea has focus (e.g., dev tools, browser
-    // address bar overlays aren't relevant — but a user-typed range is).
+    // Ignore keys when a form control or editable element has focus (e.g. the
+    // music dropdown) so its own key handling (or plain typing) isn't
+    // hijacked by regen/pause/etc. shortcuts. `initUi` is only called when
+    // `!INSPECT` (see main.js), so an `if (INSPECT) return` guard here would
+    // be unreachable dead code.
     const tag = e.target?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA") return;
-    if (INSPECT) return;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target?.isContentEditable) return;
     if (e.key === "Escape") {
       if (_photoReview) { closePhotoReview({ resumePhotoFp: false }); setPhotoMode(false); }
       else if (tour && tour.active) stopTour();
@@ -2724,8 +2734,8 @@ export function initUi({ camera, canvas, controls, renderer }) {
       const { isCreature } = _locatorCycle;
       // Skip entities removed by regen (group no longer in the scene).
       while (_locatorCycle.entities.length > 0) {
-        const e = _locatorCycle.entities[_locatorCycle.index];
-        const stillValid = e.group ? e.group.parent !== null : e.parent !== null;
+        const candidate = _locatorCycle.entities[_locatorCycle.index];
+        const stillValid = candidate.group ? candidate.group.parent !== null : candidate.parent !== null;
         if (stillValid) break;
         _locatorCycle.entities.splice(_locatorCycle.index, 1);
         if (_locatorCycle.index >= _locatorCycle.entities.length) _locatorCycle.index = 0;

@@ -8,6 +8,7 @@
 import * as THREE from "three";
 import { state } from "./state.js";
 import { LOWFX } from "./lowfx.js";
+import { replaceOrWarn } from "./util.js";
 
 const TERRAIN_PBR_TEX_SIZE = 384;
 const LEAFBALL_BARK_TEX_SIZE = 256;
@@ -25,6 +26,10 @@ const UNDERSIDE_GILL_BANDS = 38;
 const UNDERSIDE_GILL_LINE_WIDTH = 0.026;
 const UNDERSIDE_GILL_CONTRAST = 2.1;
 const _detailTextureCache = new Map();
+// Scratch vector reused across the per-texel normal computation in
+// buildTerrainPBRTextures (avoids ~147k `new THREE.Vector3()` allocations
+// per regen at the default TERRAIN_PBR_TEX_SIZE).
+const _scratchNormal = /* @__PURE__ */ new THREE.Vector3();
 
 export function resetPBRTextureCache() {
   // Dispose defensively: textures attached to world materials were already
@@ -184,7 +189,7 @@ function buildTerrainPBRTextures(biome, heightFn) {
       const hU = sampleDetailHeight(heightFn, biome, x, z + texelWorld);
       const dX = (hR - hL) / (texelWorld * 2);
       const dZ = (hU - hD) / (texelWorld * 2);
-      const normal = new THREE.Vector3(-dX * normalStrength, 1, -dZ * normalStrength).normalize();
+      const normal = _scratchNormal.set(-dX * normalStrength, 1, -dZ * normalStrength).normalize();
       const slope = clamp01((Math.abs(dX) + Math.abs(dZ)) * 0.45);
       const grain = clamp01(detailNoise(x * 1.8, z * 1.8, state.currentSeed + 97) * 0.5 + 0.5);
       const flatGlint = (1 - slope) * grain;
@@ -754,7 +759,8 @@ function addProceduralMushroomGillTint(material) {
   const prev = material.onBeforeCompile;
   material.onBeforeCompile = (shader) => {
     if (prev) prev(shader);
-    shader.fragmentShader = shader.fragmentShader.replace(
+    shader.fragmentShader = replaceOrWarn(
+      shader.fragmentShader,
       "#include <map_fragment>",
       `#include <map_fragment>
       #ifdef USE_MAP
@@ -772,11 +778,22 @@ function addProceduralMushroomGillTint(material) {
           vec3 warmGillValley = vec3(0.38, 0.26, 0.15);
           diffuseColor.rgb = mix(diffuseColor.rgb * warmGillHighlight, warmGillValley, gillMask * 0.82 + gillCore * 0.30);
         }
-      #endif`
+      #endif`,
+      "pbr.mushroomGillTint.map_fragment"
     );
   };
   material.customProgramCacheKey = () => "small-world-procedural-mushroom-gills-v2";
   return material;
+}
+
+// Every makeXPBRMaterial() below wants the same fallback: plain
+// MeshStandardMaterial under LOWFX or when the user has disabled PBR detail
+// textures, otherwise build the MeshPhysicalMaterial + detail-map variant.
+function pbrMaterialOr(fallbackParams, buildPhysical) {
+  if (LOWFX || state.userSettings.pbrDetails === false) {
+    return new THREE.MeshStandardMaterial(fallbackParams);
+  }
+  return buildPhysical();
 }
 
 function baseTerrainMaterialParams(biome) {
@@ -793,125 +810,116 @@ function baseTerrainMaterialParams(biome) {
 
 export function makeTerrainPBRMaterial(biome, heightFn) {
   const baseParams = baseTerrainMaterialParams(biome);
-  if (LOWFX || state.userSettings.pbrDetails === false) {
-    return new THREE.MeshStandardMaterial(baseParams);
-  }
-
-  const material = new THREE.MeshPhysicalMaterial({
-    ...baseParams,
-    reflectivity: biome.cloudlike ? 0.14 : 0.28,
-    specularIntensity: biome.cloudlike ? 0.18 : 0.42,
-    specularColor: new THREE.Color(biome.sun).lerp(new THREE.Color(0xffffff), 0.55),
+  return pbrMaterialOr(baseParams, () => {
+    const material = new THREE.MeshPhysicalMaterial({
+      ...baseParams,
+      reflectivity: biome.cloudlike ? 0.14 : 0.28,
+      specularIntensity: biome.cloudlike ? 0.18 : 0.42,
+      specularColor: new THREE.Color(biome.sun).lerp(new THREE.Color(0xffffff), 0.55),
+    });
+    const { normalTexture, materialTexture } = buildTerrainPBRTextures(biome, heightFn);
+    material.normalMapType = THREE.ObjectSpaceNormalMap;
+    return applyDetailMaps(material, normalTexture, materialTexture);
   });
-  const { normalTexture, materialTexture } = buildTerrainPBRTextures(biome, heightFn);
-  material.normalMapType = THREE.ObjectSpaceNormalMap;
-  return applyDetailMaps(material, normalTexture, materialTexture);
 }
 
 export function makeLeafballTreeTrunkPBRMaterial(params) {
-  if (LOWFX || state.userSettings.pbrDetails === false) {
-    return new THREE.MeshStandardMaterial(params);
-  }
-  const material = new THREE.MeshPhysicalMaterial({
-    ...params,
-    reflectivity: 0.20,
-    specularIntensity: 0.46,
-    specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xffffff), 0.38),
+  return pbrMaterialOr(params, () => {
+    const material = new THREE.MeshPhysicalMaterial({
+      ...params,
+      reflectivity: 0.20,
+      specularIntensity: 0.46,
+      specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xffffff), 0.38),
+    });
+    const { normalTexture, materialTexture } = cachedDetailTextures("leafball-bark", buildLeafballBarkTextures);
+    material.normalScale.set(0.90, 0.90);
+    return applyDetailMaps(material, normalTexture, materialTexture);
   });
-  const { normalTexture, materialTexture } = cachedDetailTextures("leafball-bark", buildLeafballBarkTextures);
-  material.normalScale.set(0.90, 0.90);
-  return applyDetailMaps(material, normalTexture, materialTexture);
 }
 
 export function makeLeafballTreeLeafPBRMaterial(params) {
-  if (LOWFX || state.userSettings.pbrDetails === false) {
-    return new THREE.MeshStandardMaterial(params);
-  }
-  const material = new THREE.MeshPhysicalMaterial({
-    ...params,
-    reflectivity: 0.22,
-    specularIntensity: 0.58,
-    specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xffffff), 0.38),
+  return pbrMaterialOr(params, () => {
+    const material = new THREE.MeshPhysicalMaterial({
+      ...params,
+      reflectivity: 0.22,
+      specularIntensity: 0.58,
+      specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xffffff), 0.38),
+    });
+    const { normalTexture, materialTexture } = cachedDetailTextures("leafball-leaf", buildLeafballLeafTextures);
+    material.normalScale.set(0.72, 0.72);
+    return applyDetailMaps(material, normalTexture, materialTexture);
   });
-  const { normalTexture, materialTexture } = cachedDetailTextures("leafball-leaf", buildLeafballLeafTextures);
-  material.normalScale.set(0.72, 0.72);
-  return applyDetailMaps(material, normalTexture, materialTexture);
 }
 
 export function makeDeadTreePBRMaterial(params) {
-  if (LOWFX || state.userSettings.pbrDetails === false) {
-    return new THREE.MeshStandardMaterial(params);
-  }
-  const material = new THREE.MeshPhysicalMaterial({
-    ...params,
-    reflectivity: 0.16,
-    specularIntensity: 0.34,
-    specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xd8d2c7), 0.34),
+  return pbrMaterialOr(params, () => {
+    const material = new THREE.MeshPhysicalMaterial({
+      ...params,
+      reflectivity: 0.16,
+      specularIntensity: 0.34,
+      specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xd8d2c7), 0.34),
+    });
+    const { normalTexture, materialTexture } = cachedDetailTextures("deadtree-bark", buildDeadTreeBarkTextures);
+    material.normalScale.set(1.18, 1.18);
+    return applyDetailMaps(material, normalTexture, materialTexture);
   });
-  const { normalTexture, materialTexture } = cachedDetailTextures("deadtree-bark", buildDeadTreeBarkTextures);
-  material.normalScale.set(1.18, 1.18);
-  return applyDetailMaps(material, normalTexture, materialTexture);
 }
 
 export function makeFlyerNestPBRMaterial(params) {
-  if (LOWFX || state.userSettings.pbrDetails === false) {
-    return new THREE.MeshStandardMaterial(params);
-  }
-  const material = new THREE.MeshPhysicalMaterial({
-    ...params,
-    reflectivity: 0.14,
-    specularIntensity: 0.28,
-    specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xe6d4b0), 0.30),
+  return pbrMaterialOr(params, () => {
+    const material = new THREE.MeshPhysicalMaterial({
+      ...params,
+      reflectivity: 0.14,
+      specularIntensity: 0.28,
+      specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xe6d4b0), 0.30),
+    });
+    const { colorTexture, normalTexture, materialTexture } = cachedDetailTextures("flyer-nest-twigs", buildFlyerNestTwigTextures);
+    material.color.set(0xffffff);
+    material.normalScale.set(1.05, 1.05);
+    return applyDetailMaps(material, normalTexture, materialTexture, colorTexture);
   });
-  const { colorTexture, normalTexture, materialTexture } = cachedDetailTextures("flyer-nest-twigs", buildFlyerNestTwigTextures);
-  material.color.set(0xffffff);
-  material.normalScale.set(1.05, 1.05);
-  return applyDetailMaps(material, normalTexture, materialTexture, colorTexture);
 }
 
 export function makeStonePBRMaterial(params) {
-  if (LOWFX || state.userSettings.pbrDetails === false) {
-    return new THREE.MeshStandardMaterial(params);
-  }
-  const material = new THREE.MeshPhysicalMaterial({
-    ...params,
-    reflectivity: 0.14,
-    specularIntensity: 0.30,
-    specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xffffff), 0.20),
+  return pbrMaterialOr(params, () => {
+    const material = new THREE.MeshPhysicalMaterial({
+      ...params,
+      reflectivity: 0.14,
+      specularIntensity: 0.30,
+      specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xffffff), 0.20),
+    });
+    const { normalTexture, materialTexture } = cachedDetailTextures("stone", buildStoneTextures);
+    material.normalScale.set(0.74, 0.74);
+    return applyDetailMaps(material, normalTexture, materialTexture);
   });
-  const { normalTexture, materialTexture } = cachedDetailTextures("stone", buildStoneTextures);
-  material.normalScale.set(0.74, 0.74);
-  return applyDetailMaps(material, normalTexture, materialTexture);
 }
 
 export function makePlainRockPBRMaterial(params) {
-  if (LOWFX || state.userSettings.pbrDetails === false) {
-    return new THREE.MeshStandardMaterial(params);
-  }
-  const material = new THREE.MeshPhysicalMaterial({
-    ...params,
-    reflectivity: 0.12,
-    specularIntensity: 0.34,
-    specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xffffff), 0.18),
+  return pbrMaterialOr(params, () => {
+    const material = new THREE.MeshPhysicalMaterial({
+      ...params,
+      reflectivity: 0.12,
+      specularIntensity: 0.34,
+      specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xffffff), 0.18),
+    });
+    const { normalTexture, materialTexture } = cachedDetailTextures("plain-rock", buildPlainRockTextures);
+    material.normalScale.set(PLAIN_ROCK_NORMAL_SCALE, PLAIN_ROCK_NORMAL_SCALE);
+    return applyDetailMaps(material, normalTexture, materialTexture);
   });
-  const { normalTexture, materialTexture } = cachedDetailTextures("plain-rock", buildPlainRockTextures);
-  material.normalScale.set(PLAIN_ROCK_NORMAL_SCALE, PLAIN_ROCK_NORMAL_SCALE);
-  return applyDetailMaps(material, normalTexture, materialTexture);
 }
 
 export function makeMushroomCapPBRMaterial(params) {
-  if (LOWFX || state.userSettings.pbrDetails === false) {
-    return new THREE.MeshStandardMaterial(params);
-  }
-  const material = new THREE.MeshPhysicalMaterial({
-    ...params,
-    reflectivity: 0.30,
-    specularIntensity: 0.70,
-    specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xffffff), 0.36),
+  return pbrMaterialOr(params, () => {
+    const material = new THREE.MeshPhysicalMaterial({
+      ...params,
+      reflectivity: 0.30,
+      specularIntensity: 0.70,
+      specularColor: new THREE.Color(params.color).lerp(new THREE.Color(0xffffff), 0.36),
+    });
+    const { colorTexture, normalTexture, materialTexture } = cachedDetailTextures("mushroom-cap", buildMushroomCapTextures);
+    material.normalScale.set(1.22, 1.22);
+    return applyDetailMaps(material, normalTexture, materialTexture, colorTexture);
   });
-  const { colorTexture, normalTexture, materialTexture } = cachedDetailTextures("mushroom-cap", buildMushroomCapTextures);
-  material.normalScale.set(1.22, 1.22);
-  return applyDetailMaps(material, normalTexture, materialTexture, colorTexture);
 }
 
 export function makeMushroomUndersideMaterial(params = {}) {
@@ -922,22 +930,20 @@ export function makeMushroomUndersideMaterial(params = {}) {
     emissive: params.emissive ?? "#e8d7b9",
     emissiveIntensity: 0.24,
   };
-  if (LOWFX || state.userSettings.pbrDetails === false) {
-    return new THREE.MeshStandardMaterial(baseParams);
-  }
-
-  const material = new THREE.MeshPhysicalMaterial({
-    ...baseParams,
-    reflectivity: 0.08,
-    specularIntensity: 0.16,
-    specularColor: new THREE.Color(baseParams.color).lerp(new THREE.Color(0xffffff), 0.16),
+  return pbrMaterialOr(baseParams, () => {
+    const material = new THREE.MeshPhysicalMaterial({
+      ...baseParams,
+      reflectivity: 0.08,
+      specularIntensity: 0.16,
+      specularColor: new THREE.Color(baseParams.color).lerp(new THREE.Color(0xffffff), 0.16),
+    });
+    const { colorTexture, normalTexture, materialTexture } = cachedDetailTextures(
+      "mushroom-underside",
+      buildMushroomUndersideTextures
+    );
+    material.normalScale.set(1.72, 1.72);
+    material.emissiveMap = colorTexture;
+    addProceduralMushroomGillTint(material);
+    return applyDetailMaps(material, normalTexture, materialTexture, colorTexture);
   });
-  const { colorTexture, normalTexture, materialTexture } = cachedDetailTextures(
-    "mushroom-underside",
-    buildMushroomUndersideTextures
-  );
-  material.normalScale.set(1.72, 1.72);
-  material.emissiveMap = colorTexture;
-  addProceduralMushroomGillTint(material);
-  return applyDetailMaps(material, normalTexture, materialTexture, colorTexture);
 }

@@ -5,6 +5,18 @@ import { Pass, FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { state } from "./state.js";
 import { LOWFX } from "./lowfx.js";
 
+// Every fullscreen-quad pass in this file (bloom down/upsample, srgb output,
+// bloom composite, tilt-shift, depth-FX, the input copy pass) shares this
+// exact vertex shader — it just forwards `uv` and projects a clip-space
+// quad. Extracted once instead of seven byte-identical copies.
+const _FULLSCREEN_QUAD_VERTEX_SHADER = `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+
 // Mip-chain bloom — the project's only bloom pipeline.
 // Progressive filtered downsample + tent upsample à la Jimenez (SIGGRAPH 2014
 // "Next Generation Post Processing in Call of Duty"): blur work happens at
@@ -19,13 +31,7 @@ const _bloomDownsampleShader = {
     uTexel: { value: new THREE.Vector2(1, 1) }, // 1 / source resolution
     uKaris: { value: 0.0 },                     // 1.0 on the first (full→half) step
   },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
+  vertexShader: _FULLSCREEN_QUAD_VERTEX_SHADER,
   fragmentShader: `
     precision highp float;
     uniform sampler2D tDiffuse;
@@ -92,13 +98,7 @@ const _bloomUpsampleShader = {
     uTexel: { value: new THREE.Vector2(1, 1) }, // 1 / source (smaller mip) resolution
     uScatter: { value: 0.6 },
   },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
+  vertexShader: _FULLSCREEN_QUAD_VERTEX_SHADER,
   fragmentShader: `
     precision highp float;
     uniform sampler2D tDiffuse;
@@ -146,13 +146,7 @@ const _srgbOutputShader = {
     tDiffuse: { value: null },
     uExposure: { value: 1.05 },
   },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
+  vertexShader: _FULLSCREEN_QUAD_VERTEX_SHADER,
   fragmentShader: `
     precision highp float;
     uniform sampler2D tDiffuse;
@@ -194,13 +188,7 @@ const _bloomCompositeShader = {
     tBloom: { value: null },
     uStrength: { value: 1.0 },
   },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
+  vertexShader: _FULLSCREEN_QUAD_VERTEX_SHADER,
   fragmentShader: `
     precision highp float;
     uniform sampler2D tDiffuse;
@@ -240,13 +228,7 @@ const _tiltShiftShader = {
     uCameraNear: { value: 0.1 },
     uCameraFar: { value: 400.0 },
   },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
+  vertexShader: _FULLSCREEN_QUAD_VERTEX_SHADER,
   fragmentShader: `
     precision highp float;
     uniform sampler2D tDiffuse;
@@ -344,13 +326,7 @@ const _depthFXShader = {
     uUnderwaterColor: { value: new THREE.Color(0x3f9fb5) },
     uUnderwaterStrength: { value: 0.0 },
   },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
+  vertexShader: _FULLSCREEN_QUAD_VERTEX_SHADER,
   fragmentShader: `
     precision highp float;
     uniform sampler2D tDiffuse;
@@ -450,13 +426,7 @@ const _depthFXShader = {
 // the scene.
 const _copyShader = {
   uniforms: { tDiffuse: { value: null } },
-  vertexShader: `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
+  vertexShader: _FULLSCREEN_QUAD_VERTEX_SHADER,
   fragmentShader: `
     uniform sampler2D tDiffuse;
     varying vec2 vUv;

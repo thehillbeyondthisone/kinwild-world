@@ -7,6 +7,18 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <!--
+    Content-Security-Policy: conservative allowlist for a static Vite build.
+    style-src needs 'unsafe-inline' — ui.js sets dozens of inline styles at
+    runtime via element.style.* (settings-panel dim states, HUD fades, the
+    photo-mode shutter flash, biome-chip colors), which the build doesn't
+    emit as static <style> text, so there's no nonce/hash to pin against.
+    connect-src includes data: because the photo-save flow does
+    `fetch(dataUrl)` on a canvas.toDataURL() data URI before turning it into
+    a Blob (src/ui.js:1904); actual downloads go through <a download>, which
+    CSP does not restrict.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; media-src https://static.pardev.net; img-src 'self' data: blob:; script-src 'self'; connect-src 'self' data:" />
   <title>a small world — terrarium</title>
   <link rel="manifest" href="/site.webmanifest" />
   <link rel="icon" href="/favicon.ico" sizes="any" />

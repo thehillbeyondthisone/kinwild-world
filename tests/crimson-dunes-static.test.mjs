@@ -94,15 +94,15 @@ assert(
 );
 
 assert(
-  environmentSource.includes('function cinderFissureLiftAt(x, z)')
+  environmentSource.includes('function cinderFissureLiftAt(fissureObstacles, x, z)')
     && environmentSource.includes('obstacle.kind !== "lavafissure"')
-    && environmentSource.includes('const fissureLift = cinderFissureLiftAt(x, z)')
+    && environmentSource.includes('const fissureLift = cinderFissureLiftAt(fissureObstacles, x, z)')
     && cinderBlock.includes('const verticalDrift = -0.18 + fissureLift * 0.74')
     && !cinderBlock.includes('4.2 * gust'),
   'Ashen cinders should float with fissure-driven lift instead of directional wind.'
 );
 assert(
-  cinderBlock.includes('const groundY = state.heightFn ? state.heightFn(x, z) : 0')
+  cinderBlock.includes('const groundY = _sampleParticleHeightGrid(heightGrid, x, z)')
     && cinderBlock.includes('const ceil = groundY + 5.8')
     && cinderBlock.includes('if (y > ceil) y = ceil;')
     && !cinderBlock.includes('if (y < floor)')

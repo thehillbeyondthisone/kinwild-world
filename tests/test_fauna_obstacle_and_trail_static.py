@@ -67,8 +67,8 @@ class FaunaObstacleAndTrailStaticTest(unittest.TestCase):
         source = CATERPILLAR_JS.read_text()
 
         self.assertIn('seg.rotation.order = "YXZ"', source)
-        self.assertIn('const frontPt = ringFindAt(c.trail, Math.max(0, d - c.segSpacing * 0.5))', source)
-        self.assertIn('const backPt = ringFindAt(c.trail, d + c.segSpacing * 0.5)', source)
+        self.assertIn('const frontPt = ringFindAt(c.trail, Math.max(0, d - c.segSpacing * 0.5), _frontScratch)', source)
+        self.assertIn('const backPt = ringFindAt(c.trail, d + c.segSpacing * 0.5, _backScratch)', source)
         self.assertIn('const bodyHeading = Math.atan2(frontPt.z - backPt.z, frontPt.x - backPt.x)', source)
         self.assertIn('seg.rotation.y = -bodyHeading + Math.PI / 2', source)
 

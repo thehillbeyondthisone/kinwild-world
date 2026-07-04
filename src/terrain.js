@@ -302,6 +302,14 @@ export function makeTerrain(biome, heightFn, worldState = state) {
   mesh.receiveShadow = true;
   mesh.castShadow = true;
   const terrainDepthMat = makeTerrainDepthMaterial(terrainClipCenter);
-  if (terrainDepthMat) mesh.customDepthMaterial = terrainDepthMat;
+  if (terrainDepthMat) {
+    mesh.customDepthMaterial = terrainDepthMat;
+    // disposeGroup (state.js) only inspects `mesh.material`, so this
+    // side-material would otherwise leak every regen. BufferGeometry fires a
+    // "dispose" event from its own .dispose() call, which disposeGroup
+    // already triggers on this same `geo` — piggyback on it locally instead
+    // of touching the shared disposal traversal.
+    geo.addEventListener("dispose", () => terrainDepthMat.dispose());
+  }
   return mesh;
 }

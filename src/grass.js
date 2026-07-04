@@ -5,6 +5,8 @@ import { state, DENSITY_BASE } from "./state.js";
 import { pickGroundPoint } from "./terrain.js";
 import { GRASS_DENSITY, GRASS_HEIGHT, BALD_THRESHOLD } from "./biomes.js";
 import { LOWFX, LOWFX_DENSITY } from "./lowfx.js";
+import { replaceOrWarn } from "./util.js";
+import { GLSL_HASH2_G, GLSL_VALUE_NOISE_G } from "./shaders/noise.js";
 
 // Max number of creatures that can perturb the grass at once. Each slot is a
 // vec4 uniform; the vertex shader early-outs on `radius < 0.001`, so unused
@@ -169,10 +171,10 @@ export function makeGrassMaterial(biome, opts = {}) {
     shader.uniforms.uPushers = uniforms.uPushers;
     shader.uniforms.uHeightMul = uniforms.uHeightMul;
 
-    shader.vertexShader = shader.vertexShader
-      .replace(
-        "#include <common>",
-        `#include <common>
+    shader.vertexShader = replaceOrWarn(
+      shader.vertexShader,
+      "#include <common>",
+      `#include <common>
         attribute float aTipFactor;
         attribute float aWindSeed;
         varying float vTipFactor;
@@ -189,19 +191,14 @@ export function makeGrassMaterial(biome, opts = {}) {
         #define MAX_PUSHERS ${MAX_PUSHERS}
         uniform int  uPusherCount;
         uniform vec4 uPushers[MAX_PUSHERS];
-        float gHash(vec2 p) {
-          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-        }
-        float gNoise(vec2 p) {
-          vec2 i = floor(p), f = fract(p);
-          vec2 u = f * f * (3.0 - 2.0 * f);
-          return mix(mix(gHash(i),             gHash(i + vec2(1.0, 0.0)), u.x),
-                     mix(gHash(i + vec2(0.0, 1.0)), gHash(i + vec2(1.0, 1.0)), u.x), u.y);
-        }`
-      )
-      .replace(
-        "#include <begin_vertex>",
-        `#include <begin_vertex>
+        ${GLSL_HASH2_G}
+        ${GLSL_VALUE_NOISE_G}`,
+      "grass.vertex.common"
+    );
+    shader.vertexShader = replaceOrWarn(
+      shader.vertexShader,
+      "#include <begin_vertex>",
+      `#include <begin_vertex>
         vTipFactor = aTipFactor;
         {
           #ifdef USE_INSTANCING
@@ -270,18 +267,21 @@ export function makeGrassMaterial(biome, opts = {}) {
           transformed.y *= fade * uHeightMul;
           transformed.x *= mix(1.0, fade, 0.5);
           transformed.z *= mix(1.0, fade, 0.5);
-        }`
-      );
+        }`,
+      "grass.vertex.begin_vertex"
+    );
 
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
+    shader.fragmentShader = replaceOrWarn(
+      replaceOrWarn(
+        shader.fragmentShader,
         "#include <common>",
-        "#include <common>\nuniform vec3 uTipColor;\nvarying float vTipFactor;"
-      )
-      .replace(
-        "#include <color_fragment>",
-        "#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, uTipColor, vTipFactor * 0.85);"
-      );
+        "#include <common>\nuniform vec3 uTipColor;\nvarying float vTipFactor;",
+        "grass.fragment.common"
+      ),
+      "#include <color_fragment>",
+      "#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, uTipColor, vTipFactor * 0.85);",
+      "grass.fragment.color_fragment"
+    );
   };
   mat.needsUpdate = true;
 

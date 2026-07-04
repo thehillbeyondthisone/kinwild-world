@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { state } from "./src/state.js";
 import { readSeedFromUrl, readBiomeFromUrl, newRandomSeed, formatSeed } from "./src/seed.js";
+import { WATER_SURFACE_Y as WATER_SURFACE_Y_BASE } from "./src/world-constants.js";
 import {
   generateWorld,
   updateDayNight,
@@ -158,6 +159,19 @@ function frameDefaultOrbitToIsland() {
 
 setSceneRef(scene);
 setControlsRef(controls);
+// ARC-006: two different mechanisms here on purpose, not an inconsistency to
+// unify. setSceneRef/setControlsRef/setFollowReleaseCallback (world.js) inject
+// private module-scope closures that ONLY world.js's own build/regen logic
+// reads — scene/controls are deliberately kept off the shared `state`
+// singleton so unrelated modules can't casually depend on them. state.camera
+// / state.renderer instead join the large, already-established set of
+// cross-cutting runtime refs state.js documents living directly on `state`
+// (state.renderer predates this assignment; see windUniforms, postfx,
+// waterReflection, depthTexture, terrainMesh, etc.) — the right fit for a
+// handful of leaf consumers deep in per-frame code (fauna/creature.js reads
+// state.camera for look-at behavior; environment.js reads state.renderer for
+// canvas size) where threading a parameter through every call layer would be
+// far more invasive than the two-line assignment below.
 state.camera = camera;
 state.renderer = renderer;
 // Debug-only handle for poking at the running scene from devtools/agentchrome
@@ -258,7 +272,7 @@ function shouldApplyTiltShift() {
 }
 function updateUnderwaterTint() {
   if (!postfx.setUnderwaterTint) return;
-  const WATER_SURFACE_Y = -0.12 * (state.userSettings.worldScale || 1);
+  const WATER_SURFACE_Y = WATER_SURFACE_Y_BASE * (state.userSettings.worldScale || 1);
   const underwater = !!state.waterMesh && !!state.currentBiome?.water && camera.position.y < WATER_SURFACE_Y;
   const depth = underwater ? WATER_SURFACE_Y - camera.position.y : 0;
   const strength = underwater ? THREE.MathUtils.clamp(0.18 + depth * 0.18, 0, 0.42) : 0;
@@ -328,6 +342,13 @@ function animate() {
       }
       stepGrass(camera, isAnyFP() ? camera.position : controls.target);
       updateDayNight(t);
+      // Snapshot the freshly-computed absolute fog density so the cloudlike
+      // strolling thinning below can apply a fixed factor against it instead
+      // of compounding onto the live value frame after frame. Without this,
+      // pausing (e.g. photo mode, which also freezes updateDayNight) left
+      // the multiplication in cameraFollowAndWake running every frame against
+      // an already-thinned value, decaying fog to near-zero within ~1s.
+      if (scene.fog) state._fogBaseDensity = scene.fog.density;
     }
   });
 
@@ -342,6 +363,10 @@ function animate() {
   // Pool objects to avoid GC pressure from per-frame object literal
   // allocation. Grows if needed but never shrinks.
   measurePerfPhase("dynamicCollisionObstacles", () => {
+    // Skipped while paused: consumers (stepCreature/stepCaterpillar via
+    // avoidObstacles) run with dt=0 while paused, so nothing moves and an
+    // up-to-date rebuild has no observable effect — just wasted per-frame work.
+    if (paused) return;
     const dyn = state.dynamicObstacles;
     let _dynPool = state._dynPool;
     if (!_dynPool) {
@@ -447,8 +472,10 @@ function animate() {
       if (state.currentBiome?.cloudlike && scene.fog) {
         // Cloud fog is tuned for orbit mode; from eye level it can flatten the
         // whole frame. Pull it back only while strolling so nearby puffs and
-        // hills keep readable depth.
-        scene.fog.density *= 0.55;
+        // hills keep readable depth. Applied against the stored baseline
+        // (not the live value) so it doesn't compound frame over frame while
+        // paused/photo mode holds updateDayNight's absolute reset from running.
+        scene.fog.density = (state._fogBaseDensity ?? scene.fog.density) * 0.55;
       }
       // Walk-up wake: any sleeping creature within ~2.5 mesh-local units of
       // the player pops awake. Camera lives in world space; creatures live

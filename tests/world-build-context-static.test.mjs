@@ -78,7 +78,10 @@ assert(
 );
 
 assert(
-  generateBody.includes('const seedBiome = BIOMES[Math.floor(Math.random() * BIOMES.length)];')
+  // ARC-003/QA-013: the biome roll (one Math.random() call) is now made via
+  // the shared rollBiomeAndLayout helper (world-constants.js) so the portal
+  // preview can replay the identical RNG prefix.
+  generateBody.includes('const { biome: seedBiome, layout } = rollBiomeAndLayout(pickLayout);')
     && generateBody.includes('const forcedBiome = options.biomeId ? BIOMES.find((candidate) => candidate.id === options.biomeId) : null;')
     && generateBody.includes('const biome = forcedBiome ?? seedBiome;')
     // The actual writeSeed call moved into finalizeWorldHud (src/world-hud.js)
@@ -92,7 +95,10 @@ assert(
 );
 
 assert(
-  generateBody.includes('const shouldGuaranteeBurrower = biome.id === "marsh" && allowGroundVariants;')
-    && generateBody.includes('placeOnGround(makeCreature(biome, { burrower: true }), { maxTries: 120 })'),
+  // ARC-010: replaces the `biome.id === "marsh"` branch with a
+  // `guaranteeBurrower` biome flag (set true on marsh in src/biomes.js).
+  generateBody.includes('const shouldGuaranteeBurrower = biome.guaranteeBurrower === true && allowGroundVariants;')
+    && generateBody.includes('placeOnGround(makeCreature(biome, { burrower: true }), { maxTries: 120 })')
+    && readFileSync(new URL('../src/biomes.js', import.meta.url), 'utf8').includes('guaranteeBurrower: true'),
   'Lavender Marsh should reserve one current-world creature slot for a burrower so its catalog and locator always include one.'
 );

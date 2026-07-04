@@ -7,8 +7,16 @@ export {
   lookAtCreature,
   wakeCreature,
   resetCreaturePool,
+  withIsolatedCreaturePool,
+  creaturePoolResources,
 } from "./fauna/creature.js";
-export { makeCaterpillar, stepCaterpillar, makeRingTrail } from "./fauna/caterpillar.js";
+export {
+  makeCaterpillar,
+  stepCaterpillar,
+  makeRingTrail,
+  resetCaterpillarPool,
+  caterpillarPoolResources,
+} from "./fauna/caterpillar.js";
 export { makeButterfly, stepButterfly } from "./fauna/butterfly.js";
 export { makeBee, makeSwarm, stepBee } from "./fauna/bee.js";
 export { makeWillOWisp, stepWillOWisp } from "./fauna/willowisp.js";

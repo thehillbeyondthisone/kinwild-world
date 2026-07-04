@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { jitterGeo, applyWindSway } from "../util.js";
 import { BLOOM_LAYER } from "../postfx.js";
 import { pooled, applyBalloonPuffWisps } from "./_shared.js";
+import { GLSL_HASH_FLOAT } from "../shaders/noise.js";
 
 export function balloontree(biome) {
     const g = new THREE.Group();
@@ -197,7 +198,7 @@ export function lavafissure(biome) {
           varying float vAcross;
           varying float vAlong;
           varying float vHeat;
-          float hash(float n) { return fract(sin(n) * 43758.5453123); }
+          ${GLSL_HASH_FLOAT}
           void main() {
             float edge = smoothstep(0.62, 0.92, vAcross);
             float redBand = smoothstep(0.0084375, 0.285, vAcross);

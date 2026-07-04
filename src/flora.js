@@ -11,8 +11,8 @@
 import { jitterGeo } from "./util.js";
 export { jitterGeo };
 
-import { resetFloraPool } from "./flora/_shared.js";
-export { resetFloraPool };
+import { resetFloraPool, withIsolatedFloraPool } from "./flora/_shared.js";
+export { resetFloraPool, withIsolatedFloraPool };
 
 import * as trees from "./flora/trees.js";
 import * as garden from "./flora/garden.js";

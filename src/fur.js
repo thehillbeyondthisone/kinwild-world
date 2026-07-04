@@ -131,16 +131,21 @@ void main() {
 }
 `;
 
-// Shared uniforms (one object reference, mutated each frame).
+// Shared uniforms (one object reference, mutated each frame). uLayers is
+// intentionally NOT here — it's a per-creature shell count (LOWFX vs. full
+// fidelity), and a single shared value would ratchet up via Math.max and
+// never reset, leaving stale (too-large) denominators for creatures built
+// after a higher-layer-count world. Only uLightDir is truly global (updated
+// once per frame in main.js).
 export const sharedFurUniforms = {
   uLightDir: { value: new THREE.Vector3(1, 1, 1) },
-  uLayers: { value: 8 },
 };
 
 // Build a fur material template. Clone()ing it gives per-shell instances
-// that share the above uniforms (Three's ShaderMaterial.clone copies the
-// uniforms object shallowly), and we then overwrite uShellLayer per clone.
-function makeFurTemplate(baseColor, tipColor, furLength) {
+// that share uLightDir (Three's ShaderMaterial.clone copies the uniforms
+// object shallowly), and we then overwrite uShellLayer per clone. uLayers is
+// per-template (per applyShellFur call) — not shared across creatures.
+function makeFurTemplate(baseColor, tipColor, furLength, layers) {
   return new THREE.ShaderMaterial({
     vertexShader: _furVS,
     fragmentShader: _furFS,
@@ -149,7 +154,7 @@ function makeFurTemplate(baseColor, tipColor, furLength) {
     side: THREE.DoubleSide,
     uniforms: {
       uShellLayer: { value: 0 },
-      uLayers: sharedFurUniforms.uLayers,
+      uLayers: { value: layers },
       uFurLength: { value: furLength },
       uBaseColor: { value: baseColor.clone() },
       uTipColor: { value: tipColor.clone() },
@@ -180,15 +185,12 @@ export function applyShellFur(body, biome, opts = {}) {
   const tipColor =
     opts.tipColor ?? new THREE.Color(biome.furTip ?? biome.accent ?? "#ffffff");
 
-  sharedFurUniforms.uLayers.value = Math.max(sharedFurUniforms.uLayers.value, layers);
-
-  const template = makeFurTemplate(baseColor, tipColor, furLength);
+  const template = makeFurTemplate(baseColor, tipColor, furLength, layers);
   const shells = [];
   for (let i = 1; i <= layers; i++) {
     const mat = template.clone();
     mat.uniforms.uShellLayer = { value: i };
-    // Shared uniforms: re-bind so the clone reads the same object refs.
-    mat.uniforms.uLayers = sharedFurUniforms.uLayers;
+    // Shared uniform: re-bind so the clone reads the same live-updated ref.
     mat.uniforms.uLightDir = sharedFurUniforms.uLightDir;
     // Pattern uniforms — all shells share the same pattern
     if (opts.patternColor) {

@@ -2,6 +2,12 @@ import * as THREE from "three";
 import { state } from "./state.js";
 import { LOWFX } from "./lowfx.js";
 import { CLOUD_COUNT, AURORA_BIOMES, AURORA_TINTS } from "./biomes.js";
+import {
+  GLSL_HASH2,
+  GLSL_HASH2_HI_PRECISION,
+  GLSL_VALUE_NOISE,
+  GLSL_VALUE_NOISE_MULTILINE,
+} from "./shaders/noise.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sky dome — vertical gradient shader sphere. Replaces scene.background so the
@@ -150,6 +156,15 @@ let _cloudTex = null;
 function getCloudTexture() {
   if (_cloudTex) return _cloudTex;
   // Generate a soft puff texture procedurally so we don't ship a PNG.
+  // Note: this texture is shared across regens to avoid re-painting the
+  // canvas every time, but disposeGroup (state.js) walks every material on
+  // the torn-down world — including the cloud sprites' materials — and
+  // disposes any texture it finds on them, which would silently invalidate
+  // this cached instance without clearing the module-scope reference below.
+  // Rather than special-casing sky textures in the generic disposer, listen
+  // for the texture's own 'dispose' event and null out our cache when it
+  // fires, so the next regen intentionally repaints a fresh texture instead
+  // of handing out a disposed one.
   const size = 128;
   const c = document.createElement("canvas");
   c.width = c.height = size;
@@ -175,6 +190,10 @@ function getCloudTexture() {
   }
   _cloudTex = new THREE.CanvasTexture(c);
   _cloudTex.colorSpace = THREE.SRGBColorSpace;
+  const tex = _cloudTex;
+  tex.addEventListener("dispose", () => {
+    if (_cloudTex === tex) _cloudTex = null;
+  });
   return _cloudTex;
 }
 
@@ -397,20 +416,10 @@ export function makeAurora(biome) {
         uniform vec3 uC;
         varying vec2 vUv;
 
-        float hash(vec2 p) {
-          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-        }
+        // hash-based value noise (see src/shaders/noise.js)
+        ${GLSL_HASH2_HI_PRECISION}
 
-        float valueNoise(vec2 p) {
-          vec2 i = floor(p);
-          vec2 f = fract(p);
-          vec2 u = f * f * (3.0 - 2.0 * f);
-          return mix(
-            mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-            mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
-            u.y
-          );
-        }
+        ${GLSL_VALUE_NOISE_MULTILINE}
 
         void main() {
           // Feather all plane edges so the curtain dissolves into the sky.
@@ -498,15 +507,8 @@ export function makeCloudSwirl(biome) {
       uniform float uAlpha;
       varying vec2  vUv;
 
-      float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-      }
-      float vnoise(vec2 p) {
-        vec2 i = floor(p), f = fract(p);
-        vec2 u = f * f * (3.0 - 2.0 * f);
-        return mix(mix(hash(i),             hash(i + vec2(1.0, 0.0)), u.x),
-                   mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-      }
+      ${GLSL_HASH2}
+      ${GLSL_VALUE_NOISE}
       // Two octaves at different scales, scrolled in opposite directions
       // along U; together they read as slow-swirling cumulus.
       float swirl(vec2 uv, float t) {
@@ -599,9 +601,27 @@ function makeEdgeAuraGeometry(center, inwardOverlap, outerSoft, radialSegments, 
   return geo;
 }
 
+// Base blade-line count for grass-pattern edge auras at lineDensity 1 (the
+// default, and the only value any biome currently uses — see biomes.js: no
+// biome sets an `edgeAura.lineDensity` override). This used to be multiplied
+// by a stray `* 1000`, which produced ~3.2M line segments (~128 MB of
+// attribute data) per regen; folding the multiplier into this literal keeps
+// the count in the low thousands, matching every other instanced-field scale
+// in this file. This function is only reached for non-LOWFX renders — the
+// caller (makeIslandEdgeMist) already returns null for grass-pattern auras
+// under LOWFX — so there is no separate LOWFX count here.
+const GRASS_AURA_BASE_LINE_COUNT = 3200;
+
+// Blade-height jitter multiplier for grass-aura lines. Tuned alongside the
+// line count above (see git history: "tune: adjust twilight grass aura
+// density") to keep individual blades short/thin relative to how densely
+// packed the ring is — do not change this value without re-tuning the count
+// it was paired with.
+const GRASS_AURA_BLADE_HEIGHT_MULT = 0.23203125;
+
 function makeGrassAuraLineSegments(center, inwardOverlap, outerSoft, aura, colors) {
   const lineDensity = Math.max(0, aura.lineDensity ?? 1);
-  const count = Math.round((LOWFX ? 1100 : 3200) * 1000 * lineDensity);
+  const count = Math.round(GRASS_AURA_BASE_LINE_COUNT * lineDensity);
   const positions = new Float32Array(count * 2 * 3);
   const tipFactors = new Float32Array(count * 2);
   const seeds = new Float32Array(count * 2);
@@ -616,7 +636,7 @@ function makeGrassAuraLineSegments(center, inwardOverlap, outerSoft, aura, color
     const z = Math.sin(angle) * r;
     const tangent = angle + Math.PI / 2;
     const outward = angle;
-    const h = (0.46 + Math.random() * 1.05) * 0.23203125;
+    const h = (0.46 + Math.random() * 1.05) * GRASS_AURA_BLADE_HEIGHT_MULT;
     const lean = (Math.random() - 0.5) * 0.34;
     const outLean = (Math.random() - 0.35) * 0.14;
     const tipX = x + Math.cos(tangent) * lean + Math.cos(outward) * outLean;
@@ -792,15 +812,8 @@ export function makeIslandEdgeMist(biome) {
       varying vec2 vLocalXZ;
       varying float vRadial;
 
-      float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-      }
-      float vnoise(vec2 p) {
-        vec2 i = floor(p), f = fract(p);
-        vec2 u = f * f * (3.0 - 2.0 * f);
-        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-                   mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-      }
+      ${GLSL_HASH2}
+      ${GLSL_VALUE_NOISE}
       float fbm(vec2 p) {
         float a = vnoise(p);
         float b = vnoise(p * 2.17 + vec2(4.2, -1.7));

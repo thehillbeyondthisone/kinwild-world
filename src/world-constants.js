@@ -8,6 +8,7 @@
 
 import { createNoise2D } from "simplex-noise";
 import { mulberry32 } from "./seed.js";
+import { BIOMES } from "./biomes.js";
 
 // XORed into the world seed before deriving the terrain noise permutation so
 // the terrain noise stream is decorrelated from the placement RNG stream.
@@ -18,6 +19,91 @@ export const TERRAIN_NOISE_SEED_XOR = 0x5eed5eed;
 // destination terrain matches what the user will actually travel to.
 export function terrainNoiseFromSeed(seed) {
   return createNoise2D(mulberry32((seed ^ TERRAIN_NOISE_SEED_XOR) >>> 0));
+}
+
+// ARC-003/QA-013: the RNG-prefix consumed at the very start of world
+// generation is exactly one Math.random() call for the biome roll,
+// immediately followed by whatever pickLayout() itself consumes. The portal
+// preview (src/portal.js) replays this same prefix so a preview built for a
+// given seed reconstructs the identical destination layout generateWorld
+// would build for that seed. Inserting any Math.random() call between the
+// biome roll and pickLayout() in generateWorld — or reordering them — would
+// silently desync every portal preview from its destination with no failing
+// test. Route both call sites through this helper so the coupling is
+// enforced by shared code instead of a comment. `pickLayoutFn` is injected
+// (rather than imported) to avoid pulling terrain.js's dependency chain into
+// this low-level constants module.
+export function rollBiomeAndLayout(pickLayoutFn) {
+  const biome = BIOMES[Math.floor(Math.random() * BIOMES.length)];
+  const layout = pickLayoutFn();
+  return { biome, layout };
+}
+
+// Cloud islands should read as soft puffs rather than rocky mountains.
+// Lowering the amplitude keeps the silhouette pillowy while preserving the
+// seeded terrain function for creature placement. Shared by world.js and the
+// portal preview so a preview's terrain silhouette matches the real thing.
+export function terrainAmpFor(biome) {
+  return biome.cloudlike ? 2.15 : 3.2;
+}
+
+// Water-plane surface Y — matches makeWaterPlane in environment.js. Shared by
+// world.js (heightFn wet-depth + flora/creature water gating), main.js
+// (underwater fog), environment.js (water plane placement), and portal.js
+// (preview water plane + terrain wet-depth) so all five never drift apart.
+export const WATER_SURFACE_Y = -0.12;
+
+// Softens terrain further below the water surface so a lake bed reads as a
+// smooth trough rather than a hard step. Shared by world.js and portal.js —
+// both derive a biome's terrain heightFn from the same noise permutation and
+// must apply the same wet-depth softening for the preview to match the real
+// destination.
+export function applyWaterWetDepth(baseHeightFn, waterSurfaceY = WATER_SURFACE_Y) {
+  return (x, z) => {
+    const h = baseHeightFn(x, z);
+    const depth = waterSurfaceY - h;
+    if (depth <= 0) return h;
+    const wet = Math.min(1, depth / 1.6);
+    const smoothWet = wet * wet * (3 - 2 * wet);
+    return h - smoothWet * (0.45 + depth * 0.28);
+  };
+}
+
+// Wraps a heightFn so it also reflects recorded terrain "flatten" zones
+// (portal pads, fairy rings, ...) via the same smoothstep blend used to
+// physically flatten the real terrain mesh. world.js uses this to patch
+// worldState.heightFn after mutating the mesh; portal.js uses it to patch
+// its synthetic preview heightFn, which has no backing mesh to mutate.
+export function applyFlatZonesToHeightFn(heightFn, flatZones) {
+  if (!flatZones.length) return heightFn;
+  return (x, z) => {
+    let out = heightFn(x, z);
+    for (const { cx, cz, r, flatY } of flatZones) {
+      const dx = x - cx, dz = z - cz;
+      const d2 = dx * dx + dz * dz;
+      const r2 = r * r;
+      if (d2 >= r2) continue;
+      const t = 1 - d2 / r2;
+      const blend = t * t * (3 - 2 * t);
+      out += (flatY - out) * blend;
+    }
+    return out;
+  };
+}
+
+// 9-point footprint sampler — heights around (x,z) at radius r, used to find
+// the lowest ground a flora/portal base needs to reach so slope-planting
+// keeps the downhill side buried. Shared by world.js's slope-plant footprint
+// sampling and portal.js's identical preview-anchor sampling.
+export function sampleFootprintHeights(heightFn, x, z, r) {
+  const diagonal = r * Math.SQRT1_2;
+  const samples = [
+    [0, 0],
+    [r, 0], [-r, 0], [0, r], [0, -r],
+    [diagonal, diagonal], [-diagonal, diagonal],
+    [diagonal, -diagonal], [-diagonal, -diagonal],
+  ];
+  return samples.map(([dx, dz]) => heightFn(x + dx, z + dz));
 }
 
 // Per-kind footprint radius — how far around the trunk axis we sample

@@ -104,3 +104,30 @@ assert.equal(replaced.entry.updatedAt, 2500, 'Replacing should update the update
 assert.equal(replaced.entry.photoCount, 2, 'Replacing should increment photoCount.');
 assert.equal(replaced.entry.seed, '0x9709', 'Replacing should update the saved seed.');
 assert.equal(await store.getPhotoBlob(snail.key), 'replacement-blob', 'Replacing should update the saved photo blob.');
+
+// QA-021: a metadata write failure after a successful blob write must not
+// strand the blob — savePhoto should roll it back and rethrow.
+const quotaBlobStorage = new Map();
+const failingMetadataStorage = {
+  getItem: () => null,
+  setItem: () => {
+    throw new Error('QuotaExceededError');
+  },
+};
+const quotaStore = makeCatalogStore({
+  now: () => 3000,
+  metadataStorage: failingMetadataStorage,
+  blobStorage: quotaBlobStorage,
+});
+const gecko = buildCatalogSubject({ category: 'fauna', variant: 'gecko', biomeId: 'desert' });
+
+await assert.rejects(
+  () => quotaStore.savePhoto({ subject: gecko, seed: 0x1234, blob: 'orphan-blob' }),
+  /QuotaExceededError/,
+  'savePhoto should propagate a metadata write failure instead of swallowing it.'
+);
+assert.equal(
+  quotaBlobStorage.has(gecko.key),
+  false,
+  'A failed metadata write should roll back the blob it just wrote so nothing is stranded.'
+);

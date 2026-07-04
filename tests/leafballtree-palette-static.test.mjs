@@ -67,8 +67,14 @@ assert(
   !goldenBlock.includes('"tree"'),
   'golden steppe flora should no longer include regular tree entries.'
 );
+// ARC-010: the wider tree-placement radius is now a biome flag
+// (treeFloraRadiusFrac) instead of a `biome.id === "golden"` branch.
 assert(
-  worldSource.includes('biome.id === "golden" && (kind === "tree" || kind === "leafballtree")'),
+  goldenBlock.includes('treeFloraRadiusFrac: 0.98'),
+  'golden steppe should declare the wider tree placement radius via the treeFloraRadiusFrac biome flag.'
+);
+assert(
+  worldSource.includes('biome.treeFloraRadiusFrac !== undefined && (kind === "tree" || kind === "leafballtree")'),
   'golden steppe leafballtrees should keep the wider tree placement radius used by former regular trees.'
 );
 assert(

@@ -15,7 +15,7 @@ class SleepingCreatureHoverStaticTest(unittest.TestCase):
 
         self.assertIn("const drowsyFlier = c.flies && !c.isFish && c.sleepiness > 0.05", source)
         self.assertIn("if (!c.isSleeper && !naturallyAsleep && !drowsyFlier) return", source)
-        self.assertIn('if (drowsyFlier && (c.landState === "landed" || c.landState === "descending"))', source)
+        self.assertIn('if (c.landState === "landed" || c.landState === "descending")', source)
         self.assertIn('c.landState = "ascending"', source)
         # QA-010: the previously duplicated walker/flier alert-window override
         # is now shared via sleepinessTarget(). Both the walker (!c.flies) and

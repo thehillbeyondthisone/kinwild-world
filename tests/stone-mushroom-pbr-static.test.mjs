@@ -52,7 +52,7 @@ assert(
   pbrSource.includes('const _detailTextureCache = new Map()')
     && pbrSource.includes('function cachedDetailTextures')
     && pbrSource.includes('cachedDetailTextures("mushroom-cap", buildMushroomCapTextures)')
-    && pbrSource.includes('cachedDetailTextures(\n    "mushroom-underside",')
+    && pbrSource.includes('cachedDetailTextures(\n      "mushroom-underside",')
     && pbrSource.includes('cachedDetailTextures("stone", buildStoneTextures)')
     && pbrSource.includes('cachedDetailTextures("plain-rock", buildPlainRockTextures)'),
   'Repeated PBR material calls in one world should reuse procedural texture sets instead of rebuilding canvases.'

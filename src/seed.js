@@ -16,14 +16,19 @@ export function formatSeed(seed) {
   return "0x" + (seed >>> 0).toString(16).padStart(4, "0");
 }
 
+// Seed space is documented as 16-bit (see formatSeed/newRandomSeed) — mask
+// any parsed value down to that range so out-of-range shared links can't
+// silently produce a seed outside the space the rest of the app assumes.
+const SEED_MASK = 0xffff;
+
 export function parseSeed(str) {
   if (!str) return null;
   const s = String(str).trim();
-  if (/^0x[0-9a-f]+$/i.test(s)) return parseInt(s.slice(2), 16) >>> 0;
+  if (/^0x[0-9a-f]+$/i.test(s)) return parseInt(s.slice(2), 16) & SEED_MASK;
   if (/^[0-9a-f]{1,8}$/i.test(s) && /[a-f]/i.test(s))
-    return parseInt(s, 16) >>> 0;
+    return parseInt(s, 16) & SEED_MASK;
   const n = parseInt(s, 10);
-  return Number.isFinite(n) ? n >>> 0 : null;
+  return Number.isFinite(n) ? (n >>> 0) & SEED_MASK : null;
 }
 
 export function readSeedFromUrl() {

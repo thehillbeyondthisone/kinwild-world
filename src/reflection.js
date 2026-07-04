@@ -101,6 +101,11 @@ export function makeWaterReflection(_biome) {
 // no-op draw of an empty scene instead of a GPU read of disposed resources.
 export function disposeWaterReflection(refl) {
   if (!refl) return;
+  // domeClone.material is a genuine clone (side: DoubleSide, see
+  // makeWaterReflection) built only for this reflection scene — unlike
+  // starfield/aurora/cloud clones, which reuse the live material by
+  // reference and must NOT be disposed here. Dispose it before clearing.
+  if (refl.domeClone && refl.domeClone.material) refl.domeClone.material.dispose();
   if (refl.scene) {
     refl.scene.clear();
     refl.scene = null;

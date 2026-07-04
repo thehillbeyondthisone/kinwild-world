@@ -204,6 +204,12 @@ export function colorsClose(a, b) {
 const STATIC_AVOID_LOOKAHEAD = 1.25;
 const STATIC_AVOID_MAX_TURN = 0.22;
 
+// Vertical margin above an obstacle's canopy top within which a flier is
+// still considered "passing over" rather than colliding with it. Shared by
+// every obstacle height-filter check below (static + dynamic phases of
+// avoidObstacles, and pushOutOfObstacles).
+export const CANOPY_PASS_MARGIN = 0.15;
+
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const smoothstep01 = (v) => {
   const t = clamp01(v);
@@ -254,7 +260,7 @@ export function avoidObstacles(
       // would get pushed away by the cap's collision disc.
       if (skipping && Math.abs(o.x - skipX) < 0.4 && Math.abs(o.z - skipZ) < 0.4) continue;
       // Height filter — fliers above the canopy can pass over freely.
-      if (y !== undefined && o.top !== undefined && y > o.top + 0.15) continue;
+      if (y !== undefined && o.top !== undefined && y > o.top + CANOPY_PASS_MARGIN) continue;
       const ox = nx - o.x;
       const oz = nz - o.z;
       const minD = o.r + cr;
@@ -300,7 +306,7 @@ export function avoidObstacles(
         if (j === i) continue;
         const o2 = obs[j];
         if (skipping && Math.abs(o2.x - skipX) < 0.4 && Math.abs(o2.z - skipZ) < 0.4) continue;
-        if (y !== undefined && o2.top !== undefined && y > o2.top + 0.15) continue;
+        if (y !== undefined && o2.top !== undefined && y > o2.top + CANOPY_PASS_MARGIN) continue;
         const dx2 = sx - o2.x;
         const dz2 = sz - o2.z;
         const md = o2.r + cr;
@@ -342,7 +348,7 @@ export function avoidObstacles(
     for (let i = 0; i < dyn.length; i++) {
       const o = dyn[i];
       if (selfOwner && o.owner === selfOwner) continue;
-      if (y !== undefined && o.top !== undefined && y > o.top + 0.15) continue;
+      if (y !== undefined && o.top !== undefined && y > o.top + CANOPY_PASS_MARGIN) continue;
       const ox = cnx - o.x;
       const oz = cnz - o.z;
       const minD = o.r + cr;
@@ -367,48 +373,29 @@ export function avoidObstacles(
 export function pushOutOfObstacles(pos, vel, bodyR) {
   const obs = state.obstacles;
   if (!obs || obs.length === 0) return;
-  // Use spatial grid for O(nearby) lookups.
+  // Resolve the candidate index list once — either the spatial grid's nearby
+  // set, or (when no grid is built) every obstacle — then run one shared body
+  // over it. Previously the grid and fallback paths duplicated this loop
+  // verbatim; index resolution is now the only thing that differs.
   const candidates = nearbyObstacleIndices(pos.x, pos.z, bodyR + 2, _pushScratch);
-  if (candidates) {
-    for (let ci = 0; ci < candidates.length; ci++) {
-      const o = obs[candidates[ci]];
-      if (o.top !== undefined && pos.y > o.top + 0.15) continue;
-      const dx = pos.x - o.x;
-      const dz = pos.z - o.z;
-      const minD = o.r + bodyR;
-      const d2 = dx * dx + dz * dz;
-      if (d2 >= minD * minD) continue;
-      const d = Math.sqrt(d2) || 0.001;
-      const nx = dx / d;
-      const nz = dz / d;
-      pos.x = o.x + nx * minD;
-      pos.z = o.z + nz * minD;
-      const vn = vel.x * nx + vel.z * nz;
-      if (vn < 0) {
-        vel.x -= vn * nx * 1.6;
-        vel.z -= vn * nz * 1.6;
-      }
-    }
-  } else {
-    // Fallback — no grid built
-    for (let i = 0; i < obs.length; i++) {
-      const o = obs[i];
-      if (o.top !== undefined && pos.y > o.top + 0.15) continue;
-      const dx = pos.x - o.x;
-      const dz = pos.z - o.z;
-      const minD = o.r + bodyR;
-      const d2 = dx * dx + dz * dz;
-      if (d2 >= minD * minD) continue;
-      const d = Math.sqrt(d2) || 0.001;
-      const nx = dx / d;
-      const nz = dz / d;
-      pos.x = o.x + nx * minD;
-      pos.z = o.z + nz * minD;
-      const vn = vel.x * nx + vel.z * nz;
-      if (vn < 0) {
-        vel.x -= vn * nx * 1.6;
-        vel.z -= vn * nz * 1.6;
-      }
+  const count = candidates ? candidates.length : obs.length;
+  for (let ci = 0; ci < count; ci++) {
+    const o = candidates ? obs[candidates[ci]] : obs[ci];
+    if (o.top !== undefined && pos.y > o.top + CANOPY_PASS_MARGIN) continue;
+    const dx = pos.x - o.x;
+    const dz = pos.z - o.z;
+    const minD = o.r + bodyR;
+    const d2 = dx * dx + dz * dz;
+    if (d2 >= minD * minD) continue;
+    const d = Math.sqrt(d2) || 0.001;
+    const nx = dx / d;
+    const nz = dz / d;
+    pos.x = o.x + nx * minD;
+    pos.z = o.z + nz * minD;
+    const vn = vel.x * nx + vel.z * nz;
+    if (vn < 0) {
+      vel.x -= vn * nx * 1.6;
+      vel.z -= vn * nz * 1.6;
     }
   }
 }
@@ -453,4 +440,48 @@ export function applyWaterFloorAndSteer(pos, vel, ground, opts, dt) {
     vel.x += (dx / d) * steerStrength * dt;
     vel.z += (dz / d) * steerStrength * dt;
   }
+}
+
+// ── Velocity-steered flier boilerplate ────────────────────────────────────
+// Butterflies, bees, and birds all steer via an explicit velocity vector
+// (unlike walkers/caterpillars/the creature.js flier FSM, which steer via
+// heading) and share the same per-frame integrate/damp/cap/orient shape.
+// Tuning constants (damp base, speed caps, orientation thresholds) stay at
+// each call site — only the repeated math is centralized here.
+
+/** Advance `pos` by `vel * dt`. Mutates pos in place. */
+export function integrateVelocity(pos, vel, dt) {
+  pos.x += vel.x * dt;
+  pos.y += vel.y * dt;
+  pos.z += vel.z * dt;
+}
+
+/** Exponential per-axis velocity damping: vel *= dampBase^(dt*60). Mutates vel. */
+export function dampVelocity(vel, dampBase, dt) {
+  const damp = Math.pow(dampBase, dt * 60);
+  vel.x *= damp;
+  vel.y *= damp;
+  vel.z *= damp;
+}
+
+/**
+ * Clamp vel's magnitude to at most maxSpeed, and (when minSpeed > 0) at least
+ * minSpeed. Mutates vel in place.
+ */
+export function capVelocitySpeed(vel, maxSpeed, minSpeed = 0) {
+  const sp = vel.length();
+  if (sp > maxSpeed) vel.multiplyScalar(maxSpeed / sp);
+  else if (minSpeed > 0 && sp < minSpeed && sp > 1e-4) vel.multiplyScalar(minSpeed / sp);
+}
+
+/**
+ * Orient `group` to face its direction of travel via lookAt(pos + vel).
+ * Skipped when vel.lengthSq() < minLengthSq (pass 0, the default, to always
+ * orient). `scratch` is a caller-owned Vector3 — reused every call, never
+ * allocated here, so hot per-frame callers stay allocation-free.
+ */
+export function orientToVelocity(group, pos, vel, scratch, minLengthSq = 0) {
+  if (vel.lengthSq() < minLengthSq) return;
+  scratch.copy(pos).add(vel);
+  group.lookAt(scratch);
 }

@@ -6,6 +6,27 @@ import { emitGroundMark } from "../environment.js";
 import { applyShellFur } from "../fur.js";
 import { buildCatalogSubject } from "../catalog.js";
 import { WATER_AVOID_Y, avoidObstacles, sampleSlopes, addAntennae, wrapAngle } from "./shared.js";
+import { makePool } from "../pool.js";
+
+// QA-L05: eye/pupil materials + geometries are identical across every
+// caterpillar/snail instance (fixed colors, fixed sphere radii — position is
+// the only per-instance variation, computed from segRadius but applied via
+// mesh.position, not geometry). Pool them the same way creature.js pools its
+// eye/pupil resources so instances share GPU handles instead of each
+// allocating its own copies. Caterpillars are never built by the portal
+// preview (only makeCreature is), so no isolated-pool variant is needed here.
+const _caterpillarPool = makePool();
+export const resetCaterpillarPool = _caterpillarPool.reset;
+const pooled = (key, factory) => _caterpillarPool.get(key, factory);
+
+// ARC-004: mirrors creaturePoolResources() in creature.js — a live snapshot
+// of the pool's cached resources, passed as disposeGroup's `skip` set on
+// individual-reject placement paths (world.js's placeCrawler) so rejecting
+// one caterpillar never disposes a geometry/material other already-placed
+// caterpillars still share via the pool.
+export function caterpillarPoolResources() {
+  return new Set(_caterpillarPool.values());
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Caterpillar — head + 3-8 body spheres, body segments follow head's trail
@@ -13,6 +34,13 @@ import { WATER_AVOID_Y, avoidObstacles, sampleSlopes, addAntennae, wrapAngle } f
 const TRAIL_RETENTION_PADDING = 1.0;
 const TRAIL_MIN_POINT_DISTANCE = 1e-6;
 const CRAWLER_TRAIL_TARGET_SPEED = 0.85;
+
+// Scratch objects reused across stepCaterpillar calls (and across creatures,
+// since the loop calling this is synchronous/non-reentrant) to avoid
+// allocating fresh position objects for every ringFindAt lookup.
+const _ptScratch = { x: 0, y: 0, z: 0 };
+const _frontScratch = { x: 0, y: 0, z: 0 };
+const _backScratch = { x: 0, y: 0, z: 0 };
 
 // ── Ring buffer trail ──────────────────────────────────────────────────────
 // Pre-allocated ring buffer to avoid per-frame array unshift/trim overhead.
@@ -47,10 +75,14 @@ function makeRingTrail(initialPoints) {
   };
 }
 
-// Get point at logical index i (0 = head, len-1 = tail).
-function ringGet(tr, i) {
+// Get point at logical index i (0 = head, len-1 = tail). Writes into the
+// caller-supplied `out` object to avoid a per-call allocation.
+function ringGet(tr, i, out) {
   const off = i * 3;
-  return { x: tr.buf[off], y: tr.buf[off + 1], z: tr.buf[off + 2] };
+  out.x = tr.buf[off];
+  out.y = tr.buf[off + 1];
+  out.z = tr.buf[off + 2];
+  return out;
 }
 
 // Push a new head point. Returns true if pushed, false if duplicate (updated in-place).
@@ -98,25 +130,39 @@ function ringPushHead(tr, x, y, z) {
 }
 
 // Trim tail beyond maxDistance from head.
+// arc[i] is cumulative arc length from the head (index 0) and is
+// monotonically non-decreasing as i grows toward the tail. To cut the trail
+// at maxDistance we must scan ASCENDING and stop at the first index whose
+// arc length exceeds it — scanning descending (the previous implementation)
+// always finds that same index first (since every point beyond the cap also
+// exceeds it) and only ever assigns tr.len its own current value, a no-op.
+// Keep the first index past maxDistance (rather than the last one under it)
+// as one extra trailing point for ringFindAt's interpolation.
 function ringTrimByDistance(tr, maxDistance) {
   if (tr.len < 2) return;
-  // arc[i] is cumulative from head; keep everything within maxDistance + 1
-  // extra point for interpolation.
-  for (let i = tr.len - 2; i >= 0; i--) {
+  for (let i = 1; i < tr.len; i++) {
     if (tr.arc[i] > maxDistance) {
-      tr.len = i + 2;
+      tr.len = i + 1;
       return;
     }
   }
 }
 
 // Find the point at a given arc-length distance from the head.
-// Uses binary search on the arc array.
-function ringFindAt(tr, distance) {
+// Uses binary search on the arc array. Writes into the caller-supplied `out`
+// object to avoid a per-call allocation (called up to 3x per body segment
+// per frame). Always populates y (the interpolated branch previously
+// omitted it).
+function ringFindAt(tr, distance, out) {
   if (tr.len === 0) return null;
-  if (distance <= 0) return { x: tr.buf[0], y: tr.buf[1], z: tr.buf[2] };
+  if (distance <= 0) {
+    out.x = tr.buf[0];
+    out.y = tr.buf[1];
+    out.z = tr.buf[2];
+    return out;
+  }
   if (tr.arc[tr.len - 1] <= distance) {
-    return ringGet(tr, tr.len - 1);
+    return ringGet(tr, tr.len - 1, out);
   }
   // Binary search for the segment
   let lo = 0, hi = tr.len - 1;
@@ -129,10 +175,10 @@ function ringFindAt(tr, distance) {
   const u = segLen > 1e-4 ? (distance - tr.arc[lo]) / segLen : 0;
   const pOff = lo * 3;
   const cOff = hi * 3;
-  return {
-    x: tr.buf[pOff] + (tr.buf[cOff] - tr.buf[pOff]) * u,
-    z: tr.buf[pOff + 2] + (tr.buf[cOff + 2] - tr.buf[pOff + 2]) * u,
-  };
+  out.x = tr.buf[pOff] + (tr.buf[cOff] - tr.buf[pOff]) * u;
+  out.y = tr.buf[pOff + 1] + (tr.buf[cOff + 1] - tr.buf[pOff + 1]) * u;
+  out.z = tr.buf[pOff + 2] + (tr.buf[cOff + 2] - tr.buf[pOff + 2]) * u;
+  return out;
 }
 
 // opts.kind: undefined | "snail". Snails are slow, have fewer segments,
@@ -191,17 +237,19 @@ export function makeCaterpillar(biome, opts = {}) {
   group.add(head);
   segments.push(head);
 
-  // eyes — same recipe as blob creatures
-  const eyeMat = new THREE.MeshStandardMaterial({
+  // eyes — same recipe as blob creatures. Colors/geometry are constant across
+  // every instance (independent of biome and isSnail), so they're pooled
+  // (QA-L05) rather than re-allocated per caterpillar.
+  const eyeMat = pooled("eye.mat", () => new THREE.MeshStandardMaterial({
     color: 0xfafaf2,
     roughness: 0.15,
-  });
-  const pupilMat = new THREE.MeshStandardMaterial({
+  }));
+  const pupilMat = pooled("pupil.mat", () => new THREE.MeshStandardMaterial({
     color: 0x0a0a0a,
     roughness: 0.05,
-  });
-  const eyeGeo = new THREE.SphereGeometry(0.09, 10, 8);
-  const pupilGeo = new THREE.SphereGeometry(0.04, 8, 8);
+  }));
+  const eyeGeo = pooled("eye.geo", () => new THREE.SphereGeometry(0.09, 10, 8));
+  const pupilGeo = pooled("pupil.geo", () => new THREE.SphereGeometry(0.04, 8, 8));
   // Eye depth follows segRadius so the eye sits inside the head sphere
   // and only the pupil protrudes — the old hardcoded z=0.24 was sized for
   // caterpillars (segRadius 0.28) and put snail eyes (segRadius 0.24) right
@@ -562,15 +610,15 @@ export function stepCaterpillar(c, dt, t, heightFn) {
   for (let i = 1; i < c.segments.length; i++) {
     const seg = c.segments[i];
     const d = i * c.segSpacing;
-    const pt = ringFindAt(c.trail, d);
+    const pt = ringFindAt(c.trail, d, _ptScratch);
     if (!pt) continue;
     const groundY = heightFn(pt.x, pt.z);
     // subtle wave along the body — small enough that they stay touching
     const bob = Math.sin(c.age * 3.5 - i * 0.7) * 0.03 * c.scale;
     seg.position.set(pt.x, groundY + baseOffset + bob, pt.z);
 
-    const frontPt = ringFindAt(c.trail, Math.max(0, d - c.segSpacing * 0.5));
-    const backPt = ringFindAt(c.trail, d + c.segSpacing * 0.5);
+    const frontPt = ringFindAt(c.trail, Math.max(0, d - c.segSpacing * 0.5), _frontScratch);
+    const backPt = ringFindAt(c.trail, d + c.segSpacing * 0.5, _backScratch);
     if (frontPt && backPt) {
       const bodyHeading = Math.atan2(frontPt.z - backPt.z, frontPt.x - backPt.x);
       seg.rotation.y = -bodyHeading + Math.PI / 2;

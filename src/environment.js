@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { state, DENSITY_BASE } from "./state.js";
-import { jitterGeo, applyWindSway } from "./util.js";
+import { jitterGeo, applyWindSway, replaceOrWarn } from "./util.js";
 import { applyTerrainClip, pickGroundPoint, clipCenter } from "./terrain.js";
 import {
   WILDFLOWER_PALETTES,
@@ -11,6 +11,7 @@ import {
 import { LOWFX, LOWFX_DENSITY } from "./lowfx.js";
 import { BLOOM_LAYER } from "./postfx.js";
 import { WATER_AVOID_Y } from "./fauna/shared.js";
+import { WATER_SURFACE_Y } from "./world-constants.js";
 
 const _lowfxScale = (n) => (LOWFX ? Math.max(1, Math.round(n * LOWFX_DENSITY)) : n);
 
@@ -28,17 +29,74 @@ const PARTICLE_KIND_ID = {
   sand: 11, cinder: 12,
 };
 
-function cinderFissureLiftAt(x, z) {
-  let lift = 0;
+// Pre-filter+flatten the lavafissure obstacles once per particle-system build
+// (instead of re-scanning + re-deriving `radius` from every obstacle for
+// every cinder particle every frame) and compare squared distances so the
+// common "well outside every fissure" case skips the sqrt entirely.
+function _buildCinderFissureObstacles() {
+  const out = [];
   for (const obstacle of state.obstacles) {
     if (obstacle.kind !== "lavafissure") continue;
+    const radius = Math.max(0.35, (obstacle.r ?? 0.24) * 3.8);
+    out.push({ x: obstacle.x, z: obstacle.z, radius, radius2: radius * radius });
+  }
+  return out;
+}
+
+function cinderFissureLiftAt(fissureObstacles, x, z) {
+  let lift = 0;
+  for (const obstacle of fissureObstacles) {
     const dx = x - obstacle.x;
     const dz = z - obstacle.z;
-    const radius = Math.max(0.35, (obstacle.r ?? 0.24) * 3.8);
-    const influence = Math.max(0, 1 - Math.sqrt(dx * dx + dz * dz) / radius);
+    const d2 = dx * dx + dz * dz;
+    if (d2 >= obstacle.radius2) continue;
+    const influence = 1 - Math.sqrt(d2) / obstacle.radius;
     lift = Math.max(lift, influence * influence * (3 - 2 * influence));
   }
   return lift;
+}
+
+// Coarse bilinear-sampled height lookup for particle ground clamping — sand
+// and cinder particles used to call the full three-octave heightFn directly
+// (~10k noise evals/frame combined). Particles are fuzzy points, so a coarse
+// grid sampled once per particle-system build is visually indistinguishable.
+const PARTICLE_HEIGHT_GRID_RES = 64;
+
+function _buildParticleHeightGrid(heightFn, radius) {
+  if (!heightFn) return null;
+  const res = PARTICLE_HEIGHT_GRID_RES;
+  // Covers a bit past the widest particle-wrap bound (ISLAND_RADIUS * ~1.15)
+  // so in-bounds samples never fall back to clamped edge values.
+  const half = radius * 1.3;
+  const heights = new Float32Array(res * res);
+  for (let iz = 0; iz < res; iz++) {
+    const z = (iz / (res - 1) - 0.5) * half * 2;
+    for (let ix = 0; ix < res; ix++) {
+      const x = (ix / (res - 1) - 0.5) * half * 2;
+      heights[iz * res + ix] = heightFn(x, z);
+    }
+  }
+  return { heights, res, half };
+}
+
+function _sampleParticleHeightGrid(grid, x, z) {
+  if (!grid) return 0;
+  const { heights, res, half } = grid;
+  const size = half * 2;
+  let u = ((x + half) / size) * (res - 1);
+  let v = ((z + half) / size) * (res - 1);
+  u = Math.max(0, Math.min(res - 1, u));
+  v = Math.max(0, Math.min(res - 1, v));
+  const x0 = Math.floor(u), x1 = Math.min(res - 1, x0 + 1);
+  const z0 = Math.floor(v), z1 = Math.min(res - 1, z0 + 1);
+  const fx = u - x0, fz = v - z0;
+  const h00 = heights[z0 * res + x0];
+  const h10 = heights[z0 * res + x1];
+  const h01 = heights[z1 * res + x0];
+  const h11 = heights[z1 * res + x1];
+  const h0 = h00 + (h10 - h00) * fx;
+  const h1 = h01 + (h11 - h01) * fx;
+  return h0 + (h1 - h0) * fz;
 }
 
 const _particleVS = `
@@ -247,6 +305,12 @@ export function makeParticles(biome) {
     seeds,
     lifes,
     count,
+    // Built once per particle system (regen) rather than re-sampled per
+    // particle per frame — see _buildParticleHeightGrid/_buildCinderFissureObstacles.
+    heightGrid: (kind === "sand" || kind === "cinder")
+      ? _buildParticleHeightGrid(state.heightFn, state.ISLAND_RADIUS)
+      : null,
+    fissureObstacles: kind === "cinder" ? _buildCinderFissureObstacles() : null,
   };
   if (kind === "cinder") points.layers.enable(BLOOM_LAYER);
   return points;
@@ -254,7 +318,7 @@ export function makeParticles(biome) {
 
 export function stepParticles(points, dt, t) {
   if (!points) return;
-  const { kind, seeds, lifes, count } = points.userData;
+  const { kind, seeds, lifes, count, heightGrid, fissureObstacles } = points.userData;
   const pos = points.geometry.attributes.position.array;
 
   for (let i = 0; i < count; i++) {
@@ -336,8 +400,9 @@ export function stepParticles(points, dt, t) {
       z += (cross + Math.cos(t * 0.9 + s * 1.3) * 0.24) * dt;
       // Tiny vertical wobble — sand grains don't really climb, they skip.
       y += Math.sin(t * 2.0 + s * 1.7) * 0.08 * dt - 0.01 * dt;
-      // Sample terrain to clamp grains close to the ground so they hug dunes.
-      const groundY = state.heightFn ? state.heightFn(x, z) : 0;
+      // Sample the coarse baked height grid (not the full noise heightFn) to
+      // clamp grains close to the ground so they hug dunes.
+      const groundY = _sampleParticleHeightGrid(heightGrid, x, z);
       const floor = Math.max(0.05, groundY + 0.08);
       const ceil = floor + 0.42 + windBand * 0.18;
       if (y < floor) y = floor;
@@ -346,7 +411,7 @@ export function stepParticles(points, dt, t) {
       if (x > state.ISLAND_RADIUS * 1.1) {
         x = -state.ISLAND_RADIUS * 1.05 + Math.random() * 1.0;
         z = (Math.random() - 0.5) * state.ISLAND_RADIUS * 2.0;
-        const gy = state.heightFn ? state.heightFn(x, z) : 0;
+        const gy = _sampleParticleHeightGrid(heightGrid, x, z);
         y = Math.max(0.05, gy + 0.08) + Math.random() * 0.38;
       } else if (Math.abs(z) > state.ISLAND_RADIUS * 1.15) {
         z = -Math.sign(z) * state.ISLAND_RADIUS * 1.05;
@@ -354,13 +419,13 @@ export function stepParticles(points, dt, t) {
     } else if (kind === "cinder") {
       // Glowing ash: loose horizontal drift, rising over hot fissures and
       // settling elsewhere.
-      const fissureLift = cinderFissureLiftAt(x, z);
+      const fissureLift = cinderFissureLiftAt(fissureObstacles, x, z);
       const wander = 0.26 + fissureLift * 0.16;
       x += (Math.sin(t * 0.55 + s * 1.7) + Math.sin(t * 0.21 + s * 0.31) * 0.5) * wander * dt;
       z += (Math.cos(t * 0.48 + s * 1.3) + Math.sin(t * 0.27 + s * 0.47) * 0.45) * wander * dt;
       const verticalDrift = -0.18 + fissureLift * 0.74;
       y += (verticalDrift + Math.sin(t * 1.1 + s * 1.6) * 0.12) * dt;
-      const groundY = state.heightFn ? state.heightFn(x, z) : 0;
+      const groundY = _sampleParticleHeightGrid(heightGrid, x, z);
       const ceil = groundY + 5.8;
       if (y > ceil) y = ceil;
       const rr = Math.sqrt(x * x + z * z);
@@ -604,6 +669,10 @@ export function stepDustKicks(kicks, dt) {
 // ─── soft-ground creature marks (terrain shader painted) ───
 const GROUND_MARK_TEX_SIZE = LOWFX ? 256 : 512;
 const GROUND_MARK_MAX_MARKS = LOWFX ? 192 : 512;
+// Full-canvas repaints are throttled to this cadence; marks fade over several
+// seconds so the up-to-this-long staleness between repaints reads as
+// invisible while cutting per-frame canvas rasterization + texture upload.
+const GROUND_MARK_REPAINT_INTERVAL = 0.1; // seconds (~10Hz)
 
 const _groundMarkPaint = `
 vec2 groundMarkUv = vGroundMarkXZ * uGroundMarkInvSize + 0.5;
@@ -625,7 +694,15 @@ function _makeGroundMarkTexture(size) {
   texture.magFilter = THREE.LinearFilter;
   texture.wrapS = THREE.ClampToEdgeWrapping;
   texture.wrapT = THREE.ClampToEdgeWrapping;
-  return { canvas, ctx, texture };
+  // The stamp-drawing transform (translate/rotate/scale) already sizes and
+  // positions each stamp, so a single unit-radius gradient is reusable for
+  // every stamp — per-stamp opacity is applied via ctx.globalAlpha instead of
+  // baking it into a freshly allocated gradient each call.
+  const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+  gradient.addColorStop(0.00, "rgba(255,255,255,1)");
+  gradient.addColorStop(0.45, "rgba(255,255,255,0.72)");
+  gradient.addColorStop(1.00, "rgba(255,255,255,0)");
+  return { canvas, ctx, texture, gradient };
 }
 
 function installGroundMarkShader(system) {
@@ -640,31 +717,35 @@ function installGroundMarkShader(system) {
     shader.uniforms.uGroundMarkColor = uniforms.uGroundMarkColor;
     shader.uniforms.uGroundMarkTex = uniforms.uGroundMarkTex;
     shader.uniforms.uGroundMarkInvSize = uniforms.uGroundMarkInvSize;
-    shader.vertexShader = shader.vertexShader
-      .replace(
+    shader.vertexShader = replaceOrWarn(
+      replaceOrWarn(
+        shader.vertexShader,
         "#include <common>",
         `#include <common>
-         varying vec2 vGroundMarkXZ;`
-      )
-      .replace(
-        "#include <begin_vertex>",
-        `#include <begin_vertex>
-         vGroundMarkXZ = transformed.xz;`
-      );
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
+         varying vec2 vGroundMarkXZ;`,
+        "groundMark.vertex.common"
+      ),
+      "#include <begin_vertex>",
+      `#include <begin_vertex>
+         vGroundMarkXZ = transformed.xz;`,
+      "groundMark.vertex.begin_vertex"
+    );
+    shader.fragmentShader = replaceOrWarn(
+      replaceOrWarn(
+        shader.fragmentShader,
         "#include <common>",
         `#include <common>
          uniform vec3 uGroundMarkColor;
          uniform sampler2D uGroundMarkTex;
          uniform float uGroundMarkInvSize;
-         varying vec2 vGroundMarkXZ;`
-      )
-      .replace(
-        "vec4 diffuseColor = vec4( diffuse, opacity );",
-        `vec4 diffuseColor = vec4( diffuse, opacity );
-         ${_groundMarkPaint}`
-      );
+         varying vec2 vGroundMarkXZ;`,
+        "groundMark.fragment.common"
+      ),
+      "vec4 diffuseColor = vec4( diffuse, opacity );",
+      `vec4 diffuseColor = vec4( diffuse, opacity );
+         ${_groundMarkPaint}`,
+      "groundMark.fragment.diffuseColor"
+    );
   };
   mat.userData.groundMarkSystem = system;
   mat.userData.groundMarkUniforms = uniforms;
@@ -687,14 +768,11 @@ function _drawGroundMarkStamp(d, x, z, heading, width, length, opacity) {
   const w = Math.max(1, width * d.pxPerWorld);
   const h = Math.max(1, length * d.pxPerWorld);
   ctx.save();
+  ctx.globalAlpha = Math.min(1, opacity);
   ctx.translate(p.x, p.y);
   ctx.rotate(heading);
   ctx.scale(w, h);
-  const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
-  grad.addColorStop(0.00, `rgba(255,255,255,${Math.min(1, opacity)})`);
-  grad.addColorStop(0.45, `rgba(255,255,255,${Math.min(1, opacity * 0.72)})`);
-  grad.addColorStop(1.00, "rgba(255,255,255,0)");
-  ctx.fillStyle = grad;
+  ctx.fillStyle = d.gradient;
   ctx.beginPath();
   ctx.arc(0, 0, 1, 0, Math.PI * 2);
   ctx.fill();
@@ -750,7 +828,7 @@ export function makeGroundMarks(biome) {
   if (!cfg) return null;
 
   const size = cfg.textureSize ?? GROUND_MARK_TEX_SIZE;
-  const { canvas, ctx, texture } = _makeGroundMarkTexture(size);
+  const { canvas, ctx, texture, gradient } = _makeGroundMarkTexture(size);
   const system = new THREE.Object3D();
   system.name = "terrain-painted-ground-marks";
   system.visible = false;
@@ -761,12 +839,15 @@ export function makeGroundMarks(biome) {
     canvas,
     ctx,
     texture,
+    gradient,
     size,
     invWorldSize: 1 / state.ISLAND_SIZE,
     pxPerWorld: size / state.ISLAND_SIZE,
     marks: [],
     maxMarks: cfg.maxMarks ?? GROUND_MARK_MAX_MARKS,
     active: new Uint8Array(1),
+    // Full-canvas repaints are throttled — see GROUND_MARK_REPAINT_INTERVAL.
+    repaintTimer: 0,
     uniforms: {
       uGroundMarkColor: { value: new THREE.Color(cfg.color) },
       uGroundMarkTex: { value: texture },
@@ -814,12 +895,24 @@ export function stepGroundMarks(system, dt) {
   installGroundMarkShader(system);
   const d = system.userData;
   if (!d.marks.length) return;
+  let expired = false;
   for (let i = d.marks.length - 1; i >= 0; i--) {
     const mark = d.marks[i];
     mark.age += dt;
-    if (mark.age >= _groundMarkLife(mark)) d.marks.splice(i, 1);
+    if (mark.age >= _groundMarkLife(mark)) {
+      d.marks.splice(i, 1);
+      expired = true;
+    }
   }
-  _repaintGroundMarks(system);
+  // Throttle the full clear+redraw to ~10Hz — marks fade over several
+  // seconds, so up to one interval of staleness is visually invisible.
+  // Always repaint immediately on expiry so a mark's final disappearance
+  // (and the canvas fully clearing once none remain) isn't delayed.
+  d.repaintTimer += dt;
+  if (expired || d.repaintTimer >= GROUND_MARK_REPAINT_INTERVAL) {
+    d.repaintTimer = 0;
+    _repaintGroundMarks(system);
+  }
 }
 
 // ─── fly swarms (dark specks hovering over a fixed prop) ───
@@ -1520,21 +1613,23 @@ export function makeWaterPlane(biome) {
     shader.uniforms.uReflMix = reflUniforms.uReflMix;
     shader.uniforms.uWaterTurbulenceTime = waterTurbulenceUniforms.uWaterTurbulenceTime;
     shader.uniforms.uWaterTurbulenceStrength = waterTurbulenceUniforms.uWaterTurbulenceStrength;
-    shader.vertexShader = shader.vertexShader
-      .replace(
+    shader.vertexShader = replaceOrWarn(
+      replaceOrWarn(
+        shader.vertexShader,
         "#include <common>",
         `#include <common>
-         varying vec3 vWaterWorldPosition;`
-      )
-      .replace(
-        "#include <worldpos_vertex>",
-        `#include <worldpos_vertex>
-         vWaterWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;`
-      );
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        "#include <common>",
-        `#include <common>
+         varying vec3 vWaterWorldPosition;`,
+        "water.vertex.common"
+      ),
+      "#include <worldpos_vertex>",
+      `#include <worldpos_vertex>
+         vWaterWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
+      "water.vertex.worldpos"
+    );
+    let fs = replaceOrWarn(
+      shader.fragmentShader,
+      "#include <common>",
+      `#include <common>
          varying vec3 vWaterWorldPosition;
          uniform sampler2D uReflTex;
          uniform vec2 uInvViewport;
@@ -1555,25 +1650,31 @@ export function makeWaterPlane(biome) {
            float hD = waterTurbulence(p - vec2(0.0, e));
            float hU = waterTurbulence(p + vec2(0.0, e));
            return vec2(hR - hL, hU - hD) / (2.0 * e);
-         }`
-      )
-      .replace(
-        "#include <normal_fragment_begin>",
-        `#include <normal_fragment_begin>
+         }`,
+      "water.fragment.common"
+    );
+    fs = replaceOrWarn(
+      fs,
+      "#include <normal_fragment_begin>",
+      `#include <normal_fragment_begin>
          vec2 waterSlope = waterTurbulenceSlope(vWaterWorldPosition.xz);
          vec3 waterWorldNormal = inverseTransformDirection(normal, viewMatrix);
          waterWorldNormal = normalize(waterWorldNormal + vec3(-waterSlope.x, 0.0, -waterSlope.y) * 0.18 * uWaterTurbulenceStrength);
-         normal = normalize(transformDirection(waterWorldNormal, viewMatrix));`
-      )
-      .replace(
-        "#include <roughnessmap_fragment>",
-        `#include <roughnessmap_fragment>
+         normal = normalize(transformDirection(waterWorldNormal, viewMatrix));`,
+      "water.fragment.normal_fragment_begin"
+    );
+    fs = replaceOrWarn(
+      fs,
+      "#include <roughnessmap_fragment>",
+      `#include <roughnessmap_fragment>
          float waterRoughnessNoise = waterTurbulence(vWaterWorldPosition.xz * 0.72 + vec2(3.4, -1.7)) * 0.5 + 0.5;
-         roughnessFactor = clamp(roughnessFactor + waterRoughnessNoise * 0.14 * uWaterTurbulenceStrength, 0.08, 0.62);`
-      )
-      .replace(
-        "#include <opaque_fragment>",
-        `#include <opaque_fragment>
+         roughnessFactor = clamp(roughnessFactor + waterRoughnessNoise * 0.14 * uWaterTurbulenceStrength, 0.08, 0.62);`,
+      "water.fragment.roughnessmap_fragment"
+    );
+    fs = replaceOrWarn(
+      fs,
+      "#include <opaque_fragment>",
+      `#include <opaque_fragment>
          if (uReflMix > 0.001) {
            vec2 ruv = gl_FragCoord.xy * uInvViewport;
            vec3 refl = texture2D(uReflTex, ruv).rgb;
@@ -1581,14 +1682,16 @@ export function makeWaterPlane(biome) {
            // fixed (don't sample vViewPosition) for cross-version stability.
            float f = pow(1.0 - clamp(dot(normalize(vNormal), vec3(0.0, 1.0, 0.0)), 0.0, 1.0), 2.0);
            gl_FragColor.rgb = mix(gl_FragColor.rgb, refl, uReflMix * (0.4 + 0.6 * f));
-         }`
-      );
+         }`,
+      "water.fragment.opaque_fragment"
+    );
+    shader.fragmentShader = fs;
   };
   applyTerrainClip(mat, clipCenter());
 
   const mesh = new THREE.Mesh(geo, mat);
   // sit a touch below sea level so the underside cone meets the water
-  mesh.position.y = -0.12;
+  mesh.position.y = WATER_SURFACE_Y;
   mesh.receiveShadow = true;
   // cache the base XZ so we can offset Y each frame from a clean reference
   const arr = geo.attributes.position.array;

@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import { DENSITY_BASE, disposeGroup, state } from "./state.js";
 import { makeHeightFn, pickGroundPoint, pickLayout } from "./terrain.js";
-import { FLORA_BUILDERS } from "./flora.js";
-import { makeCreature } from "./fauna.js";
+import { FLORA_BUILDERS, withIsolatedFloraPool } from "./flora.js";
+import { makeCreature, withIsolatedCreaturePool } from "./fauna.js";
 import { makeGrassField } from "./grass.js";
 import { makeSkyDome, makeMountainBackdrop, makeCloudLayer } from "./sky.js";
 import { LOWFX } from "./lowfx.js";
@@ -11,6 +11,12 @@ import {
   terrainNoiseFromSeed,
   FLORA_FOOTPRINT,
   FLORA_FOOTPRINT_DEFAULT,
+  rollBiomeAndLayout,
+  terrainAmpFor,
+  WATER_SURFACE_Y,
+  applyWaterWetDepth,
+  applyFlatZonesToHeightFn,
+  sampleFootprintHeights,
 } from "./world-constants.js";
 
 const PORTAL_RT_SIZE = LOWFX ? 256 : 768;
@@ -31,7 +37,6 @@ const PORTAL_GRASS_SHORTEN_TO = 0.14;
 const PORTAL_PREVIEW_FLATTEN_RADIUS = 4.2;
 const PORTAL_PREVIEW_FLATTEN_SIDE_RADIUS = 2.8;
 const PORTAL_PREVIEW_GROUND_SINK = 0.15;
-const PREVIEW_WATER_Y = -0.12;
 const PREVIEW_FLORA_BURY = 0.08;
 // PREVIEW_FLORA_FOOTPRINT / PREVIEW_FLORA_FOOTPRINT_DEFAULT alias the shared
 // FLORA_FOOTPRINT table in ./world-constants.js (ARC-002) so the portal
@@ -132,34 +137,6 @@ function withSeededRandom(seed, fn) {
   }
 }
 
-function samplePreviewTerrainFootprint(heightFn, x, z, r) {
-  const diagonal = r * Math.SQRT1_2;
-  const samples = [
-    [0, 0],
-    [r, 0], [-r, 0], [0, r], [0, -r],
-    [diagonal, diagonal], [-diagonal, diagonal],
-    [diagonal, -diagonal], [-diagonal, -diagonal],
-  ];
-  return samples.map(([dx, dz]) => heightFn(x + dx, z + dz));
-}
-
-function applyPreviewFlatZones(heightFn, flatZones) {
-  if (!flatZones.length) return heightFn;
-  return (x, z) => {
-    let out = heightFn(x, z);
-    for (const { cx, cz, r, flatY } of flatZones) {
-      const dx = x - cx, dz = z - cz;
-      const d2 = dx * dx + dz * dz;
-      const r2 = r * r;
-      if (d2 >= r2) continue;
-      const t = 1 - d2 / r2;
-      const blend = t * t * (3 - 2 * t);
-      out += (flatY - out) * blend;
-    }
-    return out;
-  };
-}
-
 export function makeSeededPortalPlacement({
   seed,
   index = 0,
@@ -183,9 +160,9 @@ export function makeSeededPortalPlacement({
     const backZ = p.z - nz * PORTAL_ARRIVAL_OFFSET;
     const groundY = Math.max(
       y,
-      ...samplePreviewTerrainFootprint(heightFn, p.x, p.z, PORTAL_PREVIEW_FLATTEN_RADIUS * 0.65),
-      ...samplePreviewTerrainFootprint(heightFn, frontX, frontZ, PORTAL_PREVIEW_FLATTEN_SIDE_RADIUS * 0.55),
-      ...samplePreviewTerrainFootprint(heightFn, backX, backZ, PORTAL_PREVIEW_FLATTEN_SIDE_RADIUS * 0.55)
+      ...sampleFootprintHeights(heightFn, p.x, p.z, PORTAL_PREVIEW_FLATTEN_RADIUS * 0.65),
+      ...sampleFootprintHeights(heightFn, frontX, frontZ, PORTAL_PREVIEW_FLATTEN_SIDE_RADIUS * 0.55),
+      ...sampleFootprintHeights(heightFn, backX, backZ, PORTAL_PREVIEW_FLATTEN_SIDE_RADIUS * 0.55)
     ) - PORTAL_PREVIEW_GROUND_SINK;
     return {
       x: p.x,
@@ -223,23 +200,18 @@ export function makeSeededPortalPlacement({
 
 function makePreviewWorldContext(targetBiome, seed) {
   return withSeededRandom(seed, () => {
-    Math.random(); // consume the biome roll exactly like generateWorld
-    const layout = pickLayout();
+    // ARC-003: replays generateWorld's exact RNG prefix (one Math.random()
+    // biome roll then pickLayout()) via the shared helper so this preview's
+    // layout always matches the real destination world for this seed.
+    const { layout } = rollBiomeAndLayout(pickLayout);
     const noise2D = terrainNoiseFromSeed(seed);
-    const terrainAmp = targetBiome.cloudlike ? 2.15 : 3.2;
+    const terrainAmp = terrainAmpFor(targetBiome);
     const baseHeightFn = makeHeightFn(noise2D, layout, terrainAmp);
     const rawHeightFn = targetBiome.water
-      ? (x, z) => {
-        const h = baseHeightFn(x, z);
-        const depth = PREVIEW_WATER_Y - h;
-        if (depth <= 0) return h;
-        const wet = Math.min(1, depth / 1.6);
-        const smoothWet = wet * wet * (3 - 2 * wet);
-        return h - smoothWet * (0.45 + depth * 0.28);
-      }
+      ? applyWaterWetDepth(baseHeightFn, WATER_SURFACE_Y)
       : baseHeightFn;
     const portalAnchor = makeSeededPortalPlacement({ seed, index: 0, layout, heightFn: rawHeightFn });
-    const heightFn = applyPreviewFlatZones(rawHeightFn, portalAnchor.flatZones);
+    const heightFn = applyFlatZonesToHeightFn(rawHeightFn, portalAnchor.flatZones);
     return { layout, heightFn, portalAnchor };
   });
 }
@@ -288,36 +260,20 @@ function clonePreviewObjectUnique(source) {
   return clone;
 }
 
-// QA-009: dispose the GPU resources of a builder-produced original that we
-// cloned-and-discard. The clone (from clonePreviewObjectUnique) already owns
-// its own geometry/material copies, so the original is fully redundant.
-//
-// We CANNOT blindly disposeGroup the original: flora/creature builders pull
-// some geometries/materials from the shared per-regen pool (`_floraPool` /
-// `_creaturePool` in src/flora/_shared.js and src/fauna/creature.js), and
-// those same pooled handles are currently referenced by the LIVE real world
-// (state.world) — disposing them would corrupt real-world flora/creatures.
-//
-// Safe policy: collect every geometry/material reachable from state.world into
-// a retained set, then dispose only the original's resources NOT in that set.
-// Per-instance (non-pooled) allocations unique to the discarded original get
-// freed; pooled/shared handles are left untouched for the pool/real world.
-function disposePreviewOriginal(original) {
+// QA-002/QA-026: dispose the GPU resources of a builder-produced original
+// that we cloned-and-discard. The clone (from clonePreviewObjectUnique)
+// already owns its own geometry/material copies, so the original is fully
+// redundant. Flora/creature builders pull some geometries/materials from a
+// pool (see withIsolatedFloraPool / withIsolatedCreaturePool below) — those
+// entries must survive so later placements in the same preview build (and
+// the isolated pool's own bulk-dispose once the build finishes) can reuse or
+// clean them up. `pool` is the isolated pool active for this preview build;
+// its current contents are the retained set, so this only ever traverses the
+// single discarded `original` (not the whole scene, unlike the old
+// state.world-retained-set approach).
+function disposeUnpooledPreviewOriginal(original, pool) {
   if (!original) return;
-  const retained = new Set();
-  const collect = () => {
-    const world = state.world;
-    if (world) {
-      world.traverse((o) => {
-        if (o.geometry) retained.add(o.geometry);
-        if (o.material) {
-          if (Array.isArray(o.material)) o.material.forEach((m) => retained.add(m));
-          else retained.add(o.material);
-        }
-      });
-    }
-  };
-  collect();
+  const retained = new Set(pool.values());
   const disposedMaterials = new Set();
   const disposedTextures = new Set();
   original.traverse((o) => {
@@ -482,7 +438,7 @@ function makePreviewWater(biome, layout) {
     depthWrite: false,
   });
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.y = PREVIEW_WATER_Y;
+  mesh.position.y = WATER_SURFACE_Y;
   return mesh;
 }
 
@@ -503,29 +459,34 @@ function makePreviewFlora(targetBiome, rng, heightFn, layout, portalAnchor) {
     LOWFX ? 18 : 42,
     Math.max(10, Math.round((targetBiome.floraCount ?? 60) * (layout.planeSize / DENSITY_BASE) * 0.24))
   );
-  let placed = 0;
-  let attempts = 0;
-  while (placed < targetCount && attempts < targetCount * 10) {
-    attempts++;
-    const kind = targetBiome.flora[Math.floor(rng() * targetBiome.flora.length)];
-    const p = pickPreviewGroundPoint(layout, rng, 0.88);
-    if (isInPortalPreviewSightline(p.x, p.z, portalAnchor)) continue;
-    const y = heightFn(p.x, p.z);
-    if (y < (targetBiome.water ? PREVIEW_WATER_Y + 0.03 : -0.28)) continue;
-    const scaleMul = (0.75 + rng() * 0.65) *
-      (kind === "tree" || kind === "leafballtree" || kind === "pine" || kind === "snowpine" || kind === "deadtree" || kind === "balloontree" ? 1.65 : 1);
-    const fp = (PREVIEW_FLORA_FOOTPRINT[kind] ?? PREVIEW_FLORA_FOOTPRINT_DEFAULT) * scaleMul;
-    if (isNearPortalPreviewClearance(p.x, p.z, fp, portalAnchor)) continue;
-    const builder = FLORA_BUILDERS[kind] ?? FLORA_BUILDERS.rock;
-    const original = builder(targetBiome);
-    const obj = clonePreviewObjectUnique(original);
-    disposePreviewOriginal(original);
-    obj.position.set(p.x, makePreviewFloraGroundY(kind, scaleMul, p.x, p.z, heightFn), p.z);
-    obj.rotation.y = rng() * Math.PI * 2;
-    obj.scale.setScalar(scaleMul);
-    group.add(obj);
-    placed++;
-  }
+  // QA-001: build every preview flora original against an isolated pool so a
+  // different target biome's palette never lands in the shared per-regen
+  // pool the live world is reading from.
+  withIsolatedFloraPool((pool) => {
+    let placed = 0;
+    let attempts = 0;
+    while (placed < targetCount && attempts < targetCount * 10) {
+      attempts++;
+      const kind = targetBiome.flora[Math.floor(rng() * targetBiome.flora.length)];
+      const p = pickPreviewGroundPoint(layout, rng, 0.88);
+      if (isInPortalPreviewSightline(p.x, p.z, portalAnchor)) continue;
+      const y = heightFn(p.x, p.z);
+      if (y < (targetBiome.water ? WATER_SURFACE_Y + 0.03 : -0.28)) continue;
+      const scaleMul = (0.75 + rng() * 0.65) *
+        (kind === "tree" || kind === "leafballtree" || kind === "pine" || kind === "snowpine" || kind === "deadtree" || kind === "balloontree" ? 1.65 : 1);
+      const fp = (PREVIEW_FLORA_FOOTPRINT[kind] ?? PREVIEW_FLORA_FOOTPRINT_DEFAULT) * scaleMul;
+      if (isNearPortalPreviewClearance(p.x, p.z, fp, portalAnchor)) continue;
+      const builder = FLORA_BUILDERS[kind] ?? FLORA_BUILDERS.rock;
+      const original = builder(targetBiome);
+      const obj = clonePreviewObjectUnique(original);
+      disposeUnpooledPreviewOriginal(original, pool);
+      obj.position.set(p.x, makePreviewFloraGroundY(kind, scaleMul, p.x, p.z, heightFn), p.z);
+      obj.rotation.y = rng() * Math.PI * 2;
+      obj.scale.setScalar(scaleMul);
+      group.add(obj);
+      placed++;
+    }
+  });
   return group;
 }
 
@@ -555,23 +516,27 @@ function makePreviewCreatures(targetBiome, rng, heightFn, layout, portalAnchor) 
   const group = new THREE.Group();
   group.name = "PortalPreviewCreatures";
   const count = LOWFX ? 3 : 6;
-  let placed = 0;
-  let attempts = 0;
-  while (placed < count && attempts < count * 10) {
-    attempts++;
-    const p = pickPreviewGroundPoint(layout, rng, 0.72);
-    if (isInPortalPreviewSightline(p.x, p.z, portalAnchor)) continue;
-    const y = heightFn(p.x, p.z);
-    if (y < -0.2) continue;
-    const creatureOriginal = makeCreature(targetBiome).group;
-    const creature = clonePreviewObjectUnique(creatureOriginal);
-    disposePreviewOriginal(creatureOriginal);
-    creature.position.set(p.x, y + 0.18, p.z);
-    creature.rotation.y = rng() * Math.PI * 2;
-    creature.scale.setScalar(0.9 + rng() * 0.22);
-    group.add(creature);
-    placed++;
-  }
+  // QA-001: same isolated-pool build as makePreviewFlora, for the creature
+  // pool (eye/pupil/leg/foot materials and geometries).
+  withIsolatedCreaturePool((pool) => {
+    let placed = 0;
+    let attempts = 0;
+    while (placed < count && attempts < count * 10) {
+      attempts++;
+      const p = pickPreviewGroundPoint(layout, rng, 0.72);
+      if (isInPortalPreviewSightline(p.x, p.z, portalAnchor)) continue;
+      const y = heightFn(p.x, p.z);
+      if (y < -0.2) continue;
+      const creatureOriginal = makeCreature(targetBiome).group;
+      const creature = clonePreviewObjectUnique(creatureOriginal);
+      disposeUnpooledPreviewOriginal(creatureOriginal, pool);
+      creature.position.set(p.x, y + 0.18, p.z);
+      creature.rotation.y = rng() * Math.PI * 2;
+      creature.scale.setScalar(0.9 + rng() * 0.22);
+      group.add(creature);
+      placed++;
+    }
+  });
   return group;
 }
 

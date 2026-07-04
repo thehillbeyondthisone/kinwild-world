@@ -47,9 +47,12 @@ export function finalizeWorldHud({
   const groundCreatureCount = worldState.creatures.filter((c) => !c.flies && !c.isFish).length + worldState.caterpillars.length;
   const flyCreatureCount = worldState.creatures.filter((c) => c.flies && !c.isFish).length;
   const swimCreatureCount = worldState.creatures.filter((c) => c.isFish).length;
+  // QA-L04: computed once and reused below (help panel mirror) instead of
+  // calling generateIslandName(seed) twice per regen.
+  const islandName = generateIslandName(seed);
   document.getElementById("biome-name").textContent = biome.name;
   const islandNameEl = document.getElementById("island-name");
-  if (islandNameEl) islandNameEl.textContent = generateIslandName(seed);
+  if (islandNameEl) islandNameEl.textContent = islandName;
   document.getElementById("biome-sub").textContent = biome.sub;
   document.getElementById("ground-creature-count").textContent = padStat(groundCreatureCount);
   document.getElementById("fly-creature-count").textContent = padStat(flyCreatureCount);
@@ -62,7 +65,7 @@ export function finalizeWorldHud({
   const hBiome = document.getElementById("help-biome");
   if (hBiome) hBiome.textContent = biome.name;
   const hIsland = document.getElementById("help-island-name");
-  if (hIsland) hIsland.textContent = generateIslandName(seed);
+  if (hIsland) hIsland.textContent = islandName;
   const hSeed = document.getElementById("help-seed");
   if (hSeed) hSeed.textContent = formatSeed(seed);
   const hGround = document.getElementById("help-ground-creatures");

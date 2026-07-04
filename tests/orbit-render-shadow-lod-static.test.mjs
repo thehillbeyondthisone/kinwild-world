@@ -40,7 +40,7 @@ assert(
   shadowsSource.includes('const CONTACT_SHADOW_LOD_DISTANCE')
     && shadowsSource.includes('export function stepShadowDisks(disks, heightFn, focus)')
     && shadowsSource.includes('isWithinContactShadowLod')
-    && shadowsSource.includes('focus?.x')
+    && shadowsSource.includes('if (!focus) return true;')
     && mainSource.includes('const contactShadowFocus = isAnyFP() ? camera.position : controls.target;')
     && mainSource.includes('stepShadowDisks(state.shadowDisks, state.heightFn, contactShadowFocus);'),
   'Soft contact shadow discs should be culled to objects near the active camera/focus area.'

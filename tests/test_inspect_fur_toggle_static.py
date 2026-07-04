@@ -64,9 +64,15 @@ class InspectFurToggleStaticTest(unittest.TestCase):
     def test_normal_ui_shortcuts_are_disabled_in_inspect_mode(self) -> None:
         ui = UI_JS.read_text()
 
+        # QA-L01: ui.js's keydown handler used to carry a redundant
+        # `if (INSPECT) return;` guard, but initUi() (which installs that
+        # handler) is only ever called when `!INSPECT` — see
+        # test_normal_ui_is_not_initialized_in_inspect_mode below — so the
+        # in-function check was unreachable dead code and was removed.
+        # Normal UI shortcuts are disabled in inspect mode because initUi()
+        # never runs at all in that mode.
         self.assertIn('import { INSPECT } from "./inspect.js"', ui)
-        self.assertIn("if (INSPECT) return;", ui)
-        self.assertLess(ui.index("if (INSPECT) return;"), ui.index('e.key === "f" || e.key === "F"'))
+        self.assertNotIn("if (INSPECT) return;", ui)
 
     def test_normal_ui_is_not_initialized_in_inspect_mode(self) -> None:
         main = MAIN_JS.read_text()

@@ -128,7 +128,7 @@
       </div>
     </div>
 
-    <section class="obs-specimen" aria-label="selected specimen readout">
+    <section class="obs-specimen" id="obs-specimen" aria-label="selected specimen readout">
       <div class="obs-paper-grain" aria-hidden="true"></div>
       <header>
         <span class="obs-paper-emblem" aria-hidden="true">⌇</span>
@@ -155,8 +155,15 @@
         <dt>Repairs</dt>
         <dd id="obs-repairs">00 · canonical genome</dd>
       </dl>
-      <button class="obs-paper-tab" id="obs-specimen-close" type="button" aria-label="collapse specimen readout">◉</button>
     </section>
+    <button
+      class="obs-paper-tab"
+      id="obs-specimen-close"
+      type="button"
+      aria-controls="obs-specimen"
+      aria-expanded="true"
+      aria-label="collapse specimen readout"
+    ><span aria-hidden="true">◉</span><span class="obs-paper-tab-label">specimen</span></button>
 
     <section class="obs-resonance obs-panel" aria-label="field resonance">
       <div class="obs-panel-title">Field Resonance</div>

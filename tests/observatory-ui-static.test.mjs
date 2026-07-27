@@ -10,6 +10,8 @@ for (const id of [
   "observatory-shell",
   "obs-field-name",
   "obs-genome",
+  "obs-specimen",
+  "obs-specimen-close",
   "obs-taxonomy-list",
   "obs-field-wave",
   "obs-create-form",
@@ -22,7 +24,15 @@ for (const id of [
 
 assert.ok(css.includes(".observatory-shell"), "observatory shell needs dedicated styling");
 assert.ok(css.includes("@media (max-width: 760px)"), "observatory needs a mobile layout");
+assert.ok(
+  css.includes(".obs-specimen.collapsed + .obs-paper-tab"),
+  "the collapsed specimen needs a persistent external handle",
+);
 assert.ok(css.includes(".form-candidate.selected"), "candidate selection needs a visible state");
+assert.ok(
+  html.includes('aria-controls="obs-specimen"'),
+  "the specimen handle should expose its controlled panel",
+);
 assert.ok(ui.includes("requestCreatureCandidates"), "Form Studio should call the authoring client");
 assert.ok(ui.includes("introduceLivingFauna"), "accepted forms should enter the live field");
 assert.ok(ui.includes("meanHeadingCoherence"), "resonance must derive from live field telemetry");

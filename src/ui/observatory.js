@@ -200,11 +200,44 @@ function projectCallout(target, object, camera, offsetX, offsetY) {
   }
   const x = (vector.x * 0.5 + 0.5) * window.innerWidth + offsetX;
   const y = (-vector.y * 0.5 + 0.5) * window.innerHeight + offsetY;
-  if (x < 32 || x > window.innerWidth - 170 || y < 135 || y > window.innerHeight - 220) {
+  const reserved = [
+    ".obs-field-card",
+    ".obs-specimen:not(.collapsed)",
+    ".obs-paper-tab",
+    ".obs-resonance",
+    ".obs-dock",
+    ".obs-taxonomy",
+    ".obs-relations",
+  ]
+    .map((selector) => document.querySelector(selector))
+    .filter((element) => element && getComputedStyle(element).display !== "none")
+    .map((element) => element.getBoundingClientRect());
+  const collides = (left) => {
+    const box = {
+      left: left - 32,
+      right: left + 180,
+      top: y - 4,
+      bottom: y + 62,
+    };
+    return reserved.some(
+      (rect) =>
+        box.left < rect.right &&
+        box.right > rect.left &&
+        box.top < rect.bottom &&
+        box.bottom > rect.top,
+    );
+  };
+  const safeX = [x, x - 205].find(
+    (candidate) =>
+      candidate >= 32 &&
+      candidate <= window.innerWidth - 170 &&
+      !collides(candidate),
+  );
+  if (safeX == null || y < 135 || y > window.innerHeight - 175) {
     target.classList.remove("visible");
     return;
   }
-  target.style.transform = `translate3d(${x.toFixed(0)}px, ${y.toFixed(0)}px, 0)`;
+  target.style.transform = `translate3d(${safeX.toFixed(0)}px, ${y.toFixed(0)}px, 0)`;
   target.classList.add("visible");
 }
 
@@ -612,15 +645,30 @@ export function initObservatory() {
     const compact = shell.classList.toggle("compact");
     element("obs-density-toggle").setAttribute("aria-pressed", String(!compact));
   });
-  element("obs-specimen-close").addEventListener("click", () => {
-    const specimen = element("obs-specimen-close").closest(".obs-specimen");
-    if (window.matchMedia("(max-width: 760px)").matches) {
+  const specimen = element("obs-specimen");
+  const specimenToggle = element("obs-specimen-close");
+  const mobileSpecimenQuery = window.matchMedia("(max-width: 760px)");
+  const syncSpecimenToggle = () => {
+    const expanded = mobileSpecimenQuery.matches
+      ? specimen.classList.contains("mobile-open")
+      : !specimen.classList.contains("collapsed");
+    specimenToggle.setAttribute("aria-expanded", String(expanded));
+    specimenToggle.setAttribute(
+      "aria-label",
+      expanded ? "collapse specimen readout" : "open specimen readout",
+    );
+  };
+  specimenToggle.addEventListener("click", () => {
+    if (mobileSpecimenQuery.matches) {
       specimen.classList.toggle("mobile-open");
       specimen.classList.remove("collapsed");
     } else {
       specimen.classList.toggle("collapsed");
     }
+    syncSpecimenToggle();
   });
+  mobileSpecimenQuery.addEventListener("change", syncSpecimenToggle);
+  syncSpecimenToggle();
   document.querySelectorAll("[data-obs-lens]").forEach((button) => {
     button.addEventListener("click", () => {
       document.querySelectorAll("[data-obs-lens]").forEach((entry) => {

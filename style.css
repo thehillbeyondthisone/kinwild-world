@@ -4041,6 +4041,10 @@ body.photo-mode .form-studio {
 @media (max-width: 1120px) and (min-height: 651px) {
   .observatory-shell {
     --obs-gutter-x: 22px;
+    /* The dock shares this row with the card, so there is nothing to reach
+       into: a negative overhang parks the handle on top of the dock panel.
+       Positive tucks it onto the paper instead. */
+    --obs-tab-overhang: 9px;
     --obs-col-left: minmax(0, 1fr);
     --obs-col-right: minmax(0, 244px);
     grid-template-columns:
@@ -4080,6 +4084,17 @@ body.photo-mode .form-studio {
   .obs-specimen {
     min-height: 225px;
     padding-left: 48px;
+  }
+
+  /* Tucked in, the handle would sit on the readout rows, so it takes the
+     bottom corner and the plate seal stands down for it — the seal is
+     decoration, the handle is the only way back to the card. */
+  .obs-specimen::after {
+    display: none;
+  }
+
+  .obs-paper-tab {
+    bottom: 16px;
   }
 
   .obs-dock-core {

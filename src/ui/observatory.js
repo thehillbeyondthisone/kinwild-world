@@ -1,7 +1,14 @@
 import * as THREE from "three";
 import { APP_VERSION, state } from "../state.js";
 import { generateIslandName } from "../islandname.js";
-import { conditionGlyphs, renderGlyphDial } from "./glyphs.js";
+import {
+  GLYPHS,
+  conditionGlyphs,
+  morphologyGlyphs,
+  renderGlyphDial,
+  renderGlyphRun,
+  traitGlyphs,
+} from "./glyphs.js";
 import { introduceLivingFauna } from "../living-world/index.js";
 import {
   createProceduralStudies,
@@ -26,6 +33,11 @@ const MAX_RETURNING_FORMS = 4;
 // Comfortably past the 4.4s masthead pulse (and its 2.2s reduced-motion
 // variant) so the fallback only fires when animationend genuinely never does.
 const BRAND_PULSE_SETTLE_MS = 5200;
+const METER_DOTS = 10;
+const WAVE_SAMPLES = 56;
+// Window the kin-activity rate is measured over. Long enough that a single
+// footfall does not spike it, short enough to track a herd settling.
+const ACTIVITY_WINDOW_MS = 4000;
 const vector = new THREE.Vector3();
 const surfaceHit = { height: 0, normal: new THREE.Vector3(), material: null };
 
@@ -92,15 +104,44 @@ function movementStability(actors) {
   return Math.max(0, Math.min(1, 1 - Math.sqrt(variance) * 2.8));
 }
 
-function renderMeter(target, value) {
+function renderRun(target, count, factory) {
   if (!target) return;
-  const count = Math.round(Math.max(0, Math.min(1, value)) * 8);
-  target.replaceChildren();
-  for (let index = 0; index < 8; index++) {
+  const items = [];
+  for (let index = 0; index < count; index++) items.push(factory(index));
+  target.replaceChildren(...items);
+}
+
+function renderMeter(target, value, count = METER_DOTS) {
+  const lit = Math.round(Math.max(0, Math.min(1, value)) * count);
+  renderRun(target, count, (index) => {
     const dot = document.createElement("i");
-    if (index < count) dot.className = "on";
-    target.append(dot);
-  }
+    if (index < lit) dot.className = "on";
+    return dot;
+  });
+}
+
+/**
+ * A fixed-length ring of samples plus the path generator that reads it.
+ * The waveforms used to be pure `sin(t)` with no input; these carry the real
+ * signal so the trace actually moves with the field.
+ */
+function makeRing(size) {
+  return { values: new Float32Array(size), head: 0, filled: 0 };
+}
+
+function pushRing(ring, value) {
+  ring.values[ring.head] = Number.isFinite(value) ? value : 0;
+  ring.head = (ring.head + 1) % ring.values.length;
+  if (ring.filled < ring.values.length) ring.filled += 1;
+}
+
+function pathFromRing(ring, width, height, amplitude = 1) {
+  const size = ring.values.length;
+  return pathFrom(width, height, size, (_t, index) => {
+    // Read oldest-first so the trace scrolls left as samples arrive.
+    const slot = (ring.head + index) % size;
+    return (ring.values[slot] * 2 - 1) * amplitude;
+  });
 }
 
 function deriveTraits(dna) {
@@ -116,29 +157,15 @@ function deriveTraits(dna) {
   return traits.slice(0, 4);
 }
 
-function setPalette(target, palette) {
+function setPalette(target, palette, keys = ["body", "head", "limb", "eye"]) {
   if (!target) return;
   target.replaceChildren();
-  for (const color of [
-    palette?.body,
-    palette?.head,
-    palette?.limb,
-    palette?.eye,
-  ]) {
+  for (const key of keys) {
+    const color = palette?.[key];
     if (!color) continue;
     const dot = document.createElement("i");
     dot.style.backgroundColor = color;
     target.append(dot);
-  }
-}
-
-function setTraits(target, traits) {
-  if (!target) return;
-  target.replaceChildren();
-  for (const trait of traits) {
-    const item = document.createElement("span");
-    item.textContent = trait;
-    target.append(item);
   }
 }
 
@@ -349,11 +376,15 @@ export function initObservatory() {
     fieldName: element("obs-field-name"),
     fieldSub: element("obs-field-sub"),
     genome: element("obs-genome"),
+    strainRun: element("obs-strain-run"),
     species: element("obs-species"),
     movement: element("obs-movement"),
     morphology: element("obs-morphology"),
+    morphologyText: element("obs-morphology-text"),
     habitat: element("obs-habitat"),
-    repairs: element("obs-repairs"),
+    activity: element("obs-activity"),
+    activityRun: element("obs-activity-run"),
+    caption: element("obs-selection-caption"),
     palette: element("obs-palette"),
     traits: element("obs-traits"),
     specimenWave: element("obs-specimen-wave"),
@@ -414,6 +445,12 @@ export function initObservatory() {
   let candidateIndex = -1;
   let requestController = null;
   let brandPulseTimer = 0;
+  // Rolling samples behind the four traces. Before these the waveforms were
+  // fixed sines with no input at all — they looked live and measured nothing.
+  const speedRing = makeRing(WAVE_SAMPLES);
+  const agitationRing = makeRing(WAVE_SAMPLES);
+  const coherenceRing = makeRing(WAVE_SAMPLES);
+  const stabilityRing = makeRing(WAVE_SAMPLES);
   const compactPanelQuery = window.matchMedia(
     "(max-width: 1120px), (max-height: 650px)",
   );
@@ -563,23 +600,53 @@ export function initObservatory() {
     const actor = runtime?.fauna?.find((entry) => entry.facade === selected);
     const agent = selected?.generatedAgent;
     const dna = agent?.dna;
-    refs.genome.textContent = selected?.genomeHash ?? "--------";
-    refs.species.textContent = dna?.name ?? "unobserved";
-    refs.movement.textContent = actor
-      ? `${agent.traits.locomotion} ${actor.intent?.action ?? "idle"} · ${(actor.velocity.length() * 10).toFixed(1)} drift`
-      : "awaiting";
-    refs.morphology.textContent = dna
-      ? `${dna.legs.count}-leg · ${dna.body.halfLength > 0.27 ? "longbody" : "roundbody"} · ${dna.head.radius > 0.25 ? "broadhead" : "smallhead"}`
+    const fauna = runtime?.fauna ?? [];
+    refs.genome.textContent = formatSeed(state.currentSeed);
+    // A short glyph run keyed off the genome hash — a visual fingerprint that
+    // changes with the specimen without pretending to be a measurement.
+    const hash = selected?.genomeHash ?? "";
+    const morphIds = Object.values(GLYPHS.morphology);
+    renderGlyphRun(
+      refs.strainRun,
+      hash
+        ? [...hash.slice(0, 4)].map(
+            (ch, i) => morphIds[(parseInt(ch, 16) + i) % morphIds.length],
+          )
+        : [],
+    );
+
+    refs.species.textContent = String(fauna.length).padStart(2, "0");
+    setPalette(refs.palette, dna?.palette, ["body", "head", "limb", "eye", "pupil"]);
+
+    // fly/swim read 00 while the walker is the only archetype, but they come
+    // from real trait flags rather than a literal, so they go live the moment
+    // an airborne or aquatic form is authored.
+    const flying = fauna.filter((entry) => entry.agent?.traits?.airborne).length;
+    const swimming = fauna.filter((entry) => entry.agent?.traits?.aquatic).length;
+    const drift = actor ? Math.round(actor.velocity.length() * 100) : 0;
+    refs.movement.textContent = `fly ${String(flying).padStart(2, "0")}   swim ${String(swimming).padStart(2, "0")}   drift ${String(Math.min(99, drift)).padStart(2, "0")}`;
+
+    renderGlyphRun(refs.morphology, morphologyGlyphs(dna));
+    refs.morphologyText.textContent = dna
+      ? `${dna.legs.count}-leg · ${dna.body.halfLength > 0.27 ? "longbody" : "roundbody"}`
       : "—";
+
+    // The repairs count moves into the caption as its human-readable string;
+    // these have always existed as prose and only the count was ever shown.
     const repairs = selected?.authoring?.repairs ?? agent?.repairs ?? [];
-    refs.repairs.textContent = agent
-      ? `${String(repairs.length).padStart(2, "0")} · ${repairs.length ? "bounded adjustments" : "canonical genome"}`
-      : "00 · awaiting specimen";
+    refs.caption.textContent = agent
+      ? repairs.length
+        ? String(repairs[0])
+        : "canonical genome"
+      : "focused living form";
     refs.focus.textContent = dna
       ? `${dna.speciesId.slice(0, 18)}`
       : "no specimen";
-    setPalette(refs.palette, dna?.palette);
-    setTraits(refs.traits, deriveTraits(dna));
+
+    const traits = deriveTraits(dna);
+    renderGlyphRun(refs.traits, traitGlyphs(traits));
+    // The glyphs are the visual; the words stay reachable as the label.
+    refs.traits?.setAttribute("title", traits.join(" · "));
 
     if (actor && runtime?.surface) {
       runtime.surface.sample(actor.position.x, actor.position.z, surfaceHit);
@@ -597,22 +664,32 @@ export function initObservatory() {
       refs.habitat.textContent = "elev. — · slope — · air mild";
     }
 
-    const speed = actor?.velocity?.length?.() ?? 0;
+    // Footfalls per second over a rolling window — the event log has always
+    // been collected and never read.
+    const now = performance.now();
+    const recentSteps = eventLog.filter(
+      (event) =>
+        event.type === "creature:footfall" &&
+        now - (event.time ?? 0) < ACTIVITY_WINDOW_MS,
+    ).length;
+    const rate = recentSteps / (ACTIVITY_WINDOW_MS / 1000);
+    refs.activity.textContent = `${String(Math.min(99, Math.round(rate * 10))).padStart(2, "0")} steps/s`;
+    renderGlyphRun(
+      refs.activityRun,
+      Array.from({ length: Math.min(4, Math.ceil(rate)) }, () => GLYPHS.trait["long-step"]),
+    );
+
+    // Both traces read the rings the tick fills, so they carry the specimen's
+    // real speed and the field's real agitation rather than a fixed sine.
     refs.movementPath.setAttribute(
       "d",
-      pathFrom(160, 18, 24, (t, index) =>
-        Math.sin(t * Math.PI * 5 + time * 2.4) *
-        (0.08 + speed * 0.38) *
-        (index % 5 === 0 ? 1.35 : 1),
-      ),
+      pathFromRing(speedRing, 160, 18, 0.9),
     );
     refs.specimenWave.setAttribute(
       "d",
-      pathFrom(250, 22, 42, (t) =>
-        Math.sin(t * Math.PI * 8 + time * 1.7) * 0.22 +
-        Math.sin(t * Math.PI * 19 - time * 0.8) * 0.07,
-      ),
+      pathFromRing(agitationRing, 250, 22, 0.85),
     );
+    void time;
   }
 
   function updateField(runtime, time) {
@@ -664,19 +741,9 @@ export function initObservatory() {
 
     renderMeter(refs.stability, stability);
     renderMeter(refs.coherence, coherence);
-    refs.fieldWave.setAttribute(
-      "d",
-      pathFrom(330, 74, 58, (t) =>
-        Math.sin(t * Math.PI * 7 + time * 1.2) * (0.22 + coherence * 0.28) +
-        Math.sin(t * Math.PI * 17 - time * 0.46) * 0.08,
-      ),
-    );
-    refs.fieldThread.setAttribute(
-      "d",
-      pathFrom(330, 74, 58, (t) =>
-        Math.sin(t * Math.PI * 11 - time * 0.7) * (0.08 + (1 - stability) * 0.19),
-      ),
-    );
+    refs.fieldWave.setAttribute("d", pathFromRing(coherenceRing, 330, 74, 0.72));
+    refs.fieldThread.setAttribute("d", pathFromRing(stabilityRing, 330, 74, 0.4));
+    void time;
 
     const observedRelations = new Set(
       eventLog
@@ -718,6 +785,33 @@ export function initObservatory() {
     projectCallout(refs.floraCallout, flora?.instance?.root, ctx.camera, 20, -18);
   }
 
+  /**
+   * Push one sample into each trace ring. Runs once per tick, before anything
+   * reads them, so all four traces share a timebase.
+   */
+  function sampleTraces(runtime, selected) {
+    const actors = runtime?.fauna ?? [];
+    const actor = actors.find((entry) => entry.facade === selected);
+    // Speed normalized against a brisk walk rather than an absolute cap, so a
+    // drifting kinling still produces visible movement in the trace.
+    pushRing(speedRing, Math.min(1, (actor?.velocity?.length?.() ?? 0) / 0.9));
+    pushRing(coherenceRing, meanHeadingCoherence(actors));
+    pushRing(stabilityRing, movementStability(actors));
+
+    // Mean flora agitation: how hard the plants are currently being brushed.
+    // The touch envelope has always been computed for the pose and never read
+    // by anything else; touchState() is its existing read-only accessor.
+    let agitation = 0;
+    let counted = 0;
+    for (const entry of runtime?.flora ?? []) {
+      const value = entry.instance?.touchState?.()?.value;
+      if (typeof value !== "number") continue;
+      agitation += Math.min(1, Math.abs(value));
+      counted += 1;
+    }
+    pushRing(agitationRing, counted ? agitation / counted : 0);
+  }
+
   function update() {
     if (!document.body.classList.contains("living-world-mode")) return;
     const runtime = state.livingWorld;
@@ -728,6 +822,7 @@ export function initObservatory() {
     }
     const selected = currentSelection(runtime);
     const time = state.lastSimT ?? 0;
+    sampleTraces(runtime, selected);
     updateSpecimen(runtime, selected, time);
     updateField(runtime, time);
     updateCallouts(runtime, selected);

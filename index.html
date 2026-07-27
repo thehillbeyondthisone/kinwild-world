@@ -218,23 +218,28 @@
             <div class="obs-paper-caption" id="obs-selection-caption">focused living form</div>
           </div>
         </header>
+        <!--
+          The row icon lives inside its <dt> rather than in a third grid
+          column: a third column would break the dt/dd auto-flow. Every dt
+          leads with the same width, so the icons read as a column for free.
+        -->
         <dl class="obs-specimen-table">
-          <dt>Genome</dt>
-          <dd><strong id="obs-genome">--------</strong></dd>
-          <dt>Species</dt>
+          <dt><svg class="kw-glyph obs-row-icon" aria-hidden="true"><use href="#kw-row-strain"/></svg>Strain ID</dt>
+          <dd><strong id="obs-genome">--------</strong><span class="obs-glyph-run" id="obs-strain-run" aria-hidden="true"></span></dd>
+          <dt><svg class="kw-glyph obs-row-icon" aria-hidden="true"><use href="#kw-row-kin"/></svg>Kin Group</dt>
           <dd><strong id="obs-species">unobserved</strong><span class="obs-palette" id="obs-palette"></span></dd>
-          <dt>Movement</dt>
+          <dt><svg class="kw-glyph obs-row-icon" aria-hidden="true"><use href="#kw-row-movement"/></svg>Movement</dt>
           <dd><span id="obs-movement">awaiting</span><svg class="obs-sparkline" viewBox="0 0 160 18" preserveAspectRatio="none" aria-hidden="true"><path id="obs-movement-path" d="M0 9H160"></path></svg></dd>
-          <dt>Morphology</dt>
-          <dd class="obs-morphology" id="obs-morphology">—</dd>
-          <dt>Resonance</dt>
-          <dd><svg class="obs-resonance-line" viewBox="0 0 250 22" preserveAspectRatio="none" aria-hidden="true"><path id="obs-specimen-wave" d="M0 11H250"></path></svg></dd>
-          <dt>Habitat</dt>
+          <dt><svg class="kw-glyph obs-row-icon" aria-hidden="true"><use href="#kw-row-morphology"/></svg>Morphologies</dt>
+          <dd class="obs-morphology"><span class="obs-glyph-run" id="obs-morphology" aria-hidden="true"></span><em id="obs-morphology-text">—</em></dd>
+          <dt><svg class="kw-glyph obs-row-icon" aria-hidden="true"><use href="#kw-row-resonance"/></svg>Resonance</dt>
+          <dd class="obs-resonance-row"><svg class="obs-resonance-line" viewBox="0 0 250 22" preserveAspectRatio="none" aria-hidden="true"><path id="obs-specimen-wave" d="M0 11H250"></path></svg><i class="obs-row-seal" aria-hidden="true"></i></dd>
+          <dt><svg class="kw-glyph obs-row-icon" aria-hidden="true"><use href="#kw-row-habitat"/></svg>Habitat</dt>
           <dd id="obs-habitat">elev. — &nbsp; slope — &nbsp; air mild</dd>
-          <dt>Traits</dt>
+          <dt><svg class="kw-glyph obs-row-icon" aria-hidden="true"><use href="#kw-row-traits"/></svg>Emergent Traits</dt>
           <dd class="obs-traits" id="obs-traits"><span>unobserved</span></dd>
-          <dt>Repairs</dt>
-          <dd id="obs-repairs">00 · canonical genome</dd>
+          <dt><svg class="kw-glyph obs-row-icon" aria-hidden="true"><use href="#kw-row-activity"/></svg>Kin Activity</dt>
+          <dd><span id="obs-activity">00 steps/s</span><span class="obs-glyph-run" id="obs-activity-run" aria-hidden="true"></span></dd>
         </dl>
       </section>
       <button

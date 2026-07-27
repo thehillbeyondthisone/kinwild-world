@@ -2688,6 +2688,69 @@ body.living-world-mode {
 
 /* Six glyphs read as a dial: the lit one in each group is the current
    reading, the unlit ones give it a scale to sit against. */
+/* Specimen row furniture. The row icon sits inside its own <dt> so the dl's
+   dt/dd auto-flow survives; every dt leads with the same width, which is what
+   makes the icons read as a column. */
+.obs-specimen-table dt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.obs-row-icon {
+  width: 15px;
+  height: 15px;
+  opacity: 0.72;
+}
+
+.obs-glyph-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 7px;
+  font-size: 13px;
+  opacity: 0.66;
+}
+
+.obs-morphology {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.obs-morphology .obs-glyph-run {
+  margin-left: 0;
+}
+
+.obs-morphology em {
+  font-size: 9px;
+  font-style: normal;
+  letter-spacing: 0.1em;
+  opacity: 0.66;
+}
+
+.obs-resonance-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.obs-row-seal {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(52, 55, 50, 0.45);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px rgba(52, 55, 50, 0.09);
+}
+
+.obs-traits {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
 .obs-condition-dial {
   display: inline-flex;
   align-items: center;

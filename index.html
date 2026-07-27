@@ -192,6 +192,14 @@
       </div>
     </aside>
 
+    <!--
+      Leaders are drawn in viewport coordinates. No viewBox, so the svg's user
+      units are CSS pixels and projected positions go straight into a path with
+      no resize bookkeeping. Sibling to the callouts rather than a child so a
+      callout's own stacking context can't clip a line reaching across it.
+    -->
+    <svg class="obs-leaders" id="obs-leaders" aria-hidden="true"></svg>
+
     <div class="obs-callouts" aria-hidden="true">
       <div class="obs-callout obs-callout-creature" id="obs-callout-creature" data-obs-panel="fauna">
         <span class="obs-callout-line"></span>
@@ -210,6 +218,18 @@
         <strong id="obs-callout-flora-name">Pulsebells</strong>
         <em>flowering cluster</em>
         <small id="obs-callout-flora-note">nectar affordance observed</small>
+      </div>
+      <div class="obs-callout obs-callout-ground" id="obs-callout-ground" data-obs-panel="flora">
+        <span class="obs-callout-line"></span>
+        <strong id="obs-callout-ground-name">Meadowbloom</strong>
+        <em>ground cover</em>
+        <small id="obs-callout-ground-note">soft cover and forage</small>
+      </div>
+      <div class="obs-callout obs-callout-peer" id="obs-callout-peer" data-obs-panel="fauna">
+        <span class="obs-callout-line"></span>
+        <strong id="obs-callout-peer-name">Kinling</strong>
+        <em id="obs-callout-peer-state">wandering</em>
+        <small id="obs-callout-peer-note">unselected kin</small>
       </div>
     </div>
 

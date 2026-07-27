@@ -2835,25 +2835,48 @@ body.living-world-mode {
   opacity: 1;
 }
 
+/* The 28px stub that used to sit here reached nothing — the real line is
+   drawn in #obs-leaders, all the way to the subject. What remains is the tick
+   where that line meets the label. */
 .obs-callout::before {
   content: "";
   position: absolute;
-  left: -28px;
+  left: -1px;
   top: 0;
-  width: 28px;
-  height: 1px;
-  background: var(--obs-gold);
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(var(--obs-gold), rgba(216, 170, 98, 0.15));
 }
 
-.obs-callout::after {
-  content: "";
+/* A callout flipped to its subject's left is attached on its right edge, so
+   the tick moves with it. */
+.obs-callout[data-side="right"]::before {
+  left: auto;
+  right: -1px;
+}
+
+.obs-leaders {
   position: absolute;
-  left: -31px;
-  top: -2px;
-  width: 5px;
-  height: 5px;
-  border: 1px solid var(--obs-gold);
-  border-radius: 50%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.obs-leaders path {
+  fill: none;
+  stroke: var(--obs-gold);
+  stroke-width: 1;
+  stroke-linecap: round;
+  opacity: 0.62;
+}
+
+.obs-leaders circle {
+  fill: none;
+  stroke: var(--obs-gold);
+  stroke-width: 1;
+  opacity: 0.78;
 }
 
 .obs-callout strong,

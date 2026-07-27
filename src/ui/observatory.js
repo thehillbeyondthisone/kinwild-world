@@ -18,6 +18,10 @@ import {
   saveAuthoredForm,
 } from "../creature-authoring.js";
 import {
+  leaderPoints,
+  placeCallout,
+} from "./observatory-callouts.js";
+import {
   RELATION_CATEGORIES,
   buildRelationGraph,
 } from "./observatory-relations.js";
@@ -59,6 +63,11 @@ const STUDIO_SETTLE_MS = 620;
 // twitch. This is the display range, not a change to the simulation.
 const AGITATION_FULL_SCALE = 0.25;
 const SVG_NS = "http://www.w3.org/2000/svg";
+// Distance a callout sits from its subject, and the bands at the top and
+// bottom of the viewport the masthead and dock own.
+const CALLOUT_GAP = 25;
+const CALLOUT_MARGIN_TOP = 120;
+const CALLOUT_MARGIN_BOTTOM = 150;
 const vector = new THREE.Vector3();
 const surfaceHit = { height: 0, normal: new THREE.Vector3(), material: null };
 
@@ -248,63 +257,22 @@ function taxonomyRecords(runtime) {
   return records.slice(0, 8);
 }
 
-function projectCallout(target, object, camera, offsetX, offsetY) {
-  if (!target || !object || !camera) {
-    target?.classList.remove("visible");
-    return;
-  }
+/**
+ * Project a world object into CSS-pixel viewport coordinates.
+ *
+ * Returns null when the subject is behind the camera or outside the depth
+ * range, which is the caller's signal to hide the callout rather than draw a
+ * line to a point that isn't on screen.
+ */
+function projectToViewport(object, camera, out) {
+  if (!object || !camera) return null;
   object.updateWorldMatrix(true, false);
   object.getWorldPosition(vector);
   vector.project(camera);
-  if (vector.z < -1 || vector.z > 1) {
-    target.classList.remove("visible");
-    return;
-  }
-  const x = (vector.x * 0.5 + 0.5) * window.innerWidth + offsetX;
-  const y = (-vector.y * 0.5 + 0.5) * window.innerHeight + offsetY;
-  const reserved = [
-    ".obs-field-card",
-    ".obs-specimen:not(.collapsed)",
-    ".obs-paper-tab",
-    ".obs-resonance",
-    ".obs-dock",
-    ".obs-taxonomy",
-    ".obs-relations",
-  ]
-    .map((selector) => document.querySelector(selector))
-    .filter((element) => {
-      if (!element) return false;
-      const style = getComputedStyle(element);
-      return style.display !== "none" && style.visibility !== "hidden";
-    })
-    .map((element) => element.getBoundingClientRect());
-  const collides = (left) => {
-    const box = {
-      left: left - 32,
-      right: left + 180,
-      top: y - 4,
-      bottom: y + 62,
-    };
-    return reserved.some(
-      (rect) =>
-        box.left < rect.right &&
-        box.right > rect.left &&
-        box.top < rect.bottom &&
-        box.bottom > rect.top,
-    );
-  };
-  const safeX = [x, x - 205].find(
-    (candidate) =>
-      candidate >= 32 &&
-      candidate <= window.innerWidth - 170 &&
-      !collides(candidate),
-  );
-  if (safeX == null || y < 135 || y > window.innerHeight - 175) {
-    target.classList.remove("visible");
-    return;
-  }
-  target.style.transform = `translate3d(${safeX.toFixed(0)}px, ${y.toFixed(0)}px, 0)`;
-  target.classList.add("visible");
+  if (vector.z < -1 || vector.z > 1) return null;
+  out.x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+  out.y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+  return out;
 }
 
 function blueprintMarkup(dna) {
@@ -425,9 +393,13 @@ export function initObservatory() {
     relationLinks: document.querySelector("#obs-relations-graph .obs-relation-links"),
     relationNodes: document.querySelector("#obs-relations-graph .obs-relation-nodes"),
     relationLegend: element("obs-relation-legend"),
+    callouts: document.querySelector(".obs-callouts"),
+    leaders: element("obs-leaders"),
     creatureCallout: element("obs-callout-creature"),
+    peerCallout: element("obs-callout-peer"),
     heroCallout: element("obs-callout-hero"),
     floraCallout: element("obs-callout-flora"),
+    groundCallout: element("obs-callout-ground"),
   };
 
   const version = element("obs-version");
@@ -469,6 +441,13 @@ export function initObservatory() {
   let candidateIndex = -1;
   let requestController = null;
   let brandPulseTimer = 0;
+  // Split state: the tick writes `calloutTargets` and the caches, the rAF loop
+  // only reads them.
+  let calloutTargets = [];
+  let reservedRects = [];
+  let calloutFrame = 0;
+  const leaderPool = [];
+  const calloutAnchor = { x: 0, y: 0 };
   // Rolling samples behind the four traces. Before these the waveforms were
   // fixed sines with no input at all — they looked live and measured nothing.
   const speedRing = makeRing(WAVE_SAMPLES);
@@ -820,16 +799,27 @@ export function initObservatory() {
 
   }
 
+  /**
+   * Decide what each callout points at and what it says. Runs on the slow
+   * tick; the rAF loop below only moves what this chose.
+   */
   function updateCallouts(runtime, selected) {
     const actor = runtime?.fauna?.find((entry) => entry.facade === selected);
+    const peer = runtime?.fauna?.find((entry) => entry.facade !== selected);
     const hero = runtime?.hero?.instance?.root;
     const flora = runtime?.flora?.find((entry) => entry.recipe?.role === "mid");
+    const ground = runtime?.flora?.find((entry) => entry.recipe?.role === "ground");
     if (actor?.agent?.dna) {
       element("obs-callout-creature-name").textContent = actor.agent.dna.name;
       element("obs-callout-creature-state").textContent =
         actor.intent?.action ?? "wandering";
       element("obs-callout-creature-note").textContent =
         deriveTraits(actor.agent.dna).slice(0, 2).join(" · ");
+    }
+    if (peer?.agent?.dna) {
+      element("obs-callout-peer-name").textContent = peer.agent.dna.name;
+      element("obs-callout-peer-state").textContent =
+        peer.intent?.action ?? "wandering";
     }
     if (hero?.userData?.inspect?.variant) {
       element("obs-callout-hero-name").textContent =
@@ -839,15 +829,143 @@ export function initObservatory() {
       element("obs-callout-flora-name").textContent =
         flora.recipe?.dna?.name ?? "Pulsebells";
     }
-    projectCallout(
-      refs.creatureCallout,
-      selected?.trackingAnchor ?? selected?.group,
-      ctx.camera,
-      24,
-      -12,
+    if (ground) {
+      element("obs-callout-ground-name").textContent =
+        ground.recipe?.dna?.name ?? "Meadowbloom";
+    }
+
+    calloutTargets = [
+      { el: refs.creatureCallout, object: selected?.trackingAnchor ?? selected?.group, dy: -12 },
+      { el: refs.peerCallout, object: peer?.facade?.trackingAnchor ?? peer?.facade?.group, dy: -10 },
+      { el: refs.heroCallout, object: hero, dy: -55 },
+      { el: refs.floraCallout, object: flora?.instance?.root, dy: -18 },
+      { el: refs.groundCallout, object: ground?.instance?.root, dy: -8 },
+    ];
+    refreshCalloutCaches();
+  }
+
+  /**
+   * Rects the callouts must not cover, plus each callout's own measured box.
+   *
+   * Cached deliberately. The previous version re-queried seven selectors and
+   * called getComputedStyle + getBoundingClientRect per callout per call; at
+   * 60Hz with five callouts that is thousands of forced style resolutions a
+   * second. Panels move only on resize, a lens toggle, or a regen, and label
+   * boxes only when their text changes — all of which happen on this tick.
+   *
+   * Collected by attribute rather than a hardcoded selector list, so a panel
+   * added later is respected without anyone remembering to add it here.
+   */
+  function refreshCalloutCaches() {
+    const rects = [];
+    const panels = document.querySelectorAll(
+      ".observatory-shell [data-obs-panel]:not(.obs-lens-hidden)",
     );
-    projectCallout(refs.heroCallout, hero, ctx.camera, 28, -55);
-    projectCallout(refs.floraCallout, flora?.instance?.root, ctx.camera, 20, -18);
+    for (const panel of panels) {
+      // Callouts carry data-obs-panel too, and must not reserve space against
+      // themselves — that is a feedback loop, not a collision.
+      if (panel.classList.contains("obs-callout")) continue;
+      if (panel.classList.contains("collapsed")) continue;
+      rects.push(panel.getBoundingClientRect());
+    }
+    for (const selector of [".obs-brand", ".obs-rail"]) {
+      const fixed = document.querySelector(selector);
+      if (fixed) rects.push(fixed.getBoundingClientRect());
+    }
+    reservedRects = rects;
+
+    for (const target of calloutTargets) {
+      if (!target.el) continue;
+      // The label box used to be hardcoded {-32,+180,-4,+62} for every callout
+      // regardless of how much text it carried.
+      target.size = {
+        width: target.el.offsetWidth || 180,
+        height: target.el.offsetHeight || 62,
+        gap: CALLOUT_GAP,
+      };
+    }
+  }
+
+  /**
+   * Move the callouts and draw their leaders. Projection only — no text
+   * writes, no style reads. Runs every frame so labels track the camera
+   * instead of stair-stepping against it at 5.5Hz.
+   */
+  function layoutCallouts() {
+    calloutFrame = window.requestAnimationFrame(layoutCallouts);
+    // rAF is already throttled in a hidden tab, but a lens-hidden overlay is
+    // still composited — there is nothing to place when it is off.
+    if (document.hidden || !refs.callouts || refs.callouts.classList.contains("obs-lens-hidden")) {
+      return;
+    }
+    const viewport = { width: window.innerWidth, height: window.innerHeight };
+    let leaderIndex = 0;
+
+    for (const target of calloutTargets) {
+      if (!target.el) continue;
+      const anchor = projectToViewport(target.object, ctx.camera, calloutAnchor);
+      const size = target.size ?? { width: 180, height: 62, gap: CALLOUT_GAP };
+      const placement = anchor
+        ? placeCallout(
+            { x: anchor.x + CALLOUT_GAP, y: anchor.y + target.dy },
+            size,
+            reservedRects,
+            viewport,
+          )
+        : null;
+      if (
+        !placement ||
+        placement.top < CALLOUT_MARGIN_TOP ||
+        placement.top > viewport.height - CALLOUT_MARGIN_BOTTOM
+      ) {
+        target.el.classList.remove("visible");
+        hideLeader(leaderIndex++);
+        continue;
+      }
+      const { left, top } = placement;
+      target.el.style.transform = `translate3d(${left.toFixed(0)}px, ${top.toFixed(0)}px, 0)`;
+      target.el.dataset.side = left < anchor.x ? "right" : "left";
+      target.el.classList.add("visible");
+      const leader = leaderPoints(
+        anchor,
+        { left, right: left + size.width, top, bottom: top + size.height },
+        viewport,
+      );
+      drawLeader(leaderIndex++, leader, anchor);
+    }
+    while (leaderIndex < leaderPool.length) hideLeader(leaderIndex++);
+  }
+
+  /**
+   * One reusable path + subject dot per callout. Rebuilding these nodes every
+   * frame would allocate through the animation loop for no benefit.
+   */
+  function leaderSlot(index) {
+    let slot = leaderPool[index];
+    if (slot) return slot;
+    const path = document.createElementNS(SVG_NS, "path");
+    const dot = document.createElementNS(SVG_NS, "circle");
+    dot.setAttribute("r", "2.6");
+    slot = { path, dot };
+    leaderPool[index] = slot;
+    refs.leaders?.append(path, dot);
+    return slot;
+  }
+
+  function drawLeader(index, leader, anchor) {
+    const slot = leaderSlot(index);
+    slot.path.setAttribute("d", leader.path);
+    slot.path.style.display = "";
+    slot.dot.setAttribute("cx", anchor.x.toFixed(1));
+    slot.dot.setAttribute("cy", anchor.y.toFixed(1));
+    slot.dot.style.display = "";
+  }
+
+  function hideLeader(index) {
+    const slot = leaderPool[index];
+    if (!slot) return;
+    slot.path.style.display = "none";
+    slot.dot.style.display = "none";
   }
 
   /**
@@ -1237,4 +1355,9 @@ export function initObservatory() {
   updateRelations(state.livingWorld);
   update();
   window.setInterval(update, 180);
+  // Panel geometry moves on resize without the tick knowing, and a stale
+  // reserved rect places a callout on top of a panel.
+  window.addEventListener("resize", refreshCalloutCaches);
+  window.cancelAnimationFrame(calloutFrame);
+  layoutCallouts();
 }

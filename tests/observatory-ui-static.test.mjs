@@ -142,6 +142,35 @@ assert.ok(
   !/window\.setInterval\(update, 180\)[\s\S]*updateRelations/.test(ui),
   "relations must not be rebuilt on the display tick",
 );
+// Leaders project on rAF; text stays on the slow tick. Moving the specimen
+// writes to 60Hz would thrash layout for no gain.
+assert.ok(
+  ui.includes("window.requestAnimationFrame(layoutCallouts)"),
+  "callout projection should run on its own animation frame",
+);
+assert.ok(
+  /function layoutCallouts\(\)[\s\S]*?\n  \}/.test(ui) &&
+    !/function layoutCallouts\(\)[\s\S]*?\n  \}/.exec(ui)[0].includes("getComputedStyle"),
+  "the per-frame loop must not force style resolution",
+);
+assert.ok(
+  /function layoutCallouts\(\)[\s\S]*?\n  \}/.exec(ui)[0].includes("document.hidden"),
+  "the per-frame loop should stand down when the document is hidden",
+);
+assert.ok(
+  ui.includes("refreshCalloutCaches") &&
+    /addEventListener\("resize", refreshCalloutCaches\)/.test(ui),
+  "cached panel rects must be refreshed when the viewport changes",
+);
+assert.ok(html.includes('id="obs-leaders"'), "leaders need a viewport-space overlay");
+assert.ok(
+  !/viewBox/.test(html.match(/<svg class="obs-leaders"[^>]*>/)?.[0] ?? ""),
+  "the leader overlay must have no viewBox so its user units are CSS pixels",
+);
+for (const id of ["obs-callout-ground", "obs-callout-peer"]) {
+  assert.ok(html.includes(`id="${id}"`), `the mockup's fourth and fifth callouts need #${id}`);
+}
+
 // --obs-violet had zero var() references; `unknown` is what finally uses it.
 assert.ok(
   /--obs-rel-unknown:\s*var\(--obs-violet\)/.test(css),

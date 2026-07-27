@@ -2248,6 +2248,39 @@ body.living-world-mode #setting-depthfog-row {
   --obs-paper-line: rgba(63, 58, 48, 0.28);
 }
 
+/* Glyph sprite. Zero-size + overflow:hidden rather than display:none — the
+   latter has a history of breaking <use> references in some engines. */
+.kw-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* One rule themes every glyph. Stroking with currentColor is what lets the
+   same symbol render in gold on the panels and in paper ink on the specimen
+   card without a second copy. */
+.kw-glyph {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+
+.kw-glyph.is-on {
+  color: var(--obs-gold-hot);
+  opacity: 1;
+}
+
+.kw-glyph.is-off {
+  opacity: 0.32;
+}
+
 body:not(.living-world-mode) .observatory-shell,
 body:not(.living-world-mode) .form-studio {
   display: none;

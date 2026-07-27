@@ -43,6 +43,11 @@ export function createTouchEnvelope(opts) {
     velocity: 0,
     direction: { x: fallbackDirection.x, z: fallbackDirection.z },
     active: false,
+    // The deflection ceiling this species was built with. `value` is bounded
+    // by it, so a reader comparing plants (or drawing a 0..1 trace) needs it
+    // to tell "fully bent" from "barely moved" — a stiff plant's maximum and
+    // a floppy one's are an order of magnitude apart.
+    max: maxValue,
   };
 
   const stepOnce = (dt) => {

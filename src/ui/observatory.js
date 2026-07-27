@@ -48,6 +48,12 @@ const ACTIVITY_WINDOW_MS = 4000;
 const STUDIO_TICK_MS = 120;
 // How long the finished bar lingers at 100% before it folds away.
 const STUDIO_SETTLE_MS = 620;
+// What counts as a full-scale reading on the resonance trace, as a fraction of
+// a plant's own deflection clamp. The clamp is a safety bound the spring never
+// approaches — a kinling shouldering through a plant peaks near a quarter of
+// it — so scaling against the clamp itself drew every real contact as a 3px
+// twitch. This is the display range, not a change to the simulation.
+const AGITATION_FULL_SCALE = 0.25;
 const vector = new THREE.Vector3();
 const surfaceHit = { height: 0, normal: new THREE.Vector3(), material: null };
 
@@ -808,18 +814,30 @@ export function initObservatory() {
     pushRing(coherenceRing, meanHeadingCoherence(actors));
     pushRing(stabilityRing, movementStability(actors));
 
-    // Mean flora agitation: how hard the plants are currently being brushed.
-    // The touch envelope has always been computed for the pose and never read
-    // by anything else; touchState() is its existing read-only accessor.
+    // Flora agitation: how hard the field is currently being brushed. The
+    // touch envelope has always been computed for the pose and never read by
+    // anything else; touchState() is its existing read-only accessor.
+    //
+    // Peak, not mean. A kinling pushing through one plant is a real event, and
+    // averaging it across every plant in the field divides it by thirty-odd
+    // into a line indistinguishable from stillness. The peak spikes when
+    // something happens and returns to zero when it does not, which is what
+    // the trace is for.
+    // Each plant's deflection is normalized against its own ceiling, so a
+    // stiff landmark bending as far as it can reads the same as a floppy
+    // groundcover doing the same — raw values differ by an order of magnitude
+    // between species and would make the trace a readout of which plant
+    // happened to be touched.
     let agitation = 0;
-    let counted = 0;
     for (const entry of runtime?.flora ?? []) {
-      const value = entry.instance?.touchState?.()?.value;
-      if (typeof value !== "number") continue;
-      agitation += Math.min(1, Math.abs(value));
-      counted += 1;
+      const touch = entry.instance?.touchState?.();
+      if (typeof touch?.value !== "number") continue;
+      const ceiling =
+        (typeof touch.max === "number" && touch.max > 0 ? touch.max : 1) *
+        AGITATION_FULL_SCALE;
+      agitation = Math.max(agitation, Math.min(1, Math.abs(touch.value) / ceiling));
     }
-    pushRing(agitationRing, counted ? agitation / counted : 0);
+    pushRing(agitationRing, agitation);
   }
 
   function update() {

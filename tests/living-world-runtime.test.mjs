@@ -151,6 +151,30 @@ for (const actor of runtime.fauna) {
   }
 }
 
+// The observatory reads the touch envelope through the flora bridge. The
+// bridge used to omit it, and `instance.touchState?.()` swallowed the miss —
+// the resonance trace drew a flat line that read as a calm field.
+const probe = runtime.flora[0].instance;
+assert.equal(typeof probe.touchState, "function", "the flora bridge should expose touchState");
+const restingTouch = probe.touchState();
+assert.equal(typeof restingTouch.value, "number");
+assert.ok(
+  typeof restingTouch.max === "number" && restingTouch.max > 0,
+  "a reader needs the deflection ceiling to compare plants of different stiffness",
+);
+probe.react(1);
+let deflection = 0;
+for (let frame = 0; frame < 6; frame++) {
+  probe.update(1 / 60);
+  deflection = Math.max(deflection, Math.abs(probe.touchState().value));
+}
+assert.ok(deflection > 0, "a brushed plant should report a non-zero deflection");
+assert.ok(
+  deflection <= restingTouch.max,
+  "deflection must stay inside the envelope's own clamp",
+);
+probe.source.resetTouch();
+
 const creatureCountBeforeAuthoring = worldState.creatures.length;
 const authoredFacade = introduceLivingFauna(runtime, {
   schemaVersion: 1,

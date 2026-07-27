@@ -340,6 +340,16 @@ function makeFloraProvider(species, recipe) {
           if (disposed) return source.touchState();
           return source.touch(amount, direction);
         },
+        /**
+         * Read-only view of the touch envelope the renderer already keeps for
+         * the pose. Without this passthrough the bridge swallowed it: the
+         * observatory reads `instance.touchState?.()`, which resolved to
+         * undefined on every plant, so the specimen resonance trace drew a
+         * flat line that looked like a calm field rather than a dead wire.
+         */
+        touchState() {
+          return source.touchState();
+        },
         affordances() {
           if (disposed) return [];
           source.group.updateMatrix();

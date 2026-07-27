@@ -159,6 +159,12 @@
         <svg class="kw-glyph" aria-hidden="true"><use href="#kw-rail-controls"/></svg>
       </button>
       <span class="obs-rail-count" id="obs-rail-count">04</span>
+      <!--
+        One hint box for all six lenses, parked in a fixed spot beside the
+        rail. Per-button tooltips sat at each button's own centre, so two
+        adjacent labels overlapped whenever the pointer travelled the rail.
+      -->
+      <span class="obs-rail-hint" id="obs-rail-hint" aria-hidden="true"></span>
     </nav>
 
     <aside class="obs-field-card obs-panel" data-obs-panel="field" aria-label="field conditions">
@@ -337,12 +343,12 @@
         <div>
           <div class="obs-card-kicker">Creature Authoring</div>
           <h2 id="form-studio-title">Form Studio</h2>
-          <p>Describe intent. The field engine keeps anatomy, motion, and performance within bounds.</p>
+          <p>Describe a creature in a sentence. Three studies are grown from it; you introduce the one you like. Anatomy, motion, and cost stay inside the field's bounds whatever the description asks for.</p>
         </div>
         <button class="form-studio-close" id="form-studio-close" type="button" aria-label="close">×</button>
       </header>
       <div class="form-studio-controls">
-        <label for="form-description">Field description</label>
+        <label for="form-description">Describe the creature</label>
         <textarea id="form-description" rows="3" placeholder="A gentle dusk grazer with six delicate legs, a low lantern-shaped body, and curious bright eyes.">A gentle dusk grazer with six delicate legs, a low lantern-shaped body, and curious bright eyes.</textarea>
         <div class="form-studio-options">
           <label>Authoring model
@@ -350,9 +356,27 @@
           </label>
           <span class="form-connection" id="form-connection"><i></i> checking local model</span>
         </div>
+        <!--
+          Two paths to the same three studies, named for what they do rather
+          than for how they are built: "Procedural studies" read as a second,
+          unrelated feature. The grammar path is also the automatic fallback
+          when the model is unreachable, so nobody has to know it exists.
+        -->
         <div class="form-studio-buttons">
-          <button class="form-generate" id="form-generate" type="button">Generate three studies</button>
-          <button class="form-procedural" id="form-procedural" type="button">Procedural studies</button>
+          <button class="form-generate" id="form-generate" type="button">Grow three studies</button>
+          <button class="form-procedural" id="form-procedural" type="button">Grow without a model</button>
+        </div>
+        <p class="form-studio-hint">
+          A local model writes the semantics. Without one, the field's own
+          grammar grows the studies straight from your description — the same
+          validation either way.
+        </p>
+        <div class="form-progress" id="form-progress" data-active="false" aria-hidden="true">
+          <div class="form-progress-track"><i id="form-progress-fill"></i></div>
+          <div class="form-progress-copy">
+            <span id="form-progress-stage">reaching for a local model</span>
+            <em id="form-progress-note">sharpening a pencil on the field desk</em>
+          </div>
         </div>
         <div class="form-status" id="form-status" aria-live="polite">Ready for a description.</div>
       </div>

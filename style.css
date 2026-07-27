@@ -2314,6 +2314,12 @@ body.living-world-mode {
   --obs-gutter-y: 24px;
   --obs-gutter-bottom: max(13px, env(safe-area-inset-bottom));
   --obs-rail-w: 52px;
+  /* The track gap is a token because the specimen dock cancels it out to
+     bleed off the left edge: it has to cross the gutter track, the rail
+     track, and BOTH gaps between them. Hard-coding 14px in one place and
+     not the other is what left the closed tab parked 14px short of the
+     viewport edge. */
+  --obs-grid-gap: 14px;
   /* How far the pull-tab rides past the card's edge. A token rather than a
      per-breakpoint override so it can never lose a same-specificity cascade
      race with the base rule. */
@@ -2321,7 +2327,7 @@ body.living-world-mode {
   --obs-col-left: minmax(320px, 490px);
   --obs-col-right: minmax(248px, 290px);
   display: grid;
-  gap: 14px;
+  gap: var(--obs-grid-gap);
   grid-template-columns:
     var(--obs-gutter-x)
     var(--obs-rail-w)
@@ -2502,6 +2508,7 @@ body.living-world-mode {
 }
 
 .obs-rail {
+  position: relative;
   grid-area: rail;
   align-self: start;
   justify-self: end;
@@ -2542,11 +2549,13 @@ body.living-world-mode {
   transition: opacity 0.2s ease;
 }
 
-.obs-rail-button::after {
-  content: attr(aria-label);
+/* The hint is a single box owned by the rail, not a per-button pseudo-element:
+   it never moves, so no two lens labels can overlap while the pointer runs
+   down the column. Its text is written by src/ui/observatory.js. */
+.obs-rail-hint {
   position: absolute;
   z-index: 12;
-  left: 43px;
+  left: calc(100% + 7px);
   top: 50%;
   width: max-content;
   max-width: 150px;
@@ -2568,6 +2577,13 @@ body.living-world-mode {
     visibility 0s linear 0.16s;
 }
 
+.obs-rail-hint.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate3d(0, -50%, 0);
+  transition-delay: 0s;
+}
+
 .obs-rail-button:hover,
 .obs-rail-button.active {
   color: var(--obs-gold-hot);
@@ -2577,14 +2593,6 @@ body.living-world-mode {
 
 .obs-rail-button.active::before {
   opacity: 1;
-}
-
-.obs-rail-button:hover::after,
-.obs-rail-button:focus-visible::after {
-  opacity: 1;
-  visibility: visible;
-  transform: translate3d(0, -50%, 0);
-  transition-delay: 0s;
 }
 
 .obs-rail-button svg {
@@ -2894,8 +2902,12 @@ body.living-world-mode {
   align-self: end;
   position: relative;
   /* The paper card bleeds through the rail gutter to the viewport edge, the
-     way it did when it was pinned at left:0. */
-  margin-left: calc((var(--obs-gutter-x) + var(--obs-rail-w) + 14px) * -1);
+     way it did when it was pinned at left:0. Two gaps, not one: the dock's
+     column is separated from the rail track by a gap, and the rail track from
+     the gutter track by another. */
+  margin-left: calc(
+    (var(--obs-gutter-x) + var(--obs-rail-w) + var(--obs-grid-gap) * 2) * -1
+  );
   pointer-events: none;
 }
 
@@ -3113,10 +3125,13 @@ body.living-world-mode {
 }
 
 /* When the card slides out the tab parks at the dock's left edge, which is the
-   viewport edge — it stays reachable as the handle that brings the card back. */
+   viewport edge — it stays reachable as the handle that brings the card back.
+   Anchored by `right` in BOTH states rather than flipping to `left: 0`:
+   right/left can't interpolate, so the flip teleported the tab across the card
+   the instant it was clicked instead of riding the card out. The offset is
+   `100% - <collapsed width>` so the tab's left edge lands on the dock's. */
 .obs-specimen.collapsed + .obs-paper-tab {
-  right: auto;
-  left: 0;
+  right: calc(100% - 94px);
   width: 94px;
   justify-content: flex-start;
   padding: 0 9px 0 6px;
@@ -3672,6 +3687,75 @@ body.living-world-mode {
   cursor: default;
 }
 
+.form-studio-hint {
+  margin: 8px 0 0;
+  max-width: 620px;
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 11px;
+  font-style: italic;
+  letter-spacing: 0.06em;
+  line-height: 1.45;
+  color: rgba(216, 170, 98, 0.5);
+}
+
+/* The bar only appears while something is growing; it collapses to nothing
+   rather than leaving an empty rail on the sheet. */
+.form-progress {
+  display: grid;
+  grid-template-rows: 0fr;
+  gap: 0;
+  margin-top: 0;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.35s ease,
+    opacity 0.3s ease,
+    margin-top 0.35s ease;
+}
+
+.form-progress[data-active="true"] {
+  grid-template-rows: 1fr;
+  margin-top: 11px;
+  opacity: 1;
+}
+
+.form-progress-track {
+  grid-row: 1;
+  overflow: hidden;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(216, 170, 98, 0.14);
+}
+
+.form-progress-track i {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(232, 115, 94, 0.75), var(--obs-gold-hot));
+  box-shadow: 0 0 10px rgba(216, 170, 98, 0.35);
+  transition: width 0.4s ease;
+}
+
+.form-progress-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 7px;
+  overflow: hidden;
+  font-size: 7px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.form-progress-copy em {
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: rgba(216, 170, 98, 0.62);
+}
+
 .form-status {
   min-height: 12px;
   margin-top: 9px;
@@ -3689,6 +3773,18 @@ body.living-world-mode {
   min-height: 225px;
   padding: 16px 28px 18px;
   overflow-y: auto;
+}
+
+.form-candidates:empty::before {
+  grid-column: 1 / -1;
+  align-self: center;
+  content: "three studies will appear here — pick one, then introduce it to the field.";
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 13px;
+  font-style: italic;
+  letter-spacing: 0.07em;
+  text-align: center;
+  color: rgba(216, 170, 98, 0.4);
 }
 
 .form-candidate {
@@ -4014,7 +4110,8 @@ body.photo-mode .form-studio {
        here would squeeze that rail out of its own track. The instrument panel
        sits directly beside the card, so the tab tucks in instead of reaching. */
     --obs-tab-overhang: -8px;
-    gap: 10px;
+    --obs-grid-gap: 10px;
+    gap: var(--obs-grid-gap);
     grid-template-columns:
       var(--obs-gutter-x)
       var(--obs-rail-w)
@@ -4203,8 +4300,16 @@ body.photo-mode .form-studio {
     height: 17px;
   }
 
-  .obs-rail-button::after {
-    left: 36px;
+  /* The rail lies on its side here, so the hint drops underneath it rather
+     than reaching off the left edge of the phone. */
+  .obs-rail-hint {
+    left: 7px;
+    top: calc(100% + 5px);
+    transform: translate3d(0, -5px, 0);
+  }
+
+  .obs-rail-hint.is-visible {
+    transform: translate3d(0, 0, 0);
   }
 
   .obs-rail-count {
@@ -4281,8 +4386,7 @@ body.photo-mode .form-studio {
 
   .obs-specimen:not(.mobile-open) + .obs-paper-tab,
   .obs-specimen.collapsed + .obs-paper-tab {
-    left: 0;
-    right: auto;
+    right: calc(100% - 102px);
     width: 102px;
     height: 32px;
     padding: 0 9px 0 4px;

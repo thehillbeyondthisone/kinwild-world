@@ -71,12 +71,55 @@ assert.ok(
   css.includes(".obs-specimen.collapsed + .obs-paper-tab"),
   "the collapsed specimen needs a persistent external handle",
 );
+// The dock cancels the gutter track, the rail track AND both gaps between
+// them. Dropping one gap parked the closed handle short of the viewport edge.
+assert.ok(
+  /\.obs-specimen-dock \{[^}]*var\(--obs-grid-gap\) \* 2/s.test(css),
+  "the specimen dock should bleed across both track gaps to the viewport edge",
+);
+// right ↔ left cannot interpolate: flipping between them teleported the handle
+// across the card instead of riding it out.
+for (const rule of [
+  /\.obs-specimen\.collapsed \+ \.obs-paper-tab \{[^}]*right: calc\(100% - 94px\)/s,
+  /\.obs-specimen\.collapsed \+ \.obs-paper-tab \{(?![^}]*left:)[^}]*\}/s,
+]) {
+  assert.ok(rule.test(css), "the collapsed handle should stay anchored by `right`");
+}
+
+// One hint box for the whole rail. Per-button tooltips sat at each button's
+// own centre and overlapped as the pointer travelled the column.
+assert.ok(html.includes('id="obs-rail-hint"'), "the rail needs a single shared hint box");
+assert.ok(
+  !/\.obs-rail-button::after \{/.test(css),
+  "per-button rail tooltips should be gone, not merely hidden",
+);
+assert.ok(
+  ui.includes('railHint.textContent = button.getAttribute("aria-label")'),
+  "the shared hint should take its text from the hovered lens",
+);
 assert.ok(css.includes(".form-candidate.selected"), "candidate selection needs a visible state");
 assert.ok(
   html.includes('aria-controls="obs-specimen"'),
   "the specimen handle should expose its controlled panel",
 );
 assert.ok(ui.includes("requestCreatureCandidates"), "Form Studio should call the authoring client");
+// The studio must never dead-end on a missing local model: the grammar is the
+// fallback, not a second feature the reader has to discover.
+assert.ok(
+  /catch \(error\)[\s\S]{0,600}growFromGrammar\(/.test(ui),
+  "an unreachable authoring model should fall back to the field grammar",
+);
+assert.ok(
+  !/>Procedural studies</.test(html),
+  "the studio should name its actions by what they do, not by how they are built",
+);
+for (const id of ["form-progress", "form-progress-fill", "form-progress-stage", "form-progress-note"]) {
+  assert.ok(html.includes(`id="${id}"`), `the studio progress bar should expose #${id}`);
+}
+assert.ok(
+  ui.includes("studioProgress(elapsed)") && ui.includes("studioMessage(elapsed)"),
+  "the progress bar should be driven by the shared studio-progress module",
+);
 assert.ok(ui.includes("introduceLivingFauna"), "accepted forms should enter the live field");
 assert.ok(ui.includes("meanHeadingCoherence"), "resonance must derive from live field telemetry");
 assert.ok(

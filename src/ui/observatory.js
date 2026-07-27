@@ -17,6 +17,11 @@ import {
   requestCreatureCandidates,
   saveAuthoredForm,
 } from "../creature-authoring.js";
+import {
+  STUDIO_STAGES,
+  studioMessage,
+  studioProgress,
+} from "./studio-progress.js";
 import { ctx } from "./context.js";
 
 const CYCLE_KEY = "living-field:observation-cycle:v1";
@@ -38,6 +43,11 @@ const WAVE_SAMPLES = 56;
 // Window the kin-activity rate is measured over. Long enough that a single
 // footfall does not spike it, short enough to track a herd settling.
 const ACTIVITY_WINDOW_MS = 4000;
+// The progress bar redraws on its own slow tick — the fill and the chatter are
+// both eased, so nothing is gained by running this at frame rate.
+const STUDIO_TICK_MS = 120;
+// How long the finished bar lingers at 100% before it folds away.
+const STUDIO_SETTLE_MS = 620;
 const vector = new THREE.Vector3();
 const surfaceHit = { height: 0, normal: new THREE.Vector3(), material: null };
 
@@ -913,11 +923,24 @@ export function initObservatory() {
   });
   mobileSpecimenQuery.addEventListener("change", syncSpecimenToggle);
   syncSpecimenToggle();
+  // One hint box for the whole rail. It stays put and only its text changes,
+  // so two neighbouring lens labels can never overlap mid-travel.
+  const railHint = element("obs-rail-hint");
+  const showRailHint = (button) => {
+    if (!railHint) return;
+    railHint.textContent = button.getAttribute("aria-label") ?? "";
+    railHint.classList.add("is-visible");
+  };
+  const hideRailHint = () => railHint?.classList.remove("is-visible");
   document.querySelectorAll("[data-obs-lens]").forEach((button) => {
     button.addEventListener("click", () => {
       const lens = button.dataset.obsLens;
       if (PANEL_LENSES.includes(lens)) togglePanelLens(lens);
     });
+    button.addEventListener("pointerenter", () => showRailHint(button));
+    button.addEventListener("focus", () => showRailHint(button));
+    button.addEventListener("pointerleave", hideRailHint);
+    button.addEventListener("blur", hideRailHint);
   });
   renderPanelVisibility();
 
@@ -929,6 +952,58 @@ export function initObservatory() {
   const candidateList = element("form-candidates");
   const introduceButton = element("form-introduce");
   const generateButton = element("form-generate");
+  const proceduralButton = element("form-procedural");
+  const progress = element("form-progress");
+  const progressFill = element("form-progress-fill");
+  const progressStage = element("form-progress-stage");
+  const progressNote = element("form-progress-note");
+  let progressTimer = 0;
+  let progressSettleTimer = 0;
+  let progressStartedAt = 0;
+  let stageTimer = 0;
+
+  function setProgressStage(stage) {
+    progressStage.textContent = stage;
+  }
+
+  function startProgress(stage) {
+    window.clearInterval(progressTimer);
+    window.clearTimeout(progressSettleTimer);
+    window.clearTimeout(stageTimer);
+    progressStartedAt = performance.now();
+    setProgressStage(stage);
+    progressNote.textContent = studioMessage(0);
+    progressFill.style.width = "0%";
+    progress.dataset.active = "true";
+    progress.setAttribute("aria-hidden", "false");
+    progressTimer = window.setInterval(() => {
+      const elapsed = performance.now() - progressStartedAt;
+      progressFill.style.width = `${(studioProgress(elapsed) * 100).toFixed(1)}%`;
+      progressNote.textContent = studioMessage(elapsed);
+    }, STUDIO_TICK_MS);
+  }
+
+  function finishProgress(stage) {
+    window.clearInterval(progressTimer);
+    progressTimer = 0;
+    if (progress.dataset.active !== "true") return;
+    if (stage) setProgressStage(stage);
+    progressFill.style.width = "100%";
+    window.clearTimeout(progressSettleTimer);
+    progressSettleTimer = window.setTimeout(() => {
+      progress.dataset.active = "false";
+      progress.setAttribute("aria-hidden", "true");
+    }, STUDIO_SETTLE_MS);
+  }
+
+  function cancelProgress() {
+    window.clearInterval(progressTimer);
+    window.clearTimeout(progressSettleTimer);
+    window.clearTimeout(stageTimer);
+    progressTimer = 0;
+    progress.dataset.active = "false";
+    progress.setAttribute("aria-hidden", "true");
+  }
 
   function setStudioOpen(open) {
     studio.classList.toggle("open", open);
@@ -940,6 +1015,7 @@ export function initObservatory() {
       void refreshModels();
     } else {
       requestController?.abort();
+      cancelProgress();
     }
   }
 
@@ -994,27 +1070,55 @@ export function initObservatory() {
         : `${sourceLabel} produced ${candidates.length} validated studies. Choose one to introduce.`;
   }
 
+  function growFromGrammar(statusOverride) {
+    startProgress(STUDIO_STAGES.grammar);
+    renderCandidates(createProceduralStudies(description.value), "The field grammar");
+    finishProgress(STUDIO_STAGES.settling);
+    if (statusOverride) status.textContent = statusOverride;
+  }
+
   async function generateCandidates() {
     requestController?.abort();
     requestController = new AbortController();
     generateButton.disabled = true;
+    proceduralButton.disabled = true;
     introduceButton.disabled = true;
     status.textContent = "Asking the authoring model for three distinct studies…";
+    startProgress(STUDIO_STAGES.reaching);
     try {
+      // The client resolves the model list before it prompts, and that leg is
+      // quick when a server is up — hold "reaching" just long enough to be
+      // read, then call it drafting for the rest of the wait.
+      stageTimer = window.setTimeout(
+        () => setProgressStage(STUDIO_STAGES.authoring),
+        700,
+      );
       const candidates = await requestCreatureCandidates(description.value, {
         model: modelSelect.value,
         signal: requestController.signal,
       });
+      setProgressStage(STUDIO_STAGES.validating);
       renderCandidates(candidates, "The authoring model");
+      finishProgress(STUDIO_STAGES.settling);
       connection.classList.remove("offline");
       connection.innerHTML = "<i></i> local model ready";
     } catch (error) {
-      if (error?.name === "AbortError") return;
-      status.textContent = `${error.message} Start an OpenAI-compatible local server on port 1234, or use procedural studies.`;
+      if (error?.name === "AbortError") {
+        cancelProgress();
+        return;
+      }
+      // No dead end: the grammar is the fallback rather than a second button
+      // the reader has to know about, so a missing local model still produces
+      // three studies to choose from.
       connection.classList.add("offline");
       connection.innerHTML = "<i></i> local model offline";
+      growFromGrammar(
+        `${error.message} The field grammar grew three studies instead — choose one to introduce.`,
+      );
     } finally {
+      window.clearTimeout(stageTimer);
       generateButton.disabled = false;
+      proceduralButton.disabled = false;
     }
   }
 
@@ -1022,9 +1126,7 @@ export function initObservatory() {
   element("form-studio-close").addEventListener("click", () => setStudioOpen(false));
   element("form-studio-scrim").addEventListener("click", () => setStudioOpen(false));
   generateButton.addEventListener("click", () => void generateCandidates());
-  element("form-procedural").addEventListener("click", () => {
-    renderCandidates(createProceduralStudies(description.value), "The procedural grammar");
-  });
+  proceduralButton.addEventListener("click", () => growFromGrammar());
   introduceButton.addEventListener("click", () => {
     const candidate = currentCandidates[candidateIndex];
     if (!candidate) return;

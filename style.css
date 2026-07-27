@@ -3038,9 +3038,19 @@ body.living-world-mode {
   border-radius: 50%;
 }
 
+/* The figures are the row's content and the sparkline is its decoration, so
+   the text keeps its width and the plot takes what is left. Left to default
+   flex rules the text shrank to 22px and wrapped "fly 00 swim 00 drift 45"
+   into four stacked lines while the plot held its full 142px. */
+#obs-movement {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .obs-sparkline,
 .obs-resonance-line {
-  flex: 1;
+  flex: 1 1 40px;
+  min-width: 0;
   height: 16px;
   overflow: visible;
 }
@@ -3070,11 +3080,15 @@ body.living-world-mode {
   font-size: 8px;
 }
 
+/* Parked clear of the plate seal at the card's bottom-right corner (a 48px
+   ring inset 18/14), which the handle used to sit on top of — two tangent
+   circles that read as a mistake. This puts it on the straight run of the
+   card's right edge instead. */
 .obs-paper-tab {
   position: absolute;
   z-index: 4;
   right: var(--obs-tab-overhang);
-  bottom: 18px;
+  bottom: 74px;
   display: flex;
   align-items: center;
   justify-content: center;

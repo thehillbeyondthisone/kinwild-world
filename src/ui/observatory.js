@@ -18,6 +18,10 @@ import {
   saveAuthoredForm,
 } from "../creature-authoring.js";
 import {
+  RELATION_CATEGORIES,
+  buildRelationGraph,
+} from "./observatory-relations.js";
+import {
   STUDIO_STAGES,
   studioMessage,
   studioProgress,
@@ -54,6 +58,7 @@ const STUDIO_SETTLE_MS = 620;
 // it — so scaling against the clamp itself drew every real contact as a 3px
 // twitch. This is the display range, not a change to the simulation.
 const AGITATION_FULL_SCALE = 0.25;
+const SVG_NS = "http://www.w3.org/2000/svg";
 const vector = new THREE.Vector3();
 const surfaceHit = { height: 0, normal: new THREE.Vector3(), material: null };
 
@@ -417,6 +422,9 @@ export function initObservatory() {
     strain: element("obs-strain-label"),
     focus: element("obs-focus-label"),
     relationStatus: element("obs-relation-status"),
+    relationLinks: document.querySelector("#obs-relations-graph .obs-relation-links"),
+    relationNodes: document.querySelector("#obs-relations-graph .obs-relation-nodes"),
+    relationLegend: element("obs-relation-legend"),
     creatureCallout: element("obs-callout-creature"),
     heroCallout: element("obs-callout-hero"),
     floraCallout: element("obs-callout-flora"),
@@ -577,6 +585,55 @@ export function initObservatory() {
     );
     if (!stillAlive) selectedFacade = runtime?.fauna?.[0]?.facade ?? null;
     return selectedFacade;
+  }
+
+  /**
+   * Redraw the affordance web. Called on world-ready and after a form is
+   * introduced — never on the 180ms tick: the registrations only change when
+   * the field is rebuilt, and rebuilding the DOM four times a second to draw
+   * the same graph would be pure cost.
+   */
+  function updateRelations(runtime) {
+    const affordances = runtime?.registrations?.affordances ?? [];
+    const graph = buildRelationGraph(affordances);
+
+    refs.relationLinks?.replaceChildren(
+      ...graph.links.map((link) => {
+        const path = document.createElementNS(SVG_NS, "path");
+        path.setAttribute("d", `M${link.x1.toFixed(2)} ${link.y1.toFixed(2)}L${link.x2.toFixed(2)} ${link.y2.toFixed(2)}`);
+        return path;
+      }),
+    );
+    refs.relationNodes?.replaceChildren(
+      ...graph.nodes.map((node) => {
+        const circle = document.createElementNS(SVG_NS, "circle");
+        circle.setAttribute("cx", node.x.toFixed(2));
+        circle.setAttribute("cy", node.y.toFixed(2));
+        circle.setAttribute("r", node.radius.toFixed(2));
+        circle.dataset.category = node.category;
+        return circle;
+      }),
+    );
+
+    refs.relationLegend?.replaceChildren(
+      ...RELATION_CATEGORIES.map((category) => {
+        const total = graph.totals[category] ?? 0;
+        const row = document.createElement("span");
+        row.dataset.category = category;
+        row.classList.toggle("is-absent", total === 0);
+        const dot = document.createElement("i");
+        const label = document.createElement("span");
+        label.textContent = category;
+        const count = document.createElement("em");
+        count.textContent = String(total).padStart(2, "0");
+        row.append(dot, label, count);
+        return row;
+      }),
+    );
+
+    refs.relationStatus.textContent = graph.count
+      ? `· ${String(graph.count).padStart(2, "0")} links`
+      : "· potential";
   }
 
   function updateTaxonomy(runtime) {
@@ -761,14 +818,6 @@ export function initObservatory() {
     refs.fieldThread.setAttribute("d", pathFromRing(stabilityRing, 330, 74, 0.4));
     void time;
 
-    const observedRelations = new Set(
-      eventLog
-        .filter((event) => event.type === "flora:react" || event.type === "creature:footfall")
-        .map((event) => event.type),
-    ).size;
-    refs.relationStatus.textContent = observedRelations
-      ? `· ${observedRelations} observed`
-      : "· potential";
   }
 
   function updateCallouts(runtime, selected) {
@@ -869,6 +918,7 @@ export function initObservatory() {
       hashes.add(facade.genomeHash);
     }
     updateTaxonomy(runtime);
+    updateRelations(runtime);
     update();
   }
 
@@ -1168,6 +1218,7 @@ export function initObservatory() {
     selectedFacade = facade;
     ctx.setFollowTarget(facade);
     updateTaxonomy(runtime);
+    updateRelations(runtime);
     update();
     setStudioOpen(false);
   });
@@ -1183,6 +1234,7 @@ export function initObservatory() {
     introduceReturningForms();
   }
   updateTaxonomy(state.livingWorld);
+  updateRelations(state.livingWorld);
   update();
   window.setInterval(update, 180);
 }

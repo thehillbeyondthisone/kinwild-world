@@ -122,6 +122,31 @@ assert.ok(
 );
 assert.ok(ui.includes("introduceLivingFauna"), "accepted forms should enter the live field");
 assert.ok(ui.includes("meanHeadingCoherence"), "resonance must derive from live field telemetry");
+// The relations panel was a hand-drawn triangle and a count of distinct event
+// type strings. It reads the runtime's affordances now.
+assert.ok(
+  ui.includes("buildRelationGraph"),
+  "field relations should be built from registered affordances",
+);
+assert.ok(
+  !/<path d="M24 54 88 14/.test(html),
+  "the hardcoded relation triangle should be gone",
+);
+assert.ok(
+  html.includes('class="obs-relation-links"') && html.includes('class="obs-relation-nodes"'),
+  "the relations plot needs link and node layers to draw into",
+);
+// Rebuilding this on the 180ms tick would redraw an unchanged graph four times
+// a second; the registrations only move when the field is rebuilt.
+assert.ok(
+  !/window\.setInterval\(update, 180\)[\s\S]*updateRelations/.test(ui),
+  "relations must not be rebuilt on the display tick",
+);
+// --obs-violet had zero var() references; `unknown` is what finally uses it.
+assert.ok(
+  /--obs-rel-unknown:\s*var\(--obs-violet\)/.test(css),
+  "an uncategorised affordance should render in the violet token",
+);
 assert.ok(
   ui.includes("PANEL_VISIBILITY_KEY"),
   "panel visibility should persist between observations",

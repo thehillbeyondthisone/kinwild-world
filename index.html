@@ -314,20 +314,18 @@
     <section class="obs-relations obs-panel" data-obs-panel="relations" aria-label="field relations">
       <div class="obs-panel-title">Field Relations</div>
       <p>affordance web <span id="obs-relation-status">· potential</span></p>
+      <!--
+        Nodes and links are written by src/ui/observatory-relations.js from the
+        affordances the runtime registers; this used to be a hand-drawn
+        triangle that meant nothing. Rebuilt on world-ready only, never on the
+        180ms tick.
+      -->
       <div class="obs-relations-body">
-        <svg class="obs-relations-graph" viewBox="0 0 180 74" aria-hidden="true">
-          <path d="M24 54 88 14l65 43M24 54l129 3M88 14l22 48"></path>
-          <circle cx="24" cy="54" r="7"></circle>
-          <circle cx="88" cy="14" r="7"></circle>
-          <circle cx="153" cy="57" r="7"></circle>
-          <circle cx="110" cy="62" r="4"></circle>
+        <svg class="obs-relations-graph" id="obs-relations-graph" viewBox="0 0 180 74" aria-hidden="true">
+          <g class="obs-relation-links"></g>
+          <g class="obs-relation-nodes"></g>
         </svg>
-        <div class="obs-relation-legend" id="obs-relation-legend">
-          <span>•••• shelter</span>
-          <span>•••• perch</span>
-          <span>•••• nectar</span>
-          <span>•••• touch</span>
-        </div>
+        <div class="obs-relation-legend" id="obs-relation-legend"></div>
       </div>
     </section>
 

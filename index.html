@@ -44,6 +44,231 @@
 
   <script type="module" src="main.js"></script>
 
+  <section class="observatory-shell" id="observatory-shell" aria-label="living field observatory">
+    <header class="obs-brand" aria-label="field identity">
+      <div class="obs-mark" aria-hidden="true">
+        <svg viewBox="0 0 56 88" role="img">
+          <path d="M28 76V15M28 27 17 19M28 37 39 28M28 48 15 39M28 59 40 48M28 68 19 59"></path>
+          <circle cx="28" cy="12" r="3"></circle>
+          <circle cx="14" cy="17" r="3"></circle>
+          <circle cx="42" cy="26" r="3"></circle>
+          <circle cx="12" cy="37" r="3"></circle>
+          <circle cx="43" cy="46" r="3"></circle>
+          <circle cx="16" cy="57" r="3"></circle>
+        </svg>
+      </div>
+      <div class="obs-brand-copy">
+        <div class="obs-kicker">Field Observatory</div>
+        <h1>Kinwild</h1>
+        <div class="obs-edition">Life Index <span aria-hidden="true">&diams;</span> Vol. <span id="obs-version">1.7.0</span> <span aria-hidden="true">&diams;</span> Edition 04</div>
+        <p>A catalog of living patterns and kinship.</p>
+      </div>
+    </header>
+
+    <nav class="obs-rail" aria-label="field lenses">
+      <button class="obs-rail-button active" type="button" data-obs-lens="all" aria-label="all living forms" aria-pressed="true">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4M12 8 7 5M12 12l5-3M12 16l-5-3"></path></svg>
+      </button>
+      <button class="obs-rail-button" type="button" data-obs-lens="fauna" aria-label="creatures" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16c0-5 2-8 6-8s6 3 6 8M9 8 7 4M15 8l2-4M9 15h.1M15 15h.1"></path></svg>
+      </button>
+      <button class="obs-rail-button" type="button" data-obs-lens="flora" aria-label="flora" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V9M12 13C7 13 5 9 5 6c4 0 7 1 7 7ZM12 16c5 0 7-4 7-7-4 0-7 1-7 7Z"></path></svg>
+      </button>
+      <button class="obs-rail-button" type="button" data-obs-lens="relations" aria-label="field relations" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="2"></circle><circle cx="18" cy="7" r="2"></circle><circle cx="12" cy="18" r="2"></circle><path d="m8 8 3 8m5-8-3 8M8 7h8"></path></svg>
+      </button>
+      <button class="obs-rail-button" type="button" data-obs-lens="catalog" aria-label="catalog" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h5c1.1 0 2 .9 2 2v12c0-1.1-.9-2-2-2H5V5Zm14 0h-5c-1.1 0-2 .9-2 2v12c0-1.1.9-2 2-2h5V5Z"></path></svg>
+      </button>
+      <span class="obs-rail-count" id="obs-rail-count">04</span>
+    </nav>
+
+    <aside class="obs-field-card obs-panel" aria-label="field conditions">
+      <div class="obs-card-kicker">Living Field</div>
+      <div class="obs-field-name" id="obs-field-name">Kinwild</div>
+      <div class="obs-field-sub" id="obs-field-sub">everything here shares a pulse.</div>
+      <div class="obs-rule"></div>
+      <dl class="obs-field-grid">
+        <dt>Observed</dt><dd id="obs-observed">00:00</dd>
+        <dt>Cycle</dt><dd id="obs-cycle">01</dd>
+        <dt>Conditions</dt><dd class="obs-condition-row"><span id="obs-day-symbol">◐</span><span id="obs-wind-symbol">≋</span><span id="obs-field-temperature">mild</span></dd>
+        <dt>Observer</dt><dd>Field Unit 04</dd>
+      </dl>
+      <div class="obs-rule"></div>
+      <div class="obs-field-notes">
+        <span>Notes</span>
+        <em id="obs-notes">quiet phase<br>low wind, stable hum</em>
+      </div>
+      <div class="obs-field-tools">
+        <button id="obs-photo" type="button">frame</button>
+        <button id="obs-help" type="button">manual</button>
+        <button id="obs-settings" type="button">controls</button>
+      </div>
+    </aside>
+
+    <div class="obs-callouts" aria-hidden="true">
+      <div class="obs-callout obs-callout-creature" id="obs-callout-creature">
+        <span class="obs-callout-line"></span>
+        <strong id="obs-callout-creature-name">Kinling</strong>
+        <em id="obs-callout-creature-state">wandering</em>
+        <small id="obs-callout-creature-note">gentle field grazer</small>
+      </div>
+      <div class="obs-callout obs-callout-hero" id="obs-callout-hero">
+        <span class="obs-callout-line"></span>
+        <strong id="obs-callout-hero-name">Veilcrown</strong>
+        <em>landmark form</em>
+        <small id="obs-callout-hero-note">offers shelter and perch</small>
+      </div>
+      <div class="obs-callout obs-callout-flora" id="obs-callout-flora">
+        <span class="obs-callout-line"></span>
+        <strong id="obs-callout-flora-name">Pulsebells</strong>
+        <em>flowering cluster</em>
+        <small id="obs-callout-flora-note">nectar affordance observed</small>
+      </div>
+    </div>
+
+    <section class="obs-specimen" aria-label="selected specimen readout">
+      <div class="obs-paper-grain" aria-hidden="true"></div>
+      <header>
+        <span class="obs-paper-emblem" aria-hidden="true">⌇</span>
+        <div>
+          <div class="obs-paper-title">Specimen Readout</div>
+          <div class="obs-paper-caption" id="obs-selection-caption">focused living form</div>
+        </div>
+      </header>
+      <dl class="obs-specimen-table">
+        <dt>Genome</dt>
+        <dd><strong id="obs-genome">--------</strong><span class="obs-mini-dots" id="obs-genome-dots" aria-hidden="true"></span></dd>
+        <dt>Species</dt>
+        <dd><strong id="obs-species">unobserved</strong><span class="obs-palette" id="obs-palette"></span></dd>
+        <dt>Movement</dt>
+        <dd><span id="obs-movement">awaiting</span><svg class="obs-sparkline" viewBox="0 0 160 18" preserveAspectRatio="none" aria-hidden="true"><path id="obs-movement-path" d="M0 9H160"></path></svg></dd>
+        <dt>Morphology</dt>
+        <dd class="obs-morphology" id="obs-morphology">—</dd>
+        <dt>Resonance</dt>
+        <dd><svg class="obs-resonance-line" viewBox="0 0 250 22" preserveAspectRatio="none" aria-hidden="true"><path id="obs-specimen-wave" d="M0 11H250"></path></svg></dd>
+        <dt>Habitat</dt>
+        <dd id="obs-habitat">elev. — &nbsp; slope — &nbsp; air mild</dd>
+        <dt>Traits</dt>
+        <dd class="obs-traits" id="obs-traits"><span>unobserved</span></dd>
+        <dt>Repairs</dt>
+        <dd id="obs-repairs">00 · canonical genome</dd>
+      </dl>
+      <button class="obs-paper-tab" id="obs-specimen-close" type="button" aria-label="collapse specimen readout">◉</button>
+    </section>
+
+    <section class="obs-resonance obs-panel" aria-label="field resonance">
+      <div class="obs-panel-title">Field Resonance</div>
+      <p><span id="obs-harmony">current near harmony</span><br><em id="obs-pulse-label">calm pulse</em></p>
+      <svg class="obs-resonance-plot" viewBox="0 0 330 74" preserveAspectRatio="none" aria-hidden="true">
+        <path class="obs-plot-grid" d="M0 18H330M0 37H330M0 56H330"></path>
+        <path class="obs-plot-wave" id="obs-field-wave" d="M0 37H330"></path>
+        <path class="obs-plot-thread" id="obs-field-thread" d="M0 37H330"></path>
+      </svg>
+      <div class="obs-meter-row">
+        <label>Stability <span class="obs-meter" id="obs-stability"></span></label>
+        <label>Coherence <span class="obs-meter" id="obs-coherence"></span></label>
+      </div>
+    </section>
+
+    <nav class="obs-dock obs-panel" aria-label="field controls">
+      <button class="obs-dock-action" id="obs-focus" type="button">
+        <span class="obs-action-kicker">Focus</span>
+        <strong>Specimen</strong>
+        <small id="obs-focus-label">kinling 01</small>
+      </button>
+      <button class="obs-dock-action" id="obs-orbit" type="button">
+        <span class="obs-action-kicker">Orbit</span>
+        <svg viewBox="0 0 74 28" aria-hidden="true"><path d="M4 19c13-13 44-14 66-5M14 23c12-8 33-9 46-5"></path><circle cx="52" cy="12" r="2"></circle></svg>
+      </button>
+      <button class="obs-dock-core" id="obs-drift" type="button" aria-label="enter drift camera">
+        <span class="obs-orbit-ring" aria-hidden="true"></span>
+        <span class="obs-orbit-dot" aria-hidden="true"></span>
+        <strong>Drift</strong>
+        <small>hold to wander</small>
+      </button>
+      <button class="obs-dock-action" id="obs-catalog" type="button">
+        <span class="obs-action-kicker">Catalog</span>
+        <strong>View Entries</strong>
+        <small id="obs-catalog-count">04 observed</small>
+      </button>
+      <button class="obs-dock-action obs-dock-primary" id="obs-create-form" type="button">
+        <span class="obs-action-kicker">Create</span>
+        <strong>New Form</strong>
+        <small>guided authoring</small>
+      </button>
+      <button class="obs-dock-action" id="obs-new-strain" type="button">
+        <span class="obs-action-kicker">Grow</span>
+        <strong>New Strain</strong>
+        <small id="obs-strain-label">0x0000</small>
+      </button>
+    </nav>
+
+    <section class="obs-taxonomy obs-panel" aria-label="observed families">
+      <div class="obs-panel-title">Field Taxonomy <span>· observed families</span></div>
+      <div class="obs-taxonomy-list" id="obs-taxonomy-list"></div>
+    </section>
+
+    <section class="obs-relations obs-panel" aria-label="field relations">
+      <div class="obs-panel-title">Field Relations</div>
+      <p>affordance web <span id="obs-relation-status">· potential</span></p>
+      <div class="obs-relations-body">
+        <svg class="obs-relations-graph" viewBox="0 0 180 74" aria-hidden="true">
+          <path d="M24 54 88 14l65 43M24 54l129 3M88 14l22 48"></path>
+          <circle cx="24" cy="54" r="7"></circle>
+          <circle cx="88" cy="14" r="7"></circle>
+          <circle cx="153" cy="57" r="7"></circle>
+          <circle cx="110" cy="62" r="4"></circle>
+        </svg>
+        <div class="obs-relation-legend" id="obs-relation-legend">
+          <span>•••• shelter</span>
+          <span>•••• perch</span>
+          <span>•••• nectar</span>
+          <span>•••• touch</span>
+        </div>
+      </div>
+    </section>
+
+    <button class="obs-density-toggle" id="obs-density-toggle" type="button" aria-label="toggle observatory detail" aria-pressed="true">
+      <span aria-hidden="true">⌁</span><span>observatory</span>
+    </button>
+  </section>
+
+  <section class="form-studio" id="form-studio" aria-hidden="true" aria-label="creature form studio" inert>
+    <button class="form-studio-scrim" id="form-studio-scrim" type="button" aria-label="close form studio"></button>
+    <div class="form-studio-sheet" role="dialog" aria-modal="true" aria-labelledby="form-studio-title">
+      <header class="form-studio-head">
+        <div>
+          <div class="obs-card-kicker">Creature Authoring</div>
+          <h2 id="form-studio-title">Form Studio</h2>
+          <p>Describe intent. The field engine keeps anatomy, motion, and performance within bounds.</p>
+        </div>
+        <button class="form-studio-close" id="form-studio-close" type="button" aria-label="close">×</button>
+      </header>
+      <div class="form-studio-controls">
+        <label for="form-description">Field description</label>
+        <textarea id="form-description" rows="3" placeholder="A gentle dusk grazer with six delicate legs, a low lantern-shaped body, and curious bright eyes.">A gentle dusk grazer with six delicate legs, a low lantern-shaped body, and curious bright eyes.</textarea>
+        <div class="form-studio-options">
+          <label>Authoring model
+            <select id="form-model"><option value="">whatever is loaded locally</option></select>
+          </label>
+          <span class="form-connection" id="form-connection"><i></i> checking local model</span>
+        </div>
+        <div class="form-studio-buttons">
+          <button class="form-generate" id="form-generate" type="button">Generate three studies</button>
+          <button class="form-procedural" id="form-procedural" type="button">Procedural studies</button>
+        </div>
+        <div class="form-status" id="form-status" aria-live="polite">Ready for a description.</div>
+      </div>
+      <div class="form-candidates" id="form-candidates" aria-live="polite"></div>
+      <footer class="form-studio-footer">
+        <span>Model proposes semantics · engine validates every genome</span>
+        <button class="form-introduce" id="form-introduce" type="button" disabled>Introduce selected form</button>
+      </footer>
+    </div>
+  </section>
+
   <header class="hud hud-top">
     <div class="title-block">
       <div class="eyebrow">

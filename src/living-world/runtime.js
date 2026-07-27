@@ -15,6 +15,7 @@ import {
 } from "../generated-flora/index.js";
 import {
   createGeneratedFaunaWalker,
+  seededUnit,
 } from "../generated-fauna/index.js";
 import { islandFalloff } from "../terrain.js";
 import { makeDustKick } from "../environment.js";
@@ -368,7 +369,7 @@ function makeFloraProvider(species, recipe) {
 
 function makeCreatureProvider() {
   return defineCreatureProvider({
-    id: "kinwild:kinling",
+    id: "living-field:generated-fauna",
     version: "1",
     capabilities: {
       generated: true,
@@ -624,7 +625,7 @@ function makeFaunaFacade(runtime, agent, dna, scale, ordinal) {
   };
   agent.root.userData.inspect = {
     category: "fauna",
-    variant: "kinling",
+    variant: dna.speciesId,
   };
   agent.root.userData.livingWorld = {
     styleId: LIVING_WORLD_STYLE_ID,
@@ -639,6 +640,9 @@ function makeFaunaFacade(runtime, agent, dna, scale, ordinal) {
       : runtime.biome,
     runtime.attachCatalogMetadata,
   );
+  if (agent.root.userData.catalog) {
+    agent.root.userData.catalog.label = dna.name;
+  }
   if (ordinal === 0) facade.lookTimer = 7;
   return facade;
 }
@@ -684,75 +688,125 @@ export function populateLivingFauna(runtime) {
     const anchor = selectLivingWorldAnchor(runtime.worldState, runtime.seed);
     runtime.composition = planLivingComposition(runtime.seed, anchor);
   }
-  const provider = makeCreatureProvider();
+  const provider = runtime.creatureProvider ?? makeCreatureProvider();
   runtime.creatureProvider = provider;
-  const scratch = new THREE.Vector3();
-  const tangent = new THREE.Vector3();
-
   for (const record of runtime.composition.fauna) {
     const dna = createLivingFaunaDNA(runtime.seed, record.ordinal);
-    const initial = faunaPathPoint(
-      runtime.composition.anchor,
-      record,
-      record.phase,
-      scratch,
-    ).clone();
-    faunaPathTangent(record, record.phase, tangent);
-    const heading = Math.atan2(tangent.x, tangent.z);
-    const agent = provider.create({
-      dna,
-      quality: LOWFX ? "low" : "medium",
-      position: initial,
-      heading,
-    }, runtime.world);
-    agent.root.scale.setScalar(record.scale);
-    const actor = {
-      agent,
-      facade: null,
-      record,
-      phase: record.phase,
-      position: initial,
-      velocity: new THREE.Vector3(),
-      nextProximityAt: record.ordinal * 0.07,
-      intent: null,
-      frame: null,
-    };
-    // Repair the spawn before the first terrain-planted pose. This keeps
-    // obstacle correction from becoming a giant first-frame gait command.
-    resolveAgainstObstacles(runtime, actor, initial);
-    const facade = makeFaunaFacade(
-      runtime,
-      agent,
-      dna,
-      record.scale,
-      record.ordinal,
-    );
-    actor.facade = facade;
-    actor.intent = {
-      position: actor.position,
-      velocity: actor.velocity,
-      heading,
-      lookTarget: null,
-      action: "arrive",
-    };
-    actor.frame = {
-      dt: 0,
-      time: 0,
-      surface: runtime.surface,
-      intent: actor.intent,
-    };
-    facade.place(initial, heading);
-    runtime.worldState.world.add(agent.root);
-    agent.update(actor.frame);
-    runtime.worldState.creatures.push(facade);
-    runtime.fauna.push(actor);
-    runtime.events.emit(
-      PRESENTATION_EVENTS.CREATURE_SPAWN,
-      { creature: facade, position: initial.clone() },
-      { time: 0 },
-    );
+    addLivingFaunaActor(runtime, provider, dna, record);
   }
   return runtime.fauna.length;
+}
+
+function addLivingFaunaActor(runtime, provider, dna, record) {
+  const scratch = new THREE.Vector3();
+  const tangent = new THREE.Vector3();
+  const initial = faunaPathPoint(
+    runtime.composition.anchor,
+    record,
+    record.phase,
+    scratch,
+  ).clone();
+  faunaPathTangent(record, record.phase, tangent);
+  const heading = Math.atan2(tangent.x, tangent.z);
+  const agent = provider.create({
+    dna,
+    quality: LOWFX ? "low" : "medium",
+    position: initial,
+    heading,
+  }, runtime.world);
+  agent.root.scale.setScalar(record.scale);
+  const actor = {
+    agent,
+    facade: null,
+    record,
+    phase: record.phase,
+    position: initial,
+    velocity: new THREE.Vector3(),
+    nextProximityAt: record.ordinal * 0.07,
+    intent: null,
+    frame: null,
+  };
+  // Repair the spawn before the first terrain-planted pose. This keeps
+  // obstacle correction from becoming a giant first-frame gait command.
+  resolveAgainstObstacles(runtime, actor, initial);
+  const facade = makeFaunaFacade(
+    runtime,
+    agent,
+    agent.dna,
+    record.scale,
+    record.ordinal,
+  );
+  actor.facade = facade;
+  actor.intent = {
+    position: actor.position,
+    velocity: actor.velocity,
+    heading,
+    lookTarget: null,
+    action: "arrive",
+  };
+  actor.frame = {
+    dt: 0,
+    time: 0,
+    surface: runtime.surface,
+    intent: actor.intent,
+  };
+  facade.place(initial, heading);
+  runtime.worldState.world.add(agent.root);
+  agent.update(actor.frame);
+  runtime.worldState.creatures.push(facade);
+  runtime.fauna.push(actor);
+  runtime.events.emit(
+    PRESENTATION_EVENTS.CREATURE_SPAWN,
+    { creature: facade, position: initial.clone() },
+    { time: record.authored ? runtime.worldState.lastSimT ?? 0 : 0 },
+  );
+  return facade;
+}
+
+/**
+ * Introduce validated semantic creature DNA into the running field.
+ * The generated-fauna provider remains the authority for normalization,
+ * budgets, geometry, animation, and terrain contact.
+ */
+export function introduceLivingFauna(runtime, dna, authoring = {}) {
+  if (!runtime?.flags.generatedFauna || runtime.disposed) {
+    throw new Error("A living field must be active before introducing a form.");
+  }
+  if (!runtime.composition) {
+    const anchor = selectLivingWorldAnchor(runtime.worldState, runtime.seed);
+    runtime.composition = planLivingComposition(runtime.seed, anchor);
+  }
+  const provider = runtime.creatureProvider ?? makeCreatureProvider();
+  runtime.creatureProvider = provider;
+  const ordinal = runtime.fauna.length;
+  const authoredSeed = Number(dna?.seed) >>> 0;
+  const record = Object.freeze({
+    ordinal,
+    phase:
+      -0.68 +
+      (ordinal / Math.max(ordinal + 1, 4)) * Math.PI * 2 +
+      seededUnit(authoredSeed, "authored/phase") * 0.42,
+    orbitRadius: 5.35 + seededUnit(authoredSeed, "authored/orbit") * 1.35,
+    direction: seededUnit(authoredSeed, "authored/direction") < 0.5 ? -1 : 1,
+    speed: 0.43 + seededUnit(authoredSeed, "authored/speed") * 0.22,
+    scale: 1.26 + seededUnit(authoredSeed, "authored/scale") * 0.2,
+    authored: true,
+  });
+  const facade = addLivingFaunaActor(runtime, provider, dna, record);
+  const authoringRecord = Object.freeze({
+    prompt:
+      typeof authoring.prompt === "string"
+        ? authoring.prompt.trim().slice(0, 500)
+        : "",
+    repairs: Object.freeze(
+      Array.isArray(authoring.repairs)
+        ? authoring.repairs.map((repair) => String(repair))
+        : [],
+    ),
+  });
+  facade.authoring = authoringRecord;
+  facade.group.userData.authoring = authoringRecord;
+  return facade;
 }
 
 function removeRegistered(array, registrations) {

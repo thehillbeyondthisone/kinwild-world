@@ -14,6 +14,7 @@ export {
   createLivingWorldRuntime,
   disposeLivingWorld,
   isLivingWorldCreature,
+  introduceLivingFauna,
   livingWorldFloraCount,
   planLivingComposition,
   populateLivingFauna,

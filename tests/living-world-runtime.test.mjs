@@ -6,6 +6,7 @@ globalThis.__APP_VERSION__ = "test";
 const {
   createLivingWorldRuntime,
   disposeLivingWorld,
+  introduceLivingFauna,
   planLivingComposition,
   populateLivingFauna,
   populateLivingFlora,
@@ -124,6 +125,35 @@ for (const actor of runtime.fauna) {
     );
   }
 }
+
+const creatureCountBeforeAuthoring = worldState.creatures.length;
+const authoredFacade = introduceLivingFauna(runtime, {
+  schemaVersion: 1,
+  speciesId: "dusk-grazer",
+  name: "Dusk Grazer",
+  seed: 0x7711,
+  palette: {
+    body: "#7f5aad",
+    head: "#e8735e",
+    limb: "#4a315f",
+    eye: "#fff5d8",
+    pupil: "#15152a",
+  },
+  body: { radius: 0.33, halfLength: 0.29 },
+  head: { radius: 0.22, offset: [0, 0.18, 0.39], eyeRadius: 0.05 },
+  legs: { count: 6, length: 0.53, thickness: 0.062, stance: 0.22, spread: 0.27 },
+  motion: { stepDuration: 0.26, stepTrigger: 0.12, lift: 0.08, bob: 0.018 },
+});
+assert.equal(worldState.creatures.length, creatureCountBeforeAuthoring + 1);
+assert.equal(authoredFacade.name, "Dusk Grazer");
+assert.equal(authoredFacade.speciesId, "dusk-grazer");
+assert.equal(authoredFacade.generatedAgent.dna.legs.count, 6);
+assert.equal(authoredFacade.group.userData.catalog.label, "Dusk Grazer");
+assert.equal(
+  runtime.fauna.at(-1).record.authored,
+  true,
+  "introduced forms should be distinguishable from seed-authored field fauna",
+);
 
 const overlapActor = runtime.fauna[0];
 const overlapPeer = runtime.fauna[1];

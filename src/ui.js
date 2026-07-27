@@ -28,6 +28,7 @@ import { initLocatorPanel } from "./ui/locator-panel.js";
 import { initFirstPerson } from "./ui/first-person.js";
 import { initPhotoMode } from "./ui/photo-mode.js";
 import { initInput } from "./ui/input.js";
+import { initObservatory } from "./ui/observatory.js";
 
 // Re-export the public surface main.js (and the tests) import from "./ui.js".
 export { loadSettings } from "./ui/storage.js";
@@ -98,4 +99,5 @@ export function initUi({ camera, canvas, controls, renderer }) {
   initFirstPerson();
   initPhotoMode();
   initInput();
+  initObservatory();
 }

@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.8.0 - 2026-07-27
+
+### Added
+
+- A responsive living-field observatory with real world conditions, selected
+  genome and morphology readouts, movement traces, derived field resonance,
+  projected organism callouts, observed taxonomy, and affordance relations.
+- A provider-agnostic Form Studio for OpenAI-compatible local models. It asks
+  for three semantic creature studies, normalizes every candidate through the
+  bounded fauna grammar, exposes repairs and primitive cost, and introduces an
+  accepted form through the existing runtime provider.
+- Deterministic procedural studies for offline authoring, persistent authored
+  form records, and bounded reintroduction of saved forms in later strains.
+- Focused authoring, observatory, persistence, and live-introduction tests.
+
+### Changed
+
+- Replaced the default living-world HUD with an observation-first interface
+  while preserving the donor HUD behind `livingWorld=0`.
+- Made generated-fauna catalog identity come from normalized species DNA
+  instead of hard-coding every generated subject as a Kinling.
+- Added a same-origin `/llm` development proxy targeting an OpenAI-compatible
+  server at `LLM_URL` or `http://localhost:1234`.
+
 > Versioning is semantic (major.minor.patch) and tracks `package.json`. Versions
 > 1.3.4 and 1.3.5 were never cut as separate releases — work in that range was
 > folded into the adjacent 1.3.3 and 1.3.6 entries — which is why the history

@@ -1,6 +1,6 @@
 {
   "name": "kinwild",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "An original deterministic living-world prototype with generated flora, seamless primitive fauna, and cohesive procedural presentation.",
   "main": "main.js",
   "directories": {

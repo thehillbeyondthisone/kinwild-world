@@ -10,8 +10,15 @@ export default {
   },
 
   server: {
-    port: 1999,
+    port: 2001,
     open: true,
+    proxy: {
+      "/llm": {
+        target: process.env.LLM_URL ?? "http://localhost:1234",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/llm/, ""),
+      },
+    },
   },
 
   build: {

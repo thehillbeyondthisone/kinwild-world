@@ -43,6 +43,30 @@ http://localhost:2001/?livingWorld=0
   expression, gaze, notice anticipation, and contact events.
 - Footfalls, dust, proximity, plant touch, affordances, atmosphere, lighting,
   post-processing, camera, and UI respond through one coordinated style lock.
+- The observatory reads actual field, specimen, terrain, event, and affordance
+  state rather than presenting decorative telemetry.
+
+## Creature authoring
+
+Open **Create -> New Form** in the observatory to turn a natural-language
+description into three bounded creature studies. The studio shows each
+candidate's silhouette, genome hash, gait, primitive cost, and any automatic
+repairs before it can enter the field. Accepted forms are saved locally and up
+to four return in later strains.
+
+The development server proxies `/llm` to an OpenAI-compatible server:
+
+```sh
+# default: http://localhost:1234 (for example, LM Studio)
+npm run dev
+
+# alternate local or hosted authoring endpoint
+LLM_URL=http://localhost:11434 npm run dev
+```
+
+No provider key is stored in the browser. When no model is reachable, the same
+studio offers deterministic procedural studies through the identical
+validation and introduction path.
 
 ## Architecture
 
@@ -56,6 +80,10 @@ http://localhost:2001/?livingWorld=0
   presentation-event contracts.
 - `src/world/` — borrowed terrain/atmosphere construction behind the Kinwild
   presentation boundary.
+- `src/creature-authoring.js` - local-model client, reply repair, procedural
+  studies, and persistent authored-form records.
+- `src/ui/observatory.js` - live observatory read model, selection, taxonomy,
+  field telemetry, projected callouts, and Form Studio interaction.
 
 The detailed technical handoff is in
 [`docs/KINWILD_FOUNDATION.md`](docs/KINWILD_FOUNDATION.md).

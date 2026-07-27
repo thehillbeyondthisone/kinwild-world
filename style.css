@@ -2244,8 +2244,6 @@ body.living-world-mode #setting-depthfog-row {
   --obs-violet: #8c5aa8;
   --obs-night: #071321;
   --obs-panel: rgba(6, 18, 31, 0.82);
-  --obs-panel-solid: #091827;
-  --obs-paper: #d6c6a6;
   --obs-paper-ink: #293138;
   --obs-paper-line: rgba(63, 58, 48, 0.28);
 }

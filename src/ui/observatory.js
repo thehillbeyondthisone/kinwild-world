@@ -444,7 +444,6 @@ export function initObservatory() {
       "aria-pressed",
       String(anyVisible),
     );
-    shell.dataset.panelMode = "independent";
     if (
       firstRender &&
       panelVisibility.fauna !== false &&
@@ -797,9 +796,6 @@ export function initObservatory() {
       const lens = button.dataset.obsLens;
       if (PANEL_LENSES.includes(lens)) togglePanelLens(lens);
     });
-  });
-  compactPanelQuery.addEventListener("change", () => {
-    renderPanelVisibility();
   });
   renderPanelVisibility();
 

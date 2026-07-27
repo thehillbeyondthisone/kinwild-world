@@ -53,10 +53,6 @@ assert.ok(
   "panel visibility should persist between observations",
 );
 assert.ok(
-  ui.includes('shell.dataset.panelMode = "independent"'),
-  "instrument lenses should remain independently selectable",
-);
-assert.ok(
   ui.includes("panelVisibility[lens] = !panelVisibility[lens]"),
   "each instrument lens should toggle without clearing its siblings",
 );
@@ -68,8 +64,11 @@ assert.ok(
   !ui.includes("ZONE_PREFIXES"),
   "the observatory should not carry a second, disagreeing island-name generator",
 );
+// Assert the call site, not the bare name — "revealBrand()" also matches the
+// declaration `function revealBrand() {`, so it passed even with the rezone
+// hook deleted.
 assert.ok(
-  ui.includes("revealBrand()"),
+  ui.includes("window.setTimeout(revealBrand,"),
   "the identity reveal should replay when the world rezones",
 );
 assert.ok(

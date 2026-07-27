@@ -1,5 +1,60 @@
 # Changelog
 
+## 1.9.0 - 2026-07-27
+
+### Added
+
+- Field relations is a real affordance web: every affordance the placed flora
+  advertises is retained (105 across 34 plants on a full field, seven types),
+  bucketed into nourish / shelter / attune / unknown, laid out on a
+  deterministic phyllotaxis spiral and linked to nearest neighbours. The legend
+  reports live per-category counts.
+- Callout leader lines drawn in viewport space, reaching from each label to its
+  projected subject, with a fourth callout for ground cover and a fifth for one
+  unselected kin.
+- A single shared hint box for the six instrument-rail lenses.
+- Form Studio progress: staged copy over an asymptotic fill with rotating
+  field-notebook messages, and an automatic fall back to the field grammar when
+  no local model answers.
+- Taxonomy medallions for each kinling phenotype, drawn with sprite glyphs and
+  padded to eight slots with dimmed `unobserved` ghosts.
+- MUTATE FIELD in the dock, and the orbital plate mark on field resonance.
+
+### Changed
+
+- Callout projection runs on its own animation frame while every text write
+  stays on the 180ms tick, so labels track the camera instead of stair-stepping
+  at 5.5Hz. Panel rects and label boxes are cached on the slow tick: the
+  per-frame loop forces no style resolution at all.
+- The dock is six even cells. The raised circular DRIFT knob, its orbit ring
+  and dot, and their per-breakpoint re-tunings are gone; CREATE moved to the
+  field card's tool row.
+- Form Studio names its actions for what they do rather than how they are
+  built.
+- The specimen handle rides the card instead of teleporting, and tucks into the
+  card's corner at widths where the dock shares its row.
+
+### Fixed
+
+- The specimen card and its closed handle now reach the viewport edge; the dock
+  cancelled only one of the two grid gaps between it and the rail.
+- The specimen resonance trace read a flat line because the flora bridge never
+  exposed `touchState`, so every sample was zero. It reads the real touch
+  envelope now, peak rather than mean, normalized against each species' own
+  deflection clamp.
+- The MOVEMENT row no longer wraps into four stacked lines, and the specimen
+  handle no longer sits on top of the card's plate seal.
+- Callouts no longer print on top of each other, and a callout blocked by a
+  panel lifts clear instead of vanishing.
+
+### Verified
+
+- `npm run check` — 95 tests, lint, production build.
+- Live field at 879x673 and 1440x900: 58fps with the projection loop running,
+  47 getBoundingClientRect calls/sec and zero getComputedStyle calls/sec.
+- MUTATE FIELD reseeds across biomes through a `hidden` control (0x4a9b
+  silkvale to 0xafcd ashen).
+
 ## 1.8.0 - 2026-07-27
 
 ### Added

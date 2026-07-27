@@ -130,6 +130,7 @@ function toggleTour() {
 
 const LOCATOR_NAMES = {
   walker: "Walker", flier: "Flier", sleeper: "Sleeper", burrower: "Burrower",
+  kinling: "Kinling",
   fish: "Fish", angler: "Angler", bumblebee: "Bumblebee",
   caterpillar: "Caterpillar", snail: "Snail", butterfly: "Butterfly",
   bee: "Bee", bird: "Bird", willowisp: "Will-o'-Wisp",
@@ -143,6 +144,7 @@ const LOCATOR_NAMES = {
   obsidianglass: "Obsidian Glass",
   archstone: "Arch Stone", limestonerock: "Limestone", beachsucculent: "Beach Succulent",
   fairyring: "Fairy Ring",
+  veilcrown: "Veilcrown", pulsebell: "Pulsebells",
 };
 
 /**
@@ -186,8 +188,14 @@ export function initLocatorPanel() {
   function locatorEntityPos(e) {
     // Caterpillars/snails keep their group at origin; the head segment is the
     // moving anchor — same pattern as the follow camera in main.js.
-    if (e.segments) return e.segments[0].position;
-    return e.group.position;
+    const anchor = e.trackingAnchor ?? (e.segments ? e.segments[0] : e.group);
+    anchor.updateWorldMatrix(true, false);
+    return anchor.getWorldPosition(new THREE.Vector3());
+  }
+
+  function locatorObjectPos(object) {
+    object.updateWorldMatrix(true, false);
+    return object.getWorldPosition(new THREE.Vector3());
   }
 
   function locatorSortByProximity(entities, getPos) {
@@ -309,9 +317,9 @@ export function initLocatorPanel() {
         btn.addEventListener("click", () => {
           setLocatorOpen(false);
           // Sort flora by proximity to current camera target.
-          const sorted = locatorSortByProximity(meshes, (m) => m.position);
-          ctx.locatorCycle = { entities: sorted, getPos: (m) => m.position, isCreature: false, index: 0 };
-          if (sorted[0]) locatorNavigateTo(sorted[0].position, null, false);
+          const sorted = locatorSortByProximity(meshes, locatorObjectPos);
+          ctx.locatorCycle = { entities: sorted, getPos: locatorObjectPos, isCreature: false, index: 0 };
+          if (sorted[0]) locatorNavigateTo(locatorObjectPos(sorted[0]), null, false);
         });
         list.appendChild(btn);
       }

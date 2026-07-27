@@ -139,8 +139,8 @@ assert(
 );
 
 assert(
-  indexSource.includes('<button class="eyebrow-button" id="locator-eyebrow" type="button">field notes</button>')
+  indexSource.includes('<button class="eyebrow-button" id="locator-eyebrow" type="button">life index</button>')
     && uiSource.includes('const locatorEyebrow = document.getElementById("locator-eyebrow")')
     && uiSource.includes('locatorEyebrow?.addEventListener("click", () => setLocatorOpen(!ctx.locatorOpen))'),
-  'field notes eyebrow text should open the creature/flora locator.'
+  'Kinwild life-index eyebrow text should open the creature/flora locator.'
 );

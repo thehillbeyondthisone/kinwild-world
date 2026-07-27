@@ -60,6 +60,39 @@ import {
   measurePerfPhase,
   startPerfProbe,
 } from "./src/perfProbe.js";
+import { readIntegrationFeatureFlags } from "./src/integration/index.js";
+import {
+  applyLivingWorldCamera,
+  applyLivingWorldDocumentIdentity,
+  isLivingWorldCreature,
+  resolveLivingWorldFlags,
+  stepLivingWorld,
+} from "./src/living-world/index.js";
+
+function activateDefaultLivingWorld() {
+  if (!globalThis.window?.location || !globalThis.history?.replaceState) {
+    return globalThis.window?.location?.search ?? "";
+  }
+  const url = new URL(window.location.href);
+  const hasExplicitMode =
+    url.searchParams.has("livingWorld") ||
+    url.searchParams.has("generatedFauna") ||
+    url.searchParams.has("generatedFlora") ||
+    url.searchParams.has("inspect");
+  if (!hasExplicitMode) {
+    url.searchParams.set("livingWorld", "1");
+    history.replaceState(null, "", url);
+  }
+  return url.search;
+}
+
+const bootstrapLivingWorldFlags = resolveLivingWorldFlags(
+  readIntegrationFeatureFlags({
+    search: activateDefaultLivingWorld(),
+  }),
+);
+applyLivingWorldDocumentIdentity(bootstrapLivingWorldFlags.livingWorld);
+const livingFollowPosition = new THREE.Vector3();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Renderer / scene / camera
@@ -177,7 +210,7 @@ state.renderer = renderer;
 // Debug-only handle for poking at the running scene from devtools/agentchrome
 // during development. Gated to dev builds only (SEC-006) so it is not exposed
 // on the production GitHub Pages site. `import.meta.env.DEV` is defined by Vite.
-if (import.meta.env?.DEV && typeof window !== "undefined") {
+if (import.meta.env.DEV && typeof window !== "undefined") {
   window.__sw = { state, controls, scene, camera, renderer };
 }
 startPerfProbe({ state, scene, renderer });
@@ -387,7 +420,9 @@ function animate() {
       const p = c.group.position;
       const obj = nextDyn();
       obj.x = p.x; obj.z = p.z;
-      obj.r = 0.32 * c.scale;
+      obj.r = c.generatedAgent
+        ? Math.max(0.32 * c.scale, c.traits.radius * 0.58)
+        : 0.32 * c.scale;
       obj.top = p.y + 0.5 * c.scale;
       obj.owner = c;
       dyn.push(obj);
@@ -407,7 +442,12 @@ function animate() {
   });
 
   measurePerfPhase("creatureMovement", () => {
-    for (const c of state.creatures) stepCreature(c, dt, t, state.heightFn);
+    stepLivingWorld(state.livingWorld, dt, t, { camera });
+    for (const c of state.creatures) {
+      if (!isLivingWorldCreature(c)) {
+        stepCreature(c, dt, t, state.heightFn);
+      }
+    }
   });
   measurePerfPhase("caterpillarMovement", () => {
     for (const c of state.caterpillars) stepCaterpillar(c, dt, t, state.heightFn);
@@ -503,11 +543,15 @@ function animate() {
       // otherwise camera target snaps to (0,0,0) and the follow looks broken.
       const ft = getFollowTarget();
       if (ft && ft.group && ft.group.parent) {
-        const anchor = ft.segments ? ft.segments[0] : ft.group;
-        const p = anchor.position;
+        const anchor = ft.trackingAnchor ?? (ft.segments ? ft.segments[0] : ft.group);
+        anchor.updateWorldMatrix(true, false);
+        const p = anchor.getWorldPosition(livingFollowPosition);
+        const lift = ft.trackingAnchor
+          ? 0.12 * (state.userSettings.worldScale ?? 1)
+          : 0.6 * (state.userSettings.worldScale ?? 1);
         const k = Math.min(1, dt * 4);
         controls.target.x += (p.x - controls.target.x) * k;
-        controls.target.y += (p.y + 0.6 - controls.target.y) * k;
+        controls.target.y += (p.y + lift - controls.target.y) * k;
         controls.target.z += (p.z - controls.target.z) * k;
       } else if (ft) {
         setFollowTarget(null);
@@ -573,6 +617,11 @@ function animate() {
 
 if (!INSPECT) {
   initUi({ camera, canvas, controls, renderer });
+  const reframeLivingWorld = () => {
+    applyLivingWorldCamera(camera, controls, state);
+  };
+  window.addEventListener("world-ready", reframeLivingWorld);
+  window.addEventListener("living-world-reframe", reframeLivingWorld);
 }
 
 // kickoff — honour ?seed=XXXX in the URL if present, or ?inspect=1 for studio
@@ -581,7 +630,9 @@ if (INSPECT) {
 } else {
   const initialSeed = readSeedFromUrl() ?? newRandomSeed();
   void generateWorld(initialSeed, undefined, { biomeId: readBiomeFromUrl() }).then(() => {
-    frameDefaultOrbitToIsland();
+    if (!applyLivingWorldCamera(camera, controls, state)) {
+      frameDefaultOrbitToIsland();
+    }
     enterPortalArrivalIfRequested();
   }).catch((error) => {
     console.error("World generation failed", error);

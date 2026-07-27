@@ -27,6 +27,15 @@ import { finalizeWorldHud } from "./world-hud.js";
 import { buildAtmosphereAndTerrain } from "./world/atmosphere.js";
 import { placeFloraAndGroundCover } from "./world/flora-placement.js";
 import { populateFauna } from "./world/fauna-population.js";
+import {
+  LIVING_WORLD_OBSTACLE_KIND,
+  createLivingWorldRuntime,
+  disposeLivingWorld,
+  livingWorldFloraCount,
+  populateLivingFauna,
+  populateLivingFlora,
+  resolveLivingWorldPresentation,
+} from "./living-world/index.js";
 
 let _scene = null;
 let _controls = null;
@@ -165,7 +174,11 @@ export function updateDayNight(t) {
   if (!state.dayNight || !state.sunLight || !state.hemiLight || !_scene) return;
   let dayFactor;
   let phase;
-  if (state.userSettings.autoCycle) {
+  const fixedDayFactor = state.currentBiome?.presentation?.fixedDayFactor;
+  if (Number.isFinite(fixedDayFactor)) {
+    dayFactor = THREE.MathUtils.clamp(fixedDayFactor, 0, 1);
+    phase = Math.acos(2 * dayFactor - 1);
+  } else if (state.userSettings.autoCycle) {
     phase = (t * 2 * Math.PI) / DAY_NIGHT_PERIOD_S;
     dayFactor = (Math.cos(phase) + 1) * 0.5;
   } else {
@@ -193,16 +206,21 @@ export function updateDayNight(t) {
       revealMul = 1 + 5 * e;
     }
   }
+  const fogMultiplier =
+    state.currentBiome?.presentation?.fixedFogMultiplier ??
+    state.userSettings.fogMultiplier;
   _scene.fog.density =
     state.dayNight.fogDensity *
     (1 + nightAmt * 0.2) *
-    state.userSettings.fogMultiplier *
+    fogMultiplier *
     (1 - ab * 0.5) * // thinner fog at high ambient
     revealMul;
 
   blendPalette(state.sunLight.color, dn.sun, dn.duskSun, dn.nightSun, liftedDay);
   const sunBase = 0.45 + dayFactor * 0.95 + ab * 1.6;
-  const sunMul = state.currentBiome?.sunIntensity ?? 1;
+  const sunMul =
+    (state.currentBiome?.sunIntensity ?? 1) *
+    (state.currentBiome?.presentation?.sunMultiplier ?? 1);
   state.sunLight.intensity = sunBase * sunMul;
   const sunAngle = phase + Math.PI;
   const sunR = 26;
@@ -223,7 +241,9 @@ export function updateDayNight(t) {
   );
   if (ab > 0) state.hemiLight.groundColor.lerp(AMBIENT_LIFT, ab * 0.5);
   // hemi fill scales hard with ambient so dark biomes actually brighten
-  state.hemiLight.intensity = 0.32 + dayFactor * 0.45 + ab * 4.5;
+  state.hemiLight.intensity =
+    (0.32 + dayFactor * 0.45 + ab * 4.5) *
+    (state.currentBiome?.presentation?.hemiMultiplier ?? 1);
 
   // Sky dome zenith/horizon + mountain layer tint follow the day/night curve
   updateSkyColors(state.skyDome, state.mountains, dn, liftedDay, nightAmt);
@@ -299,6 +319,7 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
     Math.random = originalRandom;
   };
   let lastYieldAt = generationNow();
+  let livingWorldRuntimeForRun = null;
   async function yieldIfNeeded(force = false) {
     if (!force && generationNow() - lastYieldAt < GENERATION_FRAME_BUDGET_MS) return;
     restoreRandom();
@@ -320,7 +341,13 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
   // this ordering, shared with the portal preview's RNG replay.
   const { biome: seedBiome, layout } = rollBiomeAndLayout(pickLayout);
   const forcedBiome = options.biomeId ? BIOMES.find((candidate) => candidate.id === options.biomeId) : null;
-  const biome = forcedBiome ?? seedBiome;
+  const sourceBiome = forcedBiome ?? seedBiome;
+  const {
+    flags: livingWorldFlags,
+    biome,
+  } = resolveLivingWorldPresentation(sourceBiome, {
+    search: globalThis.window?.location?.search ?? "",
+  });
   function attachCatalogMetadata(object) {
     if (!object?.userData?.inspect) return;
     object.userData.catalog = catalogSubjectFromInspect(object.userData.inspect, biome);
@@ -334,6 +361,10 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
     pickGroundPoint(maxRadiusFrac, { ...opts, layout: worldState.currentLayout });
 
   // clear
+  // Generated flora species and SDF fauna own resources that generic scene
+  // traversal cannot safely infer (shared flora materials and custom shadow
+  // materials). Tear them down through their contracts first.
+  disposeLivingWorld(worldState);
   disposeGroup(worldState.world);
   // Dispose previous reflection's WebGL render target + clear its cloned
   // scene — disposeGroup only walks worldState.world, and the reflection lives on
@@ -390,32 +421,67 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
   await buildAtmosphereAndTerrain({ worldState, worldScene, biome, seed, layout, yieldIfNeeded });
 
   const densityScale = worldState.ISLAND_SIZE / DENSITY_BASE;
-  const { placed, blocksPlacement, GROUND_CREATURE_BLOCK_KINDS, placeFlyerNest } = await placeFloraAndGroundCover({
+  livingWorldRuntimeForRun = createLivingWorldRuntime({
     worldState,
     biome,
     seed,
-    context,
-    densityScale,
-    pickWorldGroundPoint,
+    flags: livingWorldFlags,
     attachCatalogMetadata,
-    yieldIfNeeded,
   });
+  worldState.livingWorld = livingWorldRuntimeForRun;
 
+  let placed = 0;
+  let blocksPlacement = (x, z, radius, kinds = new Set()) => {
+    for (const obstacle of worldState.obstacles) {
+      if (!kinds.has(obstacle.kind)) continue;
+      if (Math.hypot(x - obstacle.x, z - obstacle.z) < radius + obstacle.r) {
+        return true;
+      }
+    }
+    return false;
+  };
+  let GROUND_CREATURE_BLOCK_KINDS = new Set();
+  let placeFlyerNest = () => false;
 
-  await populateFauna({
-    worldState,
-    biome,
-    densityScale,
-    pickWorldGroundPoint,
-    blocksPlacement,
-    GROUND_CREATURE_BLOCK_KINDS,
-    placeFlyerNest,
-    yieldIfNeeded,
-  });
+  if (!biome.presentation?.hideLegacyFlora) {
+    ({
+      placed,
+      blocksPlacement,
+      GROUND_CREATURE_BLOCK_KINDS,
+      placeFlyerNest,
+    } = await placeFloraAndGroundCover({
+      worldState,
+      biome,
+      seed,
+      context,
+      densityScale,
+      pickWorldGroundPoint,
+      attachCatalogMetadata,
+      yieldIfNeeded,
+    }));
+  }
+
+  populateLivingFlora(worldState.livingWorld);
+  placed += livingWorldFloraCount(worldState.livingWorld);
+  GROUND_CREATURE_BLOCK_KINDS.add(LIVING_WORLD_OBSTACLE_KIND);
+
+  if (!biome.presentation?.hideLegacyFauna) {
+    await populateFauna({
+      worldState,
+      biome,
+      densityScale,
+      pickWorldGroundPoint,
+      blocksPlacement,
+      GROUND_CREATURE_BLOCK_KINDS,
+      placeFlyerNest,
+      yieldIfNeeded,
+    });
+  }
+  populateLivingFauna(worldState.livingWorld);
 
 
   // bird flocks
-  const numFlocks = 1;
+  const numFlocks = biome.presentation?.hideBirds ? 0 : 1;
   let totalBirds = 0;
   for (let f = 0; f < numFlocks; f++) {
     const flock = makeFlock(biome);
@@ -447,7 +513,20 @@ export async function generateWorld(seed, context = createWorldBuildContext(), o
     totalBirds,
   });
   } catch (error) {
-    if (error !== STALE_GENERATION) throw error;
+    if (error !== STALE_GENERATION) {
+      // Only tear down the runtime allocated by this still-current run. An
+      // obsolete failure must never dispose a replacement runtime installed by
+      // a newer generation, and a failure before runtime construction should
+      // leave an otherwise-intact previous world alone.
+      if (
+        runId === _generationRunId &&
+        livingWorldRuntimeForRun &&
+        worldState.livingWorld === livingWorldRuntimeForRun
+      ) {
+        disposeLivingWorld(worldState);
+      }
+      throw error;
+    }
   } finally {
     restoreRandom();
     if (runId === _generationRunId) {

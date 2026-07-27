@@ -11,7 +11,7 @@
  */
 export const LOCATOR_HIDDEN_FLORA_VARIANTS = new Set([
   "grassfield", "wildflower", "pebble", "grassblade",
-  "cloudpuff", "shell", "starfish", "water",
+  "cloudpuff", "shell", "starfish", "water", "threadgrass",
 ]);
 
 /**

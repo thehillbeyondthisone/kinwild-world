@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
-  <meta name="theme-color" content="#000000" />
+  <meta name="theme-color" content="#11152a" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -19,12 +19,9 @@
     CSP does not restrict.
   -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; media-src https://static.pardev.net; img-src 'self' data: blob:; script-src 'self'; connect-src 'self' data:" />
-  <title>a small world — terrarium</title>
+  <title>kinwild — living forms</title>
   <link rel="manifest" href="/site.webmanifest" />
-  <link rel="icon" href="/favicon.ico" sizes="any" />
-  <link rel="icon" type="image/png" sizes="32x32" href="/icons/small-world-icon-32.png" />
-  <link rel="icon" type="image/png" sizes="16x16" href="/icons/small-world-icon-16.png" />
-  <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
+  <link rel="icon" type="image/svg+xml" href="/kinwild-mark.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -33,12 +30,12 @@
   />
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
+<body class="living-world-mode">
   <canvas id="scene"></canvas>
 
   <div class="world-loading" id="world-loading" aria-live="polite" aria-hidden="true">
     <div class="world-loading-card">
-      <div class="world-loading-title">Crafting new world</div>
+      <div class="world-loading-title">growing a living field</div>
     </div>
   </div>
 
@@ -50,13 +47,13 @@
   <header class="hud hud-top">
     <div class="title-block">
       <div class="eyebrow">
-        <button class="eyebrow-button" id="locator-eyebrow" type="button">field notes</button> &nbsp;·&nbsp; vol. <span id="app-version">…</span> &nbsp;·&nbsp;
+        <button class="eyebrow-button" id="locator-eyebrow" type="button">life index</button> &nbsp;·&nbsp; vol. <span id="app-version">…</span> &nbsp;·&nbsp;
         <a class="eyebrow-link" href="https://github.com/paulrobello/small-world" target="_blank" rel="noopener">source ↗</a>
       </div>
-      <h1 class="title"><em>a small</em> world</h1>
+      <h1 class="title"><em>kin</em>wild</h1>
     </div>
     <div class="biome-card">
-      <div class="label">current biome</div>
+      <div class="label">living field</div>
       <div class="biome-name" id="biome-name">—</div>
       <div class="island-name" id="island-name"></div>
       <div class="biome-sub" id="biome-sub">awaiting genesis</div>
@@ -254,6 +251,38 @@
       </dl>
     </section>
     </div>
+
+    <div class="help-kinwild">
+      <section class="settings-section">
+        <div class="settings-section-label">living field</div>
+        <dl class="help-list">
+          <dt>new strain</dt>
+          <dd>grow a fresh deterministic field with a new arrangement of related forms.</dd>
+          <dt>life index</dt>
+          <dd>find Veilcrowns, Pulsebells, and Kinlings; choose a Kinling to follow its path.</dd>
+          <dt>follow a Kinling</dt>
+          <dd>tap a Kinling to let the camera travel with it. Press <kbd>esc</kbd> to release.</dd>
+          <dt>orbit / drift</dt>
+          <dd>orbit to compose the field, or drift through it with <kbd>w</kbd><kbd>a</kbd><kbd>s</kbd><kbd>d</kbd>.</dd>
+          <dt>photo frame</dt>
+          <dd><kbd>p</kbd> quiets the field and opens the camera. Saved images use the Kinwild name.</dd>
+        </dl>
+      </section>
+
+      <section class="settings-section">
+        <div class="settings-section-label">observation</div>
+        <dl class="help-list">
+          <dt>drag</dt><dd>rotate around the living composition.</dd>
+          <dt>scroll · pinch</dt><dd>move closer or widen the field.</dd>
+          <dt><kbd>l</kbd></dt><dd>open the life index.</dd>
+          <dt><kbd>tab</kbd></dt><dd>cycle through the selected form.</dd>
+          <dt><kbd>v</kbd></dt><dd>switch between orbit and drift.</dd>
+          <dt><kbd>space</kbd></dt><dd>pause or resume the shared pulse.</dd>
+          <dt><kbd>,</kbd></dt><dd>open field settings.</dd>
+          <dt><kbd>esc</kbd></dt><dd>release focus or close the active panel.</dd>
+        </dl>
+      </section>
+    </div>
     </div>
   </aside>
 
@@ -275,7 +304,7 @@
       <div class="bookmark-empty" id="bookmark-empty">no saved seeds yet.</div>
     </section>
 
-    <section class="settings-section">
+    <section class="settings-section" id="setting-atmosphere-section">
       <div class="settings-section-label">atmosphere</div>
 
       <label class="setting">
@@ -378,7 +407,7 @@
       </details>
     </section>
 
-    <section class="settings-section">
+    <section class="settings-section" id="setting-grass-section">
       <details class="fx-details" id="setting-grass-details">
         <summary class="settings-section-label fx-summary">grass</summary>
 
@@ -427,17 +456,17 @@
           <span class="setting-label">tilt-shift miniature</span>
         </label>
 
-        <label class="setting setting-checkbox">
+        <label class="setting setting-checkbox" id="setting-outline-row">
           <input type="checkbox" id="setting-outline" checked />
           <span class="setting-label">depth outlines</span>
         </label>
 
-        <label class="setting setting-checkbox">
+        <label class="setting setting-checkbox" id="setting-ao-row">
           <input type="checkbox" id="setting-ao" checked />
           <span class="setting-label">contact AO</span>
         </label>
 
-        <label class="setting setting-checkbox">
+        <label class="setting setting-checkbox" id="setting-depthfog-row">
           <input type="checkbox" id="setting-depthfog" checked />
           <span class="setting-label">depth fog</span>
         </label>
@@ -458,7 +487,7 @@
       </div>
     </section>
 
-    <section class="settings-section">
+    <section class="settings-section" id="setting-audio-section">
       <div class="settings-section-label">audio</div>
 
       <label class="setting">
@@ -473,7 +502,7 @@
       </label>
     </section>
 
-    <section class="settings-section">
+    <section class="settings-section" id="setting-auto-regen-section">
       <div class="settings-section-label">auto-regenerate</div>
 
       <label class="setting setting-checkbox">
@@ -509,7 +538,7 @@
       </button>
     </section>
 
-    <section class="settings-section">
+    <section class="settings-section" id="setting-biome-filter-section">
       <div class="biome-filter-header">
         <div class="settings-section-label">biome filter</div>
         <div class="biome-filter-actions">

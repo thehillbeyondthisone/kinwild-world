@@ -137,7 +137,9 @@ assert(
     && storageSource.includes('function shouldUseMobileHud()')
     && storageSource.includes('localStorage.getItem(HELP_SEEN_KEY)')
     && storageSource.includes('localStorage.setItem(HELP_SEEN_KEY, "1")')
-    && uiSource.includes('if (!INSPECT && !shouldUseMobileHud() && shouldShowFirstVisitHelp()) {')
+    && uiSource.includes('!livingMode')
+    && uiSource.includes('shouldShowFirstVisitHelp()')
+    && uiSource.includes('document.body.classList.contains("living-world-mode")')
     && uiSource.includes('setHelpOpen(true);'),
   'Help should automatically open once on desktop and persist that it was seen without trapping first-time mobile visitors.'
 );

@@ -1,11 +1,11 @@
-// Static invariants for Verdant Grove polish and custom domain setup
+// Static invariants for the retained donor harness and Kinwild identity boundary
 // (QA-023 port of tests/test_verdant_grove_custom_domain.py).
 //
 // Biome config (groveDetails, edgeAura, creatureColors, furProbability,
 // GRASS_DENSITY/GRASS_HEIGHT, grass-edge-disc absence) is real, importable
 // data from biomes.js, so it's asserted directly off the BIOMES table
 // instead of slicing biomes.js's source text between two `id:` markers.
-// Everything else here — CNAME/README/CLAUDE.md domain text, GLSL shader
+// Everything else here — package/manifest identity, GLSL shader
 // bodies, InstancedMesh/leaf-batch wiring, and same-file code-ordering
 // invariants (e.g. "the fur roll must run before geometry construction") —
 // has no black-box behavior to observe without a full renderer or is
@@ -61,19 +61,21 @@ function readFloraSrc() {
   ].map(readSrc).join('\n');
 }
 
-// test_github_pages_custom_domain_is_configured
+// test_default_package_and_manifest_use_kinwild_identity
 {
-  const cname = readSrc('../CNAME').trim();
-  assert.equal(cname, 'small-world.pardev.net');
+  const pkg = JSON.parse(readSrc('../package.json'));
+  const manifest = JSON.parse(readSrc('../public/site.webmanifest'));
+  assert.equal(pkg.name, 'kinwild');
+  assert.equal(manifest.name, 'Kinwild');
+  assert.equal(manifest.short_name, 'Kinwild');
 }
 
-// test_public_docs_use_custom_domain
+// test_default_docs_and_deployment_do_not_claim_the_donor_domain
 {
-  for (const rel of ['../README.md', '../CLAUDE.md']) {
-    const text = readSrc(rel);
-    assert.match(text, /https:\/\/small-world\.pardev\.net\//);
-    assert.doesNotMatch(text, /https:\/\/paulrobello\.github\.io\/small-world\//);
-  }
+  const readme = readSrc('../README.md');
+  const workflow = readSrc('../.github/workflows/deploy.yml');
+  assert.doesNotMatch(readme, /https:\/\/small-world\.pardev\.net\//);
+  assert.doesNotMatch(workflow, /\bCNAME\b/);
 }
 
 // test_verdant_biome_declares_grove_detail_flags
@@ -405,4 +407,4 @@ function readFloraSrc() {
   assert.match(mainSrc, /preserveDrawingBuffer: true/);
 }
 
-console.log('verdant-grove-custom-domain.test.mjs passed');
+console.log('legacy-harness-regression.test.mjs passed');

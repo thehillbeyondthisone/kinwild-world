@@ -19,6 +19,11 @@ function readPositiveIntParam(params, key, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function readNonNegativeIntParam(params, key, fallback) {
+  const value = Number.parseInt(params?.get(key) ?? "", 10);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
 function waitForFrame() {
   return new Promise((resolve) => requestAnimationFrame(resolve));
 }
@@ -229,7 +234,7 @@ export function startPerfProbe({ state, scene, renderer }) {
   if (!isPerfProbeEnabled()) return;
 
   const params = getSearchParams();
-  const settleFrames = readPositiveIntParam(params, "perfSettle", 60);
+  const settleFrames = readNonNegativeIntParam(params, "perfSettle", 60);
   const frameCount = readPositiveIntParam(params, "perfFrames", 240);
 
   activeProbe = {

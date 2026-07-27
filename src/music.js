@@ -163,6 +163,18 @@ function playIfEnabled() {
  * Streams the matching track (or Default.mp3) and crossfades.
  */
 export function switchMusic(biome) {
+  if (biome?.presentation?.muteLegacyMusic) {
+    _switchId++;
+    _fadeId++;
+    _currentSrc = null;
+    if (_audio) {
+      _audio.pause();
+      _audio.removeAttribute?.("src");
+      _audio.src = "";
+      _audio.load?.();
+    }
+    return;
+  }
   const track = selectedTrackForBiome(biome);
   const src = `${MUSIC_BASE_URL}/${track}`;
 

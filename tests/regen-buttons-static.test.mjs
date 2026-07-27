@@ -40,8 +40,9 @@ assert(
 // call the shared nextEnabledBiomeIdFrom helper asserted above.
 assert(
   uiSource.includes('ctx.pickSameBiomeSeed =')
+    && uiSource.includes('livingMode')
     && uiSource.includes('allowedBiomeIds: state.currentBiome ? [state.currentBiome.id] : undefined'),
-  'Same-biome regeneration should constrain newRandomSeed to the current biome id.'
+  'Donor same-biome regeneration should remain constrained while Kinwild can grow an unconstrained strain.'
 );
 assert(
   uiSource.includes('ctx.pickRandomBiomeSeed =')

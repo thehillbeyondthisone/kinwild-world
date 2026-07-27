@@ -72,6 +72,9 @@ export function rollBiomeAndLayout(pickLayoutFn) {
  * @returns {number} noise amplitude to pass to `makeHeightFn`
  */
 export function terrainAmpFor(biome) {
+  if (Number.isFinite(biome?.terrainAmplitude)) {
+    return Math.max(0, biome.terrainAmplitude);
+  }
   return biome.cloudlike ? 2.15 : 3.2;
 }
 

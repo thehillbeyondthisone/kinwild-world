@@ -130,26 +130,33 @@ export function initInput() {
     const header = document.querySelector(".hud-top");
     header.classList.add("mobile");
     ctx.syncFlyTouchControls();
-    let _headerTimer = null;
-    function scheduleHeaderFade() {
-      clearTimeout(_headerTimer);
-      header.style.animation = 'none'; // release hudIn fill hold
-      header.style.transition = '';
-      header.style.opacity = '1';
-      header.style.pointerEvents = 'auto';
-      _headerTimer = setTimeout(() => {
-        header.style.transition = 'opacity 1.5s ease';
-        header.style.opacity = '0';
-        header.style.pointerEvents = 'none';
-      }, 5000);
+    const keepHeader =
+      document.body.classList.contains("living-world-mode");
+    if (keepHeader) {
+      header.style.opacity = "1";
+      header.style.pointerEvents = "auto";
+    } else {
+      let _headerTimer = null;
+      function scheduleHeaderFade() {
+        clearTimeout(_headerTimer);
+        header.style.animation = 'none'; // release hudIn fill hold
+        header.style.transition = '';
+        header.style.opacity = '1';
+        header.style.pointerEvents = 'auto';
+        _headerTimer = setTimeout(() => {
+          header.style.transition = 'opacity 1.5s ease';
+          header.style.opacity = '0';
+          header.style.pointerEvents = 'none';
+        }, 5000);
+      }
+      window.addEventListener("world-ready", scheduleHeaderFade);
+      // If the world is already loaded (e.g. late registration), start now
+      if (state.currentBiome) scheduleHeaderFade();
+      // Tap header area to temporarily reveal it
+      header.addEventListener("pointerdown", () => {
+        scheduleHeaderFade();
+      });
     }
-    window.addEventListener("world-ready", scheduleHeaderFade);
-    // If the world is already loaded (e.g. late registration), start now
-    if (state.currentBiome) scheduleHeaderFade();
-    // Tap header area to temporarily reveal it
-    header.addEventListener("pointerdown", () => {
-      scheduleHeaderFade();
-    });
   }
 
   // Click-to-pick a creature. Selection mode pauses the sim and shows the
@@ -185,6 +192,10 @@ export function initInput() {
         let n = h.object;
         while (n && !n.userData?.inspect) n = n.parent;
         if (!n) continue;
+        // Generated living-world subjects do not map to the legacy inspector's
+        // fixed variant catalogue. Keep them in-world until their own
+        // generative presentation exists instead of opening a broken view.
+        if (n.userData?.livingWorld) return;
         const { category, variant } = n.userData.inspect;
         if (category === "flora" && variant === "water") continue;
         const biomeId = state.currentBiome?.id;

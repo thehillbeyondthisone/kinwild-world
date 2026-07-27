@@ -96,7 +96,7 @@ const biome = BIOMES.find((b) => (b.furProbability ?? 0) === 0 && b.creatureKind
   assert.doesNotMatch(uiSrc, /if \(INSPECT\) return;/);
 
   // test_normal_ui_is_not_initialized_in_inspect_mode
-  assert.match(mainSrc, /if \(!INSPECT\) \{\n {2}initUi\(\{ camera, canvas, controls, renderer \}\);\n\}/);
+  assert.match(mainSrc, /if \(!INSPECT\) \{\n {2}initUi\(\{ camera, canvas, controls, renderer \}\);/);
   assert.ok(mainSrc.indexOf('if (!INSPECT)') < mainSrc.indexOf('if (INSPECT) {\n  setupInspect'));
 
   // test_inspect_key_handler_preempts_page_level_shortcuts

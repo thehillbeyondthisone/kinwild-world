@@ -7,6 +7,7 @@ import { state } from "../state.js";
 import { generateWorld } from "../world.js";
 import { BIOMES } from "../biomes.js";
 import { filterCatalogEntriesForWorld, getBiomeCatalogEntries, makeCatalogStore } from "../catalog.js";
+import { LIVING_WORLD_STYLE_ID } from "../living-world/style.js";
 import { LOCATOR_HIDDEN_FLORA_VARIANTS } from "./constants.js";
 import { ctx } from "./context.js";
 
@@ -42,30 +43,69 @@ export function initCatalogPanel() {
     const myGen = ++ctx.catalogRenderGen;
     clearCatalogObjectUrls();
     catalogList.innerHTML = "";
-    const currentId = state.currentBiome?.id ?? null;
+    const livingMode =
+      state.currentBiome?.presentation?.mode === "living-world";
+    const currentId = livingMode
+      ? LIVING_WORLD_STYLE_ID
+      : (state.currentBiome?.id ?? null);
     const currentCatalogKeys = new Set();
+    const currentCatalogSubjects = new Map();
     state.world?.traverse((object) => {
       const inspect = object.userData?.inspect;
       if (inspect?.category === "flora" && LOCATOR_HIDDEN_FLORA_VARIANTS.has(inspect.variant)) return;
-      const key = object.userData?.catalog?.key;
-      if (key) currentCatalogKeys.add(key);
+      const subject = object.userData?.catalog;
+      if (subject?.key) {
+        currentCatalogKeys.add(subject.key);
+        currentCatalogSubjects.set(subject.key, subject);
+      }
     });
-    const biomes = [...BIOMES].sort((a, b) => {
-      if (a.id === currentId) return -1;
-      if (b.id === currentId) return 1;
-      return a.name.localeCompare(b.name);
-    });
+    if (livingMode) {
+      for (const saved of catalogStore.listEntries()) {
+        if (
+          saved.biomeId === LIVING_WORLD_STYLE_ID &&
+          !currentCatalogSubjects.has(saved.key)
+        ) {
+          currentCatalogSubjects.set(saved.key, {
+            key: saved.key,
+            category: saved.category,
+            variant: saved.variant,
+            biomeId: saved.biomeId,
+            label: saved.label,
+          });
+        }
+      }
+    }
+    const biomes = livingMode
+      ? [{ id: LIVING_WORLD_STYLE_ID, name: "kinwild" }]
+      : [...BIOMES].sort((a, b) => {
+          if (a.id === currentId) return -1;
+          if (b.id === currentId) return 1;
+          return a.name.localeCompare(b.name);
+        });
     let rendered = 0;
 
     async function loadCatalogBiome(biome) {
       setCatalogOpen(false);
+      if (livingMode) return;
       await generateWorld(state.currentSeed, undefined, { biomeId: biome.id }).catch((error) => {
         console.warn("Failed to load catalog biome", error);
       });
     }
 
     for (const biome of biomes) {
-      const baseEntries = getBiomeCatalogEntries(biome);
+      const baseEntries = livingMode
+        ? [...currentCatalogSubjects.values()]
+        : getBiomeCatalogEntries(biome);
+      if (biome.id === currentId) {
+        for (const subject of currentCatalogSubjects.values()) {
+          if (!baseEntries.some((entry) => entry.key === subject.key)) {
+            baseEntries.push(subject);
+          }
+        }
+        baseEntries.sort((a, b) =>
+          a.category.localeCompare(b.category) || a.label.localeCompare(b.label)
+        );
+      }
       const savedKeys = new Set(baseEntries
         .filter((entry) => catalogStore.getEntry(entry.key))
         .map((entry) => entry.key));
@@ -81,9 +121,13 @@ export function initCatalogPanel() {
       title.type = "button";
       title.className = "catalog-biome-title";
       title.textContent = biome.name;
-      title.addEventListener("click", () => {
-        void loadCatalogBiome(biome);
-      });
+      if (livingMode) {
+        title.disabled = true;
+      } else {
+        title.addEventListener("click", () => {
+          void loadCatalogBiome(biome);
+        });
+      }
       biomeEl.appendChild(title);
 
       for (const category of ["fauna", "flora"]) {
@@ -142,15 +186,20 @@ export function initCatalogPanel() {
               const seed = Number.parseInt(String(saved.seed).replace(/^0x/i, ""), 16);
               if (Number.isFinite(seed)) {
                 setCatalogOpen(false);
-                await generateWorld(seed, undefined, { biomeId: saved.biomeId }).catch((error) => {
+                const options = livingMode
+                  ? undefined
+                  : { biomeId: saved.biomeId };
+                await generateWorld(seed, undefined, options).catch((error) => {
                   console.warn("Failed to load catalog seed", error);
                 });
               }
             });
           } else {
-            card.addEventListener("click", () => {
-              void loadCatalogBiome(biome);
-            });
+            if (!livingMode) {
+              card.addEventListener("click", () => {
+                void loadCatalogBiome(biome);
+              });
+            }
           }
 
           grid.appendChild(card);

@@ -118,6 +118,10 @@ export const state = {
   heightFn: () => 0,
   currentBiome: null,
   currentSeed: 0,
+  // Exclusive generated-content runtime for ?livingWorld=1 (or the narrower
+  // generated flora/fauna proof flags). It owns custom GPU resources and must
+  // be disposed before the generic state.world traversal on regeneration.
+  livingWorld: null,
   isGeneratingWorld: false,
   maxElev: 0,
   sunLight: null,

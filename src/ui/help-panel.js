@@ -32,6 +32,8 @@ export function initHelpPanel() {
   const helpToggle = document.getElementById("help-toggle");
   const helpClose = document.getElementById("help-close");
   const mobileHelpClose = document.getElementById("help-mobile-close");
+  const livingMode =
+    document.body.classList.contains("living-world-mode");
   function setHelpOpen(open) {
     helpPanel.classList.toggle("open", open);
     helpPanel.setAttribute("aria-hidden", open ? "false" : "true");
@@ -45,7 +47,12 @@ export function initHelpPanel() {
   });
   helpClose.addEventListener("click", () => setHelpOpen(false));
   mobileHelpClose.addEventListener("click", () => setHelpOpen(false));
-  if (!INSPECT && !shouldUseMobileHud() && shouldShowFirstVisitHelp()) {
+  if (
+    !livingMode &&
+    !INSPECT &&
+    !shouldUseMobileHud() &&
+    shouldShowFirstVisitHelp()
+  ) {
     ctx.setSettingsOpen(false);
     ctx.setLocatorOpen(false);
     ctx.setCatalogOpen(false);
@@ -107,15 +114,19 @@ export function initHelpPanel() {
   }
 
   ctx.pickRandomBiomeSeed = () => {
+    if (livingMode) return newRandomSeed();
     const nextId = nextEnabledBiomeId(state.currentBiome?.id);
     return newRandomSeed({
       allowedBiomeIds: nextId ? [nextId] : undefined,
     });
   };
 
-  ctx.pickSameBiomeSeed = () => newRandomSeed({
-    allowedBiomeIds: state.currentBiome ? [state.currentBiome.id] : undefined,
-  });
+  ctx.pickSameBiomeSeed = () =>
+    livingMode
+      ? newRandomSeed()
+      : newRandomSeed({
+          allowedBiomeIds: state.currentBiome ? [state.currentBiome.id] : undefined,
+        });
 
   // Bookmarks ----------------------------------------------------------------
   let bookmarks = loadBookmarks();

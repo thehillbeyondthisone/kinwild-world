@@ -499,7 +499,9 @@ export class InputPass extends Pass {
  *   setBloomRadius: (sliderUnit: number) => void,
  *   setTiltShift: (on: boolean) => void,
  *   setOutline: (on: boolean) => void,
+ *   setOutlineStrength: (strength: number) => void,
  *   setAo: (on: boolean) => void,
+ *   setAoStrength: (strength: number) => void,
  *   setDepthFog: (on: boolean) => void,
  *   setDepthFogColor: (color: THREE.Color) => void,
  *   setUnderwaterTint: (color: THREE.Color, strength: number) => void,
@@ -519,7 +521,9 @@ export function initPostFX(renderer, scene, camera) {
       setBloom: () => {},
       setTiltShift: () => {},
       setOutline: () => {},
+      setOutlineStrength: () => {},
       setAo: () => {},
+      setAoStrength: () => {},
       setDepthFog: () => {},
       setDepthFogColor: () => {},
       setUnderwaterTint: () => {},
@@ -798,8 +802,18 @@ export function initPostFX(renderer, scene, camera) {
       depthFXPass.uniforms.uOutlineStrength.value = on ? 1.0 : 0.0;
       refreshDepthFXEnabled();
     },
+    setOutlineStrength: (strength) => {
+      depthFXPass.uniforms.uOutlineStrength.value =
+        THREE.MathUtils.clamp(strength, 0, 1);
+      refreshDepthFXEnabled();
+    },
     setAo: (on) => {
       depthFXPass.uniforms.uAoStrength.value = on ? 1.0 : 0.0;
+      refreshDepthFXEnabled();
+    },
+    setAoStrength: (strength) => {
+      depthFXPass.uniforms.uAoStrength.value =
+        THREE.MathUtils.clamp(strength, 0, 1);
       refreshDepthFXEnabled();
     },
     setDepthFog: (on) => {

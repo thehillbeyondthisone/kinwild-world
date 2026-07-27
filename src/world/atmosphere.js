@@ -70,7 +70,27 @@ export async function buildAtmosphereAndTerrain({ worldState, worldScene, biome,
   // colours. Boost hemi/sun/accent + nudge tone-mapping exposure to lift
   // the whole frame without changing the moody palette.
   const dark = !!biome.darkBiome;
-  if (worldState.renderer) worldState.renderer.toneMappingExposure = dark ? 2.6 : 1.05;
+  if (worldState.renderer) {
+    worldState.renderer.toneMappingExposure =
+      biome.presentation?.exposure ?? (dark ? 2.6 : 1.05);
+  }
+  if (
+    worldState.postfx &&
+    Number.isFinite(biome.presentation?.outlineStrength)
+  ) {
+    worldState.postfx.setOutlineStrength(
+      biome.presentation.outlineStrength,
+    );
+  }
+  if (
+    worldState.postfx &&
+    Number.isFinite(biome.presentation?.aoStrength)
+  ) {
+    worldState.postfx.setAoStrength(biome.presentation.aoStrength);
+  }
+  if (worldState.postfx && biome.presentation?.forceDepthFog) {
+    worldState.postfx.setDepthFog(true);
+  }
 
   const hemi = new THREE.HemisphereLight(
     new THREE.Color(biome.sky),
@@ -111,25 +131,40 @@ export async function buildAtmosphereAndTerrain({ worldState, worldScene, biome,
   worldState.world.add(skyDome);
   worldState.skyDome = skyDome;
 
-  const mountains = makeMountainBackdrop(biome);
-  worldState.world.add(mountains);
-  worldState.mountains = mountains;
-  worldState.mountainBasePos = mountains.position.clone();
+  if (biome.presentation?.hideMountains) {
+    worldState.mountains = null;
+    worldState.mountainBasePos = null;
+  } else {
+    const mountains = makeMountainBackdrop(biome);
+    worldState.world.add(mountains);
+    worldState.mountains = mountains;
+    worldState.mountainBasePos = mountains.position.clone();
+  }
 
-  worldState.clouds = makeCloudLayer(biome);
+  worldState.clouds = biome.presentation?.hideClouds
+    ? null
+    : makeCloudLayer(biome);
   if (worldState.clouds) worldState.world.add(worldState.clouds);
 
-  // Starfield + aurora — drawn always, faded by night-amount in updateDayNight.
+  // Starfield is shared presentation. Source-biome aurora/swirl layers can be
+  // suppressed independently when a synthetic presentation retains the source
+  // ID only for routing compatibility.
   worldState.starfield = makeStarfield();
   worldState.world.add(worldState.starfield);
 
-  worldState.aurora = makeAurora(biome);
+  worldState.aurora = biome.presentation?.hideAurora
+    ? null
+    : makeAurora(biome);
   if (worldState.aurora) worldState.world.add(worldState.aurora);
 
-  worldState.cloudSwirl = makeCloudSwirl(biome);
+  worldState.cloudSwirl = biome.presentation?.hideCloudSwirl
+    ? null
+    : makeCloudSwirl(biome);
   if (worldState.cloudSwirl) worldState.world.add(worldState.cloudSwirl);
 
-  const edgeMist = makeIslandEdgeMist(biome);
+  const edgeMist = biome.presentation?.hideEdgeAura
+    ? null
+    : makeIslandEdgeMist(biome);
   if (edgeMist) worldState.world.add(edgeMist);
 
   const nightP = biome.night ?? {};

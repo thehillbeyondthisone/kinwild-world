@@ -1,171 +1,81 @@
-# a small world
+# Kinwild
 
-[![Deploy to GitHub Pages](https://github.com/paulrobello/small-world/actions/workflows/deploy.yml/badge.svg)](https://github.com/paulrobello/small-world/actions/workflows/deploy.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+An original procedural living world where generated plants and creatures share
+one visual language, one physical surface, and one pulse.
 
-A Three.js terrarium that grows a tiny floating-island world — biome, terrain, flora, creatures, birds, and weather — from a 16-bit seed. Cute and painterly by design.
+This repository contains the first integrated vertical slice: reactive
+FloraDNA species, seamless primitive-bodied Kinlings, deterministic
+composition, terrain-aware procedural motion, and a Kinwild-owned presentation
+layer. The target is authored-feeling generative art—not a pile of randomized
+parts.
 
-**Live demo:** https://small-world.pardev.net/
+## Run it
 
-Every world is deterministic from its seed (visible in the URL as `?seed=0x____`), so a link reproduces exactly what you see. Hit *regenerate* for a fresh roll, or share your URL to send someone the exact same island.
-
-## Screenshots
-
-All twelve biomes — click any image to load that exact world.
-
-|   |   |
-|---|---|
-| [![verdant grove (0x2676)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-verdant-2676.png)](https://small-world.pardev.net/?seed=0x2676) | [![coral atoll (0x160d)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-coral-160d.png)](https://small-world.pardev.net/?seed=0x160d) |
-| [![twilight meadow (0x5766)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-twilight-5766.png)](https://small-world.pardev.net/?seed=0x5766) | [![lavender marsh (0xd246)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-marsh-d246.png)](https://small-world.pardev.net/?seed=0xd246) |
-| [![golden steppe (0x3bf3)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-golden-3bf3.png)](https://small-world.pardev.net/?seed=0x3bf3) | [![cloud island (0xc8f6)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-cloud-c8f6.png)](https://small-world.pardev.net/?seed=0xc8f6) |
-| [![ashen wastes (0x79d1)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-ashen-79d1.png)](https://small-world.pardev.net/?seed=0x79d1) | [![frozen vale (0xed6e)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-frozen-ed6e.png)](https://small-world.pardev.net/?seed=0xed6e) |
-| [![crimson dunes (0x4f1f)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-desert-4f1f.png)](https://small-world.pardev.net/?seed=0x4f1f) | [![mushroom grove (0x9708)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-grove-9708.png)](https://small-world.pardev.net/?seed=0x9708) |
-| [![mossy ruins (0x19ea)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-mossy-19ea.png)](https://small-world.pardev.net/?seed=0x19ea) | [![volcanic glass (0x589a)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-obsidian-589a.png)](https://small-world.pardev.net/?seed=0x589a) |
-
-A fairy ring in the verdant grove:
-
-[![fairy ring — verdant grove (0xaf5e)](https://raw.githubusercontent.com/paulrobello/small-world/main/screenshots/small-world-verdant-af5e-fairy_ring.png)](https://small-world.pardev.net/?seed=0xaf5e)
-
-## Features
-
-- **Twelve biomes** — each with a unique palette, weather, flora mix, creature variants, and original instrumental music score.
-- **Procedural fauna** — big-eyed creatures that wander, sleep, burrow, and travel in families; caterpillars, butterflies, bees, will-o'-wisps, and flocks of birds. Many biomes give walkers and caterpillars a shell-fur shader for a soft hairy silhouette, with per-biome fur probability (from a light dusting up to a full coat).
-- **Day/night cycle** — 120-second cycle with per-biome dusk and night palettes. Creatures respond to darkness: walkers curl up and sleep, fliers descend and grow drowsy, each personality (shy, bold, sleepy, bouncy) has a different sleep threshold.
-- **Visual polish** — mip-chain selective bloom on emissive elements (glow flowers, lanterns, sun), optional tilt-shift miniature blur, soft circular shadows under every creature, sky reflections on water biomes, parallax mountain backdrop, GPU-particle shader with per-particle life/size, dust kicks under footsteps, and procedural PBR detail textures on terrain, bark, and stone.
-- **Camera modes** — orbit the island, switch to fly camera with `V` for free movement, stroll in first person among the creatures, or freeze the sim in photo mode to save PNGs and fill the Field Guide.
-- **Field Guide catalog** — biome-specific fauna and flora checklist that unlocks from photo-mode reticle captures. Thumbnails persist locally in the browser, duplicate photos ask whether to keep or replace the saved shot, and empty slots can jump to their biome with the current seed.
-- **Inspect mode** (`?inspect=1`) — a neutral studio backdrop for examining a single creature or flora variant. Cycle biome/variant with keyboard, pause and frame-step animation, copy the URL to share an exact recreation.
-- **Interactive UI** — follow-a-creature camera, bookmarks, biome filter, shareable seed links, fly camera controls, wind and grass density controls, FX toggles, auto-regenerate timer, and per-biome music track selection.
-- **Mobile-friendly** — touch gestures plus tiered rendering: a mid-tier profile (`?midfx=1`) trims the heavier depth effects while keeping bloom, and a low-FX mode (`?lowfx=1`) drops fur, post-FX, and particle counts on lower-end devices.
-
-## Controls
-
-Orbit mode (the default — drag to rotate, scroll to zoom):
-
-| Key | Action |
-|-----|--------|
-| `R` | Regenerate a fresh random world |
-| `F` | Enter/exit first-person stroll |
-| `V` | Enter/exit fly camera |
-| `P` | Toggle photo mode |
-| `G` | Toggle the Field Guide catalog |
-| `L` | Toggle the locator panel |
-| `T` | Toggle the guided tour |
-| `,` | Open/close the settings panel |
-| `Space` | Pause / resume the simulation |
-| `Esc` | Exit the current mode or close the open panel |
-
-Stroll, fly, and photo modes (after pressing `F` / `V` / `P`) capture the pointer for mouse-look:
-
-| Key | Action |
-|-----|--------|
-| `W` `A` `S` `D` | Move |
-| `Q` / `E` | Down / up (fly and photo only) |
-| `Shift` | Move faster |
-| Click | Capture a photo (photo mode) |
-| `Space` | Unfreeze the sim for action shots (photo mode) |
-| `Esc` | Return to orbit |
-
-## Field Guide
-
-Open the Field Guide with the on-screen book icon or `G`. Each biome has its own fauna and flora entries, and only subjects available for that biome are shown. To fill an entry, enter photo mode with `P`, frame a catalogable subject in the reticle, click to capture, then choose **save to catalog** from the review screen.
-
-The guide stores small photo thumbnails locally in your browser. If you photograph an entry that already exists, the review screen shows the current and new shots and asks whether to keep or replace the saved image. Clicking a biome title or locked photo slot loads that biome with the current seed; clicking an unlocked entry revisits the seed and biome where that photo was taken.
-
-Inspect mode (`?inspect=1`):
-
-| Key | Action |
-|-----|--------|
-| `[` / `]` | Previous / next biome |
-| `,` / `.` | Previous / next variant |
-| `k` | Switch category (creature ↔ flora) |
-| `r` | Reroll the seed |
-| `f` | Toggle fur |
-| `w` | Toggle wind |
-| `s` | Save a screenshot |
-| `Space` | Pause |
-| `←` / `→` | Frame-step (while paused) |
-
-## Running it locally
-
-Requires Node.js (see the `engines` field in `package.json` for the supported range). Install dependencies, then start the Vite dev server with hot reload:
+Requires Node.js 20.19+ or 22.12+.
 
 ```sh
-npm install
-make dev        # foreground server at http://localhost:2001
-make dev-start  # background server at http://localhost:2001
-make dev-stop
-make dev-restart
+npm ci
+npm run dev
 ```
 
-Production build and preview:
+Open `http://localhost:2001/`. Kinwild is the default experience and writes
+`livingWorld=1` into the URL. Seeds remain reproducible:
+
+```text
+http://localhost:2001/?seed=0x001e&livingWorld=1
+```
+
+The borrowed Small World experience is retained only as a regression harness:
+
+```text
+http://localhost:2001/?livingWorld=0
+```
+
+## What is generated
+
+- Semantic flora DNA compiles into a landmark canopy organism, pendant
+  Pulsebell clusters, and reactive ground cover with shared species resources.
+- Semantic fauna DNA compiles into local articulated primitives rendered as
+  one blended toon shell, with bounded sibling phenotype variation.
+- A deterministic composition planner reserves a focal clearing and arranges
+  flora and fauna as a readable scene rather than uniform scatter.
+- The world owns navigation intent; Kinlings own gait, terrain planting,
+  expression, gaze, notice anticipation, and contact events.
+- Footfalls, dust, proximity, plant touch, affordances, atmosphere, lighting,
+  post-processing, camera, and UI respond through one coordinated style lock.
+
+## Architecture
+
+- `src/living-world/` — Kinwild identity, composition, runtime, reactions, and
+  lifecycle.
+- `src/generated-flora/` — FloraDNA validation, deterministic compilers,
+  shared resources, instances, and touch dynamics.
+- `src/generated-fauna/` — fauna DNA normalization, procedural walker rig,
+  blended-shell shader, anchors, bounds, and interaction proxy.
+- `src/integration/` — host-neutral provider, world-context, feature-flag, and
+  presentation-event contracts.
+- `src/world/` — borrowed terrain/atmosphere construction behind the Kinwild
+  presentation boundary.
+
+The detailed technical handoff is in
+[`docs/KINWILD_FOUNDATION.md`](docs/KINWILD_FOUNDATION.md).
+
+## Quality checks
 
 ```sh
-make build
-make preview    # serves the built app at http://localhost:2001
+npm run check
 ```
 
-Edits to `main.js`, `src/*.js`, `style.css`, and `index.html` are reflected by Vite HMR when possible.
+This runs deterministic and lifecycle tests, ESLint, and a production Vite
+build. The browser acceptance pass also checks desktop/mobile framing, LOWFX,
+pause/regeneration behavior, clean WebGL logs, and the built-in performance
+probe.
 
-## Development notes
+## Lineage and license
 
-- Runtime dependencies are installed via npm and bundled by Vite.
-- `make lint` runs ESLint over `main.js` and `src/`; `make test` runs all JS tests; `make checkall` runs tests, lint, and the production build.
-- Deployment is via GitHub Pages at the live demo URL above; completed enhancements are typically committed and pushed to publish. Original music scores for each biome are served separately from `https://static.pardev.net/small-world/music/` so large MP3 files stay out of git.
-- AI coding agents should start with [`CLAUDE.md`](CLAUDE.md), which is also referenced by `AGENTS.md` and `GEMINI.md` compatibility stubs.
+The runtime began from Paul Robello’s MIT-licensed Small World project and
+retains its copyright and license. Kinwild’s generated flora/fauna systems,
+composition, art direction, terminology, and default experience are an
+original layer designed to become independent of that donor scaffold.
 
-## Troubleshooting
-
-**The screen goes black or the world stops responding after switching tabs or waking the laptop.**
-This is a WebGL context loss, which browsers can trigger under memory pressure or after a GPU driver reset. The app listens for the `webglcontextlost` / `webglcontextrestored` events and rebuilds the renderer automatically — give it a few seconds. If it doesn't recover, reload the page.
-
-**`make dev-start` reports the port is already in use.**
-Run `make dev-stop` first; it kills whatever is bound to port 2001 (including a stale background dev server) before you start a fresh one. `make dev-restart` does both steps in one command.
-
-**No music plays.**
-Music streams from `https://static.pardev.net/small-world/music/`, a separate host from the app itself — check that the host is reachable and not blocked. Browsers also require a user gesture (a click) before they'll allow audio playback; the app resumes music on the first click if it was blocked at page load.
-
-**The app is slow or stutters on a low-end device or older phone.**
-Append `?lowfx=1` to the URL to force the low-FX profile (drops fur, post-FX, and particle counts), or `?midfx=1` for the mid-tier profile (trims heavier depth effects while keeping bloom). Both are auto-detected on weak hardware; the query param lets you force one on for testing regardless of the device.
-
-## Stack
-
-- [Three.js](https://threejs.org/), bundled by Vite
-- [simplex-noise](https://github.com/jwagner/simplex-noise.js) for terrain
-- Plain vanilla JS modules with Vite for development and production builds
-
-## Project layout
-
-- `main.js` — boots the renderer, camera, and animation loop
-- `src/` — world generation, entities, UI, terrain, biomes, etc. (one file per concern), including `world.js` (the regen orchestrator), `postfx.js` (the bloom + depth-FX pipeline), `portal.js` (biome portals with live previews), `pbr.js` (procedural detail textures), `music.js` (biome music streaming), and `islandname.js` (procedural place names)
-- `src/world/` — `generateWorld` phase modules (atmosphere, flora placement, portals, ground cover, fauna population)
-- `src/fauna/` — per-entity modules (creatures, caterpillars, butterflies, bees, will-o'-wisps)
-- `src/flora/` — flora builders by family (trees, garden, rocks, structures, aquatic, volcanic)
-- `src/environment/` — particles, swarms, ground marks, ground cover, water
-- `src/ui/` — HUD panels and modes (settings, help, photo, first-person, locator, catalog)
-- `index.html` / `style.css` — static HUD shell
-- `Makefile` — Vite dev/build/preview/lint shortcuts
-- `dist/` — deployment build (GitHub Pages)
-- [`CLAUDE.md`](CLAUDE.md) — architecture notes, conventions, and the project's design constraints
-- [`ideas.md`](ideas.md) — running enhancement list
-
-## Contributing
-
-Pull requests are welcome. To set up a working copy:
-
-```sh
-npm install
-make dev        # Vite dev server with HMR at http://localhost:2001
-```
-
-Before opening a PR, run the full check and make sure it passes:
-
-```sh
-make checkall   # all JS tests + ESLint + production build
-```
-
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) — `type(scope): summary`, e.g. `feat(postfx): mip-chain bloom`, `fix(ui): mobile fly controls`. The release commit that bumps `package.json` is `chore(release): X.Y.Z`; always bump the `version` field in `package.json` before pushing to `main` (CI reads it for the deployed build). See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full guide.
-
-## License
-
-MIT — see [`LICENSE`](LICENSE). Copyright © 2026 Paul Robello.
+MIT — see [`LICENSE`](LICENSE).

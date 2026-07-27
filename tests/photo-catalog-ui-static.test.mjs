@@ -86,13 +86,15 @@ assert(
     && uiSource.includes('await generateWorld(state.currentSeed, undefined, { biomeId: biome.id })')
     && uiSource.includes('const title = document.createElement("button");')
     && uiSource.includes('const card = document.createElement("button");')
-    && uiSource.includes('card.addEventListener("click", () => {\n              void loadCatalogBiome(biome);'),
-  'Catalog biome titles and locked photo slots should load that biome with the current seed.'
+    && uiSource.includes('if (!livingMode) {\n              card.addEventListener("click", () => {\n                void loadCatalogBiome(biome);'),
+  'Legacy catalog biome titles and locked photo slots should load that biome with the current seed.'
 );
 
 assert(
-  uiSource.includes('await generateWorld(seed, undefined, { biomeId: saved.biomeId })'),
-  'Saved catalog entries should revisit their saved seed and biome together.'
+  uiSource.includes('const options = livingMode')
+    && uiSource.includes(': { biomeId: saved.biomeId };')
+    && uiSource.includes('await generateWorld(seed, undefined, options)'),
+  'Saved catalog entries should revisit their saved seed while retaining legacy biome routing outside Kinwild.'
 );
 
 assert(

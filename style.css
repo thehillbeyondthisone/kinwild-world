@@ -485,6 +485,7 @@ body {
 
 /* Desktop: hide mobile help by default */
 .help-mobile { display: none; }
+.help-kinwild { display: none; }
 
 /* Mobile header auto-hide + backdrop */
 @media (hover: none) {
@@ -2078,4 +2079,157 @@ body.photo-mode .grain {
 }
 .photo-mode .fps-counter {
   display: none;
+}
+
+/* ─── Kinwild integration presentation ────────────────────────────────
+   URL-gated by ?livingWorld=1 so the borrowed host remains a clean A/B and
+   rollback path rather than the visible identity of the combined project. */
+body.living-world-mode {
+  --ink: #fff1d2;
+  --ink-dim: rgba(255, 209, 102, 0.82);
+  --ink-faint: rgba(240, 107, 120, 0.66);
+  --hud-backdrop: rgba(9, 16, 31, 0.7);
+  --hud-border: rgba(255, 209, 102, 0.26);
+  --hud-text-shadow:
+    0 1px 3px rgba(6, 8, 20, 0.96),
+    0 0 22px rgba(17, 21, 42, 0.8);
+}
+
+body.living-world-mode .title-block,
+body.living-world-mode .biome-card {
+  border-radius: 14px 3px 14px 3px;
+  border-color: var(--hud-border);
+  box-shadow:
+    inset 3px 0 0 rgba(240, 107, 120, 0.36),
+    0 16px 46px rgba(6, 8, 20, 0.22);
+}
+
+body.living-world-mode .title-block {
+  animation: none;
+  opacity: 1;
+  visibility: visible;
+}
+
+body.living-world-mode .title {
+  font-family: "Major Mono Display", monospace;
+  font-style: normal;
+  font-size: clamp(31px, 3.7vw, 54px);
+  letter-spacing: -0.08em;
+  line-height: 0.94;
+}
+
+body.living-world-mode .title em {
+  color: #ffd166;
+  font-style: normal;
+  font-weight: 400;
+}
+
+body.living-world-mode .eyebrow-link,
+body.living-world-mode .island-name {
+  display: none;
+}
+
+body.living-world-mode .grain {
+  opacity: 0.045;
+  mix-blend-mode: soft-light;
+}
+
+body.living-world-mode .vignette {
+  background:
+    radial-gradient(
+      ellipse at 52% 48%,
+      transparent 38%,
+      rgba(17, 21, 42, 0.08) 66%,
+      rgba(8, 11, 23, 0.34) 112%
+    );
+}
+
+body.living-world-mode .world-loading {
+  background:
+    radial-gradient(circle at center, rgba(255, 209, 102, 0.13), transparent 28%),
+    rgba(8, 11, 23, 0.78);
+}
+
+body.living-world-mode .world-loading-card {
+  border-color: rgba(240, 107, 120, 0.46);
+  border-radius: 16px 3px 16px 3px;
+  background: rgba(9, 16, 31, 0.8);
+}
+
+body.living-world-mode .hud-bottom {
+  opacity: 0.68;
+  transition: opacity 0.35s ease;
+}
+
+body.living-world-mode .hud-bottom:hover,
+body.living-world-mode .hud-bottom:focus-within {
+  opacity: 1;
+}
+
+body.living-world-mode .controls-row > button {
+  border-radius: 10px 2px 10px 2px;
+}
+
+body.living-world-mode .stat[hidden] {
+  display: none;
+}
+
+body.living-world-mode .stats,
+body.living-world-mode .help-panel,
+body.living-world-mode .settings-panel,
+body.living-world-mode .locator-panel,
+body.living-world-mode .catalog-panel {
+  border-radius: 16px 3px 16px 3px;
+  border-color: var(--hud-border);
+  background: rgba(9, 16, 31, 0.86);
+  box-shadow:
+    inset 3px 0 0 rgba(240, 107, 120, 0.24),
+    0 18px 52px rgba(6, 8, 20, 0.28);
+}
+
+body.living-world-mode .help-panel .settings-head,
+body.living-world-mode .settings-panel .settings-head,
+body.living-world-mode .locator-panel .settings-head,
+body.living-world-mode .catalog-panel .settings-head {
+  background: rgba(9, 16, 31, 0.94);
+  border-bottom-color: rgba(255, 209, 102, 0.18);
+}
+
+body.living-world-mode .help-desktop,
+body.living-world-mode .help-mobile,
+body.living-world-mode .help-desktop-labels {
+  display: none !important;
+}
+
+body.living-world-mode .help-kinwild {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 26px;
+}
+
+body.living-world-mode #music-toggle,
+body.living-world-mode #regen-random-biome {
+  display: none;
+}
+
+body.living-world-mode #setting-atmosphere-section,
+body.living-world-mode #setting-grass-section,
+body.living-world-mode #setting-portal-details,
+body.living-world-mode #setting-audio-section,
+body.living-world-mode #setting-auto-regen-section,
+body.living-world-mode #setting-biome-filter-section,
+body.living-world-mode #setting-outline-row,
+body.living-world-mode #setting-ao-row,
+body.living-world-mode #setting-depthfog-row {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  body.living-world-mode .help-kinwild {
+    display: block;
+  }
+
+  body.living-world-mode .help-kinwild .settings-section + .settings-section {
+    margin-top: 22px;
+  }
 }

@@ -310,7 +310,10 @@ export function initPhotoMode() {
     actions.querySelector(".photo-review-save").addEventListener("click", () => {
       const a = document.createElement("a");
       a.href = dataUrl;
-      a.download = `small-world-${biomeTag}-${seedTag}.png`;
+      const productTag = document.body.classList.contains("living-world-mode")
+        ? "kinwild"
+        : "small-world";
+      a.download = `${productTag}-${biomeTag}-${seedTag}.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();

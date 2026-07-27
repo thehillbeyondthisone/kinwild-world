@@ -71,6 +71,10 @@ export function initSettingsPanel() {
   document.getElementById("setting-reset-camera").addEventListener("click", () => {
     ctx.setFollowTarget(null);
     ctx.setSelectingCreature(false);
+    if (state.currentBiome?.presentation?.mode === "living-world") {
+      window.dispatchEvent(new CustomEvent("living-world-reframe"));
+      return;
+    }
     controls.target.set(0, 1.5, 0);
   });
 
@@ -84,6 +88,9 @@ export function initSettingsPanel() {
     state.userSettings.worldScale = v / 100;
     state.world.scale.setScalar(state.userSettings.worldScale);
     scaleValue.textContent = v + "%";
+    if (state.currentBiome?.presentation?.mode === "living-world") {
+      window.dispatchEvent(new CustomEvent("living-world-reframe"));
+    }
     saveSettings();
   });
 

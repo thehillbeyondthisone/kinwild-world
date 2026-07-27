@@ -20,8 +20,35 @@ const PANEL_LENSES = [
   "catalog",
   "controls",
 ];
-const CONTENT_LENSES = PANEL_LENSES.filter((lens) => lens !== "controls");
 const MAX_RETURNING_FORMS = 4;
+const ZONE_PREFIXES = [
+  "Amber",
+  "Hush",
+  "Lumen",
+  "Murmur",
+  "Velvet",
+  "Willow",
+  "Quiet",
+  "Tidal",
+  "Wandering",
+  "Golden",
+  "Dusk",
+  "Moss",
+];
+const ZONE_SUFFIXES = [
+  "Reach",
+  "Vale",
+  "Basin",
+  "Hollow",
+  "Drift",
+  "Garden",
+  "Expanse",
+  "Fold",
+  "Mere",
+  "Canopy",
+  "Wilds",
+  "Verge",
+];
 const vector = new THREE.Vector3();
 const surfaceHit = { height: 0, normal: new THREE.Vector3(), material: null };
 
@@ -44,6 +71,17 @@ function surfaceMaterialLabel(material) {
 
 function formatSeed(seed) {
   return `0x${(Number(seed) >>> 0).toString(16).padStart(4, "0").slice(-4)}`;
+}
+
+function fieldZoneName(seed) {
+  let value = Number(seed) >>> 0;
+  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
+  value ^= value >>> 16;
+  value >>>= 0;
+  const prefix = ZONE_PREFIXES[value % ZONE_PREFIXES.length];
+  const suffix =
+    ZONE_SUFFIXES[(value >>> 8) % ZONE_SUFFIXES.length];
+  return `${prefix} ${suffix}`;
 }
 
 function formatElapsed(seconds) {
@@ -372,6 +410,19 @@ export function initObservatory() {
   };
 
   element("obs-version").textContent = APP_VERSION;
+  const brand = document.querySelector(".obs-brand");
+
+  function revealBrand() {
+    brand.classList.remove("is-revealing");
+    void brand.offsetWidth;
+    brand.classList.add("is-revealing");
+  }
+
+  brand.addEventListener("animationend", (event) => {
+    if (event.target === brand) {
+      brand.classList.remove("is-revealing");
+    }
+  });
 
   let selectedFacade = null;
   let previousFollow = null;
@@ -382,6 +433,7 @@ export function initObservatory() {
   let currentCandidates = [];
   let candidateIndex = -1;
   let requestController = null;
+  let brandRevealTimer = 0;
   const compactPanelQuery = window.matchMedia(
     "(max-width: 1120px), (max-height: 650px)",
   );
@@ -428,16 +480,7 @@ export function initObservatory() {
       "aria-pressed",
       String(anyVisible),
     );
-    shell.dataset.panelMode = compactPanelQuery.matches
-      ? "exclusive"
-      : "independent";
-    shell.classList.toggle(
-      "obs-instrument-focus",
-      compactPanelQuery.matches &&
-        CONTENT_LENSES.some(
-          (lens) => lens !== "field" && panelVisibility[lens] !== false,
-        ),
-    );
+    shell.dataset.panelMode = "independent";
     if (
       firstRender &&
       panelVisibility.fauna !== false &&
@@ -461,13 +504,7 @@ export function initObservatory() {
 
   function togglePanelLens(lens) {
     const opening = panelVisibility[lens] === false;
-    if (opening && compactPanelQuery.matches && lens !== "controls") {
-      for (const contentLens of CONTENT_LENSES) {
-        panelVisibility[contentLens] = contentLens === lens;
-      }
-    } else {
-      panelVisibility[lens] = !panelVisibility[lens];
-    }
+    panelVisibility[lens] = !panelVisibility[lens];
     if (lens === "fauna" && window.matchMedia("(max-width: 760px)").matches) {
       const specimen = element("obs-specimen");
       specimen.classList.toggle("mobile-open", opening);
@@ -614,7 +651,7 @@ export function initObservatory() {
     refs.daySymbol.textContent = night > 0.64 ? "☾" : night > 0.28 ? "◐" : "☼";
     refs.windSymbol.textContent = wind > 1.25 ? "≋≋" : wind > 0.2 ? "≋" : "·";
     refs.temperature.textContent = night > 0.58 ? "cool" : "mild";
-    refs.fieldName.textContent = safeText(state.currentBiome?.name, "Living Field");
+    refs.fieldName.textContent = fieldZoneName(state.currentSeed);
     refs.fieldSub.textContent = safeText(
       state.currentBiome?.sub,
       "everything here shares a pulse.",
@@ -725,6 +762,8 @@ export function initObservatory() {
     localStorage.setItem(CYCLE_KEY, String(cycle));
     selectedFacade = null;
     previousFollow = null;
+    window.clearTimeout(brandRevealTimer);
+    brandRevealTimer = window.setTimeout(revealBrand, 240);
     window.setTimeout(introduceReturningForms, 0);
   });
 

@@ -53,8 +53,24 @@ assert.ok(
   "panel visibility should persist between observations",
 );
 assert.ok(
-  ui.includes("compactPanelQuery.matches"),
-  "compact layouts should use exclusive content lenses",
+  ui.includes('shell.dataset.panelMode = "independent"'),
+  "instrument lenses should remain independently selectable",
+);
+assert.ok(
+  ui.includes("panelVisibility[lens] = !panelVisibility[lens]"),
+  "each instrument lens should toggle without clearing its siblings",
+);
+assert.ok(
+  ui.includes("fieldZoneName(state.currentSeed)"),
+  "the field card should use a deterministic zone identity",
+);
+assert.ok(
+  ui.includes("revealBrand()"),
+  "the identity reveal should replay when the world rezones",
+);
+assert.ok(
+  css.includes("@keyframes obs-brand-reveal"),
+  "the refresh identity should animate in and out",
 );
 assert.ok(entry.includes("initObservatory()"), "the public UI entry should initialize the observatory");
 assert.ok(

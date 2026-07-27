@@ -2327,10 +2327,37 @@ body.living-world-mode {
   display: flex;
   align-items: stretch;
   gap: 17px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate3d(0, -9px, 0);
+  filter: blur(2px);
   pointer-events: none;
-  transition:
-    opacity 0.24s ease,
-    visibility 0s linear 0s;
+}
+
+.obs-brand.is-revealing {
+  visibility: visible;
+  animation: obs-brand-reveal 4.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes obs-brand-reveal {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -9px, 0);
+    filter: blur(2px);
+  }
+
+  14%,
+  68% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    filter: blur(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate3d(0, -4px, 0);
+    filter: blur(1px);
+  }
 }
 
 .obs-mark {
@@ -3606,18 +3633,35 @@ body.photo-mode .form-studio {
 }
 
 @media (max-width: 1120px), (max-height: 650px) {
-  .observatory-shell.obs-instrument-focus .obs-brand {
-    opacity: 0;
-    visibility: hidden;
-    transition-delay: 0s, 0.24s;
-  }
-
   .observatory-shell:not(.obs-panels-ready)
     [data-obs-panel]:not([data-obs-panel="field"]):not(
       [data-obs-panel="controls"]
     ) {
     opacity: 0;
     visibility: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .obs-brand.is-revealing {
+    animation-name: obs-brand-reveal-reduced;
+    animation-duration: 2.2s;
+  }
+
+  @keyframes obs-brand-reveal-reduced {
+    0%,
+    100% {
+      opacity: 0;
+      transform: none;
+      filter: none;
+    }
+
+    1%,
+    78% {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
   }
 }
 
@@ -3745,6 +3789,25 @@ body.photo-mode .form-studio {
 
   .obs-dock {
     bottom: 14px;
+  }
+}
+
+@media (max-height: 650px) and (min-width: 1200px) {
+  .obs-taxonomy {
+    top: 48px;
+    right: 312px;
+    bottom: auto;
+    left: 530px;
+  }
+
+  .obs-resonance {
+    left: 530px;
+    width: 260px;
+  }
+
+  .obs-relations {
+    right: 312px;
+    width: 255px;
   }
 }
 

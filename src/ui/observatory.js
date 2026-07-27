@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { APP_VERSION, state } from "../state.js";
 import { generateIslandName } from "../islandname.js";
+import { conditionGlyphs, renderGlyphDial } from "./glyphs.js";
 import { introduceLivingFauna } from "../living-world/index.js";
 import {
   createProceduralStudies,
@@ -22,6 +23,9 @@ const PANEL_LENSES = [
   "controls",
 ];
 const MAX_RETURNING_FORMS = 4;
+// Comfortably past the 4.4s masthead pulse (and its 2.2s reduced-motion
+// variant) so the fallback only fires when animationend genuinely never does.
+const BRAND_PULSE_SETTLE_MS = 5200;
 const vector = new THREE.Vector3();
 const surfaceHit = { height: 0, normal: new THREE.Vector3(), material: null };
 
@@ -338,9 +342,9 @@ export function initObservatory() {
   const refs = {
     observed: element("obs-observed"),
     cycle: element("obs-cycle"),
-    notes: element("obs-notes"),
-    daySymbol: element("obs-day-symbol"),
-    windSymbol: element("obs-wind-symbol"),
+    notePhase: element("obs-note-phase"),
+    noteAir: element("obs-note-air"),
+    conditions: element("obs-conditions"),
     temperature: element("obs-field-temperature"),
     fieldName: element("obs-field-name"),
     fieldSub: element("obs-field-sub"),
@@ -375,17 +379,29 @@ export function initObservatory() {
   if (version) version.textContent = APP_VERSION;
   const brand = element("obs-brand");
 
-  function revealBrand() {
+  // The masthead stays visible; a regen replays a pulse over it. Removing the
+  // class and forcing a reflow is what lets the same animation restart when
+  // two regens land close together.
+  let brandSettleTimer = 0;
+  const settleBrand = () => {
+    window.clearTimeout(brandSettleTimer);
+    brand?.classList.remove("is-revealing");
+  };
+
+  function emphasizeBrand() {
     if (!brand) return;
     brand.classList.remove("is-revealing");
     void brand.offsetWidth;
     brand.classList.add("is-revealing");
+    // animationend never fires if the animation is suppressed or the tab is
+    // not compositing, so the class is also cleared on a timer. Without this
+    // the heading could be left mid-keyframe indefinitely.
+    window.clearTimeout(brandSettleTimer);
+    brandSettleTimer = window.setTimeout(settleBrand, BRAND_PULSE_SETTLE_MS);
   }
 
   brand?.addEventListener("animationend", (event) => {
-    if (event.target === brand) {
-      brand.classList.remove("is-revealing");
-    }
+    if (event.target === brand) settleBrand();
   });
 
   let selectedFacade = null;
@@ -397,7 +413,7 @@ export function initObservatory() {
   let currentCandidates = [];
   let candidateIndex = -1;
   let requestController = null;
-  let brandRevealTimer = 0;
+  let brandPulseTimer = 0;
   const compactPanelQuery = window.matchMedia(
     "(max-width: 1120px), (max-height: 650px)",
   );
@@ -611,8 +627,7 @@ export function initObservatory() {
       (performance.now() - sessionStarted) / 1000,
     );
     refs.cycle.textContent = String(Math.max(1, cycle)).padStart(2, "0");
-    refs.daySymbol.textContent = night > 0.64 ? "☾" : night > 0.28 ? "◐" : "☼";
-    refs.windSymbol.textContent = wind > 1.25 ? "≋≋" : wind > 0.2 ? "≋" : "·";
+    renderGlyphDial(refs.conditions, conditionGlyphs({ night, wind }));
     refs.temperature.textContent = night > 0.58 ? "cool" : "mild";
     // Same generator the legacy HUD and help panel use, so one seed names one
     // island everywhere in the app rather than two panels disagreeing.
@@ -630,10 +645,22 @@ export function initObservatory() {
           : "current loosely coupled";
     refs.pulse.textContent =
       stability > 0.72 ? "calm pulse" : stability > 0.43 ? "active pulse" : "restless pulse";
-    refs.notes.innerHTML =
-      night > 0.6
-        ? `night phase<br>${wind > 0.8 ? "cool wind" : "still air"}, low glow`
-        : `${coherence > 0.55 ? "shared drift" : "wandering phase"}<br>${wind > 0.8 ? "moving air" : "low wind"}, ${stability > 0.62 ? "stable hum" : "changing rhythm"}`;
+    // Two text nodes rather than one innerHTML with a <br>: the note strings
+    // are derived, so they should never be parsed as markup.
+    if (refs.notePhase) {
+      refs.notePhase.textContent =
+        night > 0.6
+          ? "night phase"
+          : coherence > 0.55
+            ? "shared drift"
+            : "wandering phase";
+    }
+    if (refs.noteAir) {
+      const air = wind > 0.8 ? (night > 0.6 ? "cool wind" : "moving air") : night > 0.6 ? "still air" : "low wind";
+      refs.noteAir.textContent = night > 0.6
+        ? `${air}, low glow`
+        : `${air}, ${stability > 0.62 ? "stable hum" : "changing rhythm"}`;
+    }
 
     renderMeter(refs.stability, stability);
     renderMeter(refs.coherence, coherence);
@@ -727,8 +754,8 @@ export function initObservatory() {
     localStorage.setItem(CYCLE_KEY, String(cycle));
     selectedFacade = null;
     previousFollow = null;
-    window.clearTimeout(brandRevealTimer);
-    brandRevealTimer = window.setTimeout(revealBrand, 240);
+    window.clearTimeout(brandPulseTimer);
+    brandPulseTimer = window.setTimeout(emphasizeBrand, 240);
     window.setTimeout(introduceReturningForms, 0);
   });
 

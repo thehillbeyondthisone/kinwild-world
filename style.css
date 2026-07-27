@@ -2394,6 +2394,10 @@ body.living-world-mode {
   text-transform: uppercase;
 }
 
+/* The masthead is permanent. It holds the page's only <h1>, and it used to be
+   visibility:hidden except for a few seconds after each regen — which also
+   kept the heading out of the accessibility tree for almost the whole
+   session. Regen now plays an emphasis pulse that settles back to visible. */
 .obs-brand {
   grid-area: brand;
   align-self: start;
@@ -2401,36 +2405,33 @@ body.living-world-mode {
   display: flex;
   align-items: stretch;
   gap: 17px;
-  opacity: 0;
-  visibility: hidden;
-  transform: translate3d(0, -9px, 0);
-  filter: blur(2px);
   pointer-events: none;
 }
 
 .obs-brand.is-revealing {
-  visibility: visible;
-  animation: obs-brand-reveal 4.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: obs-brand-refresh 4.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes obs-brand-reveal {
+/* Never reaches opacity 0. The masthead carries the page's only <h1>, and a
+   frozen animation — a background tab, a paused compositor — would otherwise
+   leave it invisible, which is the exact bug this replaced. */
+@keyframes obs-brand-refresh {
   0% {
-    opacity: 0;
+    opacity: 0.28;
     transform: translate3d(0, -9px, 0);
     filter: blur(2px);
   }
 
-  14%,
-  68% {
+  22% {
     opacity: 1;
     transform: translate3d(0, 0, 0);
     filter: blur(0);
   }
 
   100% {
-    opacity: 0;
-    transform: translate3d(0, -4px, 0);
-    filter: blur(1px);
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    filter: blur(0);
   }
 }
 
@@ -2605,6 +2606,7 @@ body.living-world-mode {
 .obs-field-card {
   grid-area: field;
   align-self: start;
+  position: relative;
   padding: 18px 20px 16px;
   border-radius: 25px 4px 25px 4px;
   pointer-events: auto;
@@ -2612,6 +2614,26 @@ body.living-world-mode {
 
 .obs-card-kicker {
   color: var(--obs-coral);
+}
+
+/* Two plate marks, as on the reference sheet: a sun over the horizon at the
+   head of the card and a small seal closing it out. */
+.obs-card-emblem {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  width: 42px;
+  height: 30px;
+  color: var(--obs-gold-dim);
+}
+
+.obs-card-seal {
+  position: absolute;
+  right: 15px;
+  bottom: 13px;
+  width: 26px;
+  height: 26px;
+  color: var(--obs-gold-faint);
 }
 
 .obs-field-name {
@@ -2664,6 +2686,21 @@ body.living-world-mode {
   gap: 8px;
 }
 
+/* Six glyphs read as a dial: the lit one in each group is the current
+   reading, the unlit ones give it a scale to sit against. */
+.obs-condition-dial {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--obs-gold-dim);
+}
+
+.obs-note-lines {
+  display: grid;
+  gap: 1px;
+}
+
 .obs-field-notes {
   display: grid;
   grid-template-columns: 68px 1fr;
@@ -2684,6 +2721,8 @@ body.living-world-mode {
 }
 
 .obs-field-tools {
+  /* Leaves the corner clear for .obs-card-seal. */
+  padding-right: 30px;
   display: flex;
   justify-content: flex-end;
   gap: 5px;
@@ -3728,21 +3767,21 @@ body.photo-mode .form-studio {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Same beat, no movement or blur — and it still ends visible. */
   .obs-brand.is-revealing {
-    animation-name: obs-brand-reveal-reduced;
+    animation-name: obs-brand-refresh-reduced;
     animation-duration: 2.2s;
   }
 
-  @keyframes obs-brand-reveal-reduced {
-    0%,
-    100% {
-      opacity: 0;
+  @keyframes obs-brand-refresh-reduced {
+    0% {
+      opacity: 0.35;
       transform: none;
       filter: none;
     }
 
-    1%,
-    78% {
+    12%,
+    100% {
       opacity: 1;
       transform: none;
       filter: none;

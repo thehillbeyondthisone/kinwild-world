@@ -129,15 +129,7 @@
   <section class="observatory-shell" id="observatory-shell" aria-label="living field observatory">
     <header class="obs-brand" id="obs-brand" aria-label="field identity">
       <div class="obs-mark" aria-hidden="true">
-        <svg viewBox="0 0 56 88" role="img">
-          <path d="M28 76V15M28 27 17 19M28 37 39 28M28 48 15 39M28 59 40 48M28 68 19 59"></path>
-          <circle cx="28" cy="12" r="3"></circle>
-          <circle cx="14" cy="17" r="3"></circle>
-          <circle cx="42" cy="26" r="3"></circle>
-          <circle cx="12" cy="37" r="3"></circle>
-          <circle cx="43" cy="46" r="3"></circle>
-          <circle cx="16" cy="57" r="3"></circle>
-        </svg>
+        <svg class="kw-glyph" viewBox="0 0 56 88"><use href="#kw-emblem-plaque"/></svg>
       </div>
       <div class="obs-brand-copy">
         <div class="obs-kicker">Field Observatory</div>
@@ -149,27 +141,28 @@
 
     <nav class="obs-rail" aria-label="field instruments">
       <button class="obs-rail-button active" type="button" data-obs-lens="field" aria-label="field overview" aria-pressed="true">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20V4M12 8 7 5M12 12l5-3M12 16l-5-3"></path></svg>
+        <svg class="kw-glyph" aria-hidden="true"><use href="#kw-rail-field"/></svg>
       </button>
       <button class="obs-rail-button" type="button" data-obs-lens="fauna" aria-label="specimen readout" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16c0-5 2-8 6-8s6 3 6 8M9 8 7 4M15 8l2-4M9 15h.1M15 15h.1"></path></svg>
+        <svg class="kw-glyph" aria-hidden="true"><use href="#kw-rail-fauna"/></svg>
       </button>
       <button class="obs-rail-button" type="button" data-obs-lens="flora" aria-label="field resonance" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V9M12 13C7 13 5 9 5 6c4 0 7 1 7 7ZM12 16c5 0 7-4 7-7-4 0-7 1-7 7Z"></path></svg>
+        <svg class="kw-glyph" aria-hidden="true"><use href="#kw-rail-flora"/></svg>
       </button>
       <button class="obs-rail-button" type="button" data-obs-lens="relations" aria-label="field relations" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="2"></circle><circle cx="18" cy="7" r="2"></circle><circle cx="12" cy="18" r="2"></circle><path d="m8 8 3 8m5-8-3 8M8 7h8"></path></svg>
+        <svg class="kw-glyph" aria-hidden="true"><use href="#kw-rail-relations"/></svg>
       </button>
       <button class="obs-rail-button" type="button" data-obs-lens="catalog" aria-label="field taxonomy" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h5c1.1 0 2 .9 2 2v12c0-1.1-.9-2-2-2H5V5Zm14 0h-5c-1.1 0-2 .9-2 2v12c0-1.1.9-2 2-2h5V5Z"></path></svg>
+        <svg class="kw-glyph" aria-hidden="true"><use href="#kw-rail-catalog"/></svg>
       </button>
       <button class="obs-rail-button" type="button" data-obs-lens="controls" aria-label="field controls" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1"></path></svg>
+        <svg class="kw-glyph" aria-hidden="true"><use href="#kw-rail-controls"/></svg>
       </button>
       <span class="obs-rail-count" id="obs-rail-count">04</span>
     </nav>
 
     <aside class="obs-field-card obs-panel" data-obs-panel="field" aria-label="field conditions">
+      <svg class="kw-glyph obs-card-emblem" aria-hidden="true"><use href="#kw-emblem-sun-horizon"/></svg>
       <div class="obs-card-kicker">Living Field</div>
       <div class="obs-field-name" id="obs-field-name">Uncharted Reach</div>
       <div class="obs-field-sub" id="obs-field-sub">everything here shares a pulse.</div>
@@ -177,14 +170,15 @@
       <dl class="obs-field-grid">
         <dt>Observed</dt><dd id="obs-observed">00:00</dd>
         <dt>Cycle</dt><dd id="obs-cycle">01</dd>
-        <dt>Conditions</dt><dd class="obs-condition-row"><span id="obs-day-symbol">◐</span><span id="obs-wind-symbol">≋</span><span id="obs-field-temperature">mild</span></dd>
+        <dt>Conditions</dt><dd class="obs-condition-row"><span class="obs-condition-dial" id="obs-conditions" aria-hidden="true"></span><span id="obs-field-temperature">mild</span></dd>
         <dt>Observer</dt><dd>Field Unit 04</dd>
       </dl>
       <div class="obs-rule"></div>
       <div class="obs-field-notes">
         <span>Notes</span>
-        <em id="obs-notes">quiet phase<br>low wind, stable hum</em>
+        <em class="obs-note-lines" id="obs-notes"><span id="obs-note-phase">quiet phase</span><span id="obs-note-air">low wind, stable hum</span></em>
       </div>
+      <svg class="kw-glyph obs-card-seal" aria-hidden="true"><use href="#kw-emblem-seal"/></svg>
       <div class="obs-field-tools">
         <button id="obs-photo" type="button">frame</button>
         <button id="obs-help" type="button">manual</button>

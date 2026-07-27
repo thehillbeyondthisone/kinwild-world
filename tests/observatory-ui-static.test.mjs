@@ -15,6 +15,10 @@ for (const id of [
   "obs-specimen-close",
   "obs-taxonomy-list",
   "obs-field-wave",
+  "obs-brand",
+  "obs-conditions",
+  "obs-note-phase",
+  "obs-note-air",
   "obs-create-form",
   "form-studio",
   "form-candidates",
@@ -91,16 +95,38 @@ assert.ok(
   !ui.includes("ZONE_PREFIXES"),
   "the observatory should not carry a second, disagreeing island-name generator",
 );
-// Assert the call site, not the bare name — "revealBrand()" also matches the
-// declaration `function revealBrand() {`, so it passed even with the rezone
-// hook deleted.
+// Assert the call site, not the bare name — "emphasizeBrand()" also matches
+// the declaration `function emphasizeBrand() {`, so a bare-name check passed
+// even with the rezone hook deleted.
 assert.ok(
-  ui.includes("window.setTimeout(revealBrand,"),
-  "the identity reveal should replay when the world rezones",
+  ui.includes("window.setTimeout(emphasizeBrand,"),
+  "the identity pulse should replay when the world rezones",
 );
 assert.ok(
-  css.includes("@keyframes obs-brand-reveal"),
-  "the refresh identity should animate in and out",
+  css.includes("@keyframes obs-brand-refresh"),
+  "the refresh identity should have an emphasis animation",
+);
+
+// The masthead holds the page's only <h1>. It used to be visibility:hidden
+// except for a few seconds after each regen, which also kept the heading out
+// of the accessibility tree for almost the entire session.
+const brandRule = css.match(/\n\.obs-brand \{([^}]*)\}/);
+assert.ok(brandRule, "the masthead needs a base rule");
+assert.ok(
+  !/visibility:\s*hidden/.test(brandRule[1]) && !/opacity:\s*0\s*;/.test(brandRule[1]),
+  "the masthead must stay visible so the page always exposes its heading",
+);
+// The pulse must not bottom out at zero either: a frozen animation in a
+// backgrounded tab would leave the heading invisible all over again.
+const pulseFrames = css.match(/@keyframes obs-brand-refresh \{([\s\S]*?)\n\}/);
+assert.ok(pulseFrames, "the masthead pulse needs keyframes");
+assert.ok(
+  !/opacity:\s*0\s*;/.test(pulseFrames[1]),
+  "no masthead keyframe may reach full transparency",
+);
+assert.ok(
+  ui.includes("BRAND_PULSE_SETTLE_MS"),
+  "the pulse needs a fallback that clears the class when animationend never fires",
 );
 assert.ok(entry.includes("initObservatory()"), "the public UI entry should initialize the observatory");
 assert.ok(

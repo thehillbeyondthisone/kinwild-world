@@ -61,8 +61,12 @@ assert.ok(
   "each instrument lens should toggle without clearing its siblings",
 );
 assert.ok(
-  ui.includes("fieldZoneName(state.currentSeed)"),
-  "the field card should use a deterministic zone identity",
+  ui.includes("generateIslandName(state.currentSeed)"),
+  "the field card should name the island with the app-wide generator",
+);
+assert.ok(
+  !ui.includes("ZONE_PREFIXES"),
+  "the observatory should not carry a second, disagreeing island-name generator",
 );
 assert.ok(
   ui.includes("revealBrand()"),

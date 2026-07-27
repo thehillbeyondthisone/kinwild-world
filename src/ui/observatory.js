@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { APP_VERSION, state } from "../state.js";
+import { generateIslandName } from "../islandname.js";
 import { introduceLivingFauna } from "../living-world/index.js";
 import {
   createProceduralStudies,
@@ -21,34 +22,6 @@ const PANEL_LENSES = [
   "controls",
 ];
 const MAX_RETURNING_FORMS = 4;
-const ZONE_PREFIXES = [
-  "Amber",
-  "Hush",
-  "Lumen",
-  "Murmur",
-  "Velvet",
-  "Willow",
-  "Quiet",
-  "Tidal",
-  "Wandering",
-  "Golden",
-  "Dusk",
-  "Moss",
-];
-const ZONE_SUFFIXES = [
-  "Reach",
-  "Vale",
-  "Basin",
-  "Hollow",
-  "Drift",
-  "Garden",
-  "Expanse",
-  "Fold",
-  "Mere",
-  "Canopy",
-  "Wilds",
-  "Verge",
-];
 const vector = new THREE.Vector3();
 const surfaceHit = { height: 0, normal: new THREE.Vector3(), material: null };
 
@@ -71,17 +44,6 @@ function surfaceMaterialLabel(material) {
 
 function formatSeed(seed) {
   return `0x${(Number(seed) >>> 0).toString(16).padStart(4, "0").slice(-4)}`;
-}
-
-function fieldZoneName(seed) {
-  let value = Number(seed) >>> 0;
-  value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);
-  value ^= value >>> 16;
-  value >>>= 0;
-  const prefix = ZONE_PREFIXES[value % ZONE_PREFIXES.length];
-  const suffix =
-    ZONE_SUFFIXES[(value >>> 8) % ZONE_SUFFIXES.length];
-  return `${prefix} ${suffix}`;
 }
 
 function formatElapsed(seconds) {
@@ -409,16 +371,18 @@ export function initObservatory() {
     floraCallout: element("obs-callout-flora"),
   };
 
-  element("obs-version").textContent = APP_VERSION;
-  const brand = document.querySelector(".obs-brand");
+  const version = element("obs-version");
+  if (version) version.textContent = APP_VERSION;
+  const brand = element("obs-brand");
 
   function revealBrand() {
+    if (!brand) return;
     brand.classList.remove("is-revealing");
     void brand.offsetWidth;
     brand.classList.add("is-revealing");
   }
 
-  brand.addEventListener("animationend", (event) => {
+  brand?.addEventListener("animationend", (event) => {
     if (event.target === brand) {
       brand.classList.remove("is-revealing");
     }
@@ -651,7 +615,9 @@ export function initObservatory() {
     refs.daySymbol.textContent = night > 0.64 ? "☾" : night > 0.28 ? "◐" : "☼";
     refs.windSymbol.textContent = wind > 1.25 ? "≋≋" : wind > 0.2 ? "≋" : "·";
     refs.temperature.textContent = night > 0.58 ? "cool" : "mild";
-    refs.fieldName.textContent = fieldZoneName(state.currentSeed);
+    // Same generator the legacy HUD and help panel use, so one seed names one
+    // island everywhere in the app rather than two panels disagreeing.
+    refs.fieldName.textContent = generateIslandName(state.currentSeed);
     refs.fieldSub.textContent = safeText(
       state.currentBiome?.sub,
       "everything here shares a pulse.",

@@ -2294,18 +2294,61 @@ body.living-world-mode {
   color: var(--obs-gold);
 }
 
+/* The shell is one grid over the viewport; every panel places itself with a
+   single grid-area instead of hand-tuned coordinates re-derived per
+   breakpoint. Gutters are explicit TRACKS, not padding — absolutely positioned
+   children of a grid container resolve against the padding box, and the
+   callout/leader overlays need inset:0 to mean viewport coordinates. */
 .observatory-shell {
   position: fixed;
   inset: 0;
   z-index: 8;
   pointer-events: none;
+  /* Nothing may ever scroll the shell — it is an overlay, not a document. If a
+     track overflows, clip rather than letting the dock walk off-screen. */
+  overflow: hidden;
   color: var(--obs-gold);
   font-family: "DM Mono", monospace;
   text-shadow: 0 1px 8px rgba(2, 8, 15, 0.92);
-  --obs-bottom: max(13px, env(safe-area-inset-bottom));
-  --obs-specimen-left: 0px;
-  --obs-specimen-width: min(490px, 34vw);
-  --obs-specimen-bottom: 180px;
+  --obs-gutter-x: 28px;
+  --obs-gutter-y: 24px;
+  --obs-gutter-bottom: max(13px, env(safe-area-inset-bottom));
+  --obs-rail-w: 52px;
+  /* How far the pull-tab rides past the card's edge. A token rather than a
+     per-breakpoint override so it can never lose a same-specificity cascade
+     race with the base rule. */
+  --obs-tab-overhang: -21px;
+  --obs-col-left: minmax(320px, 490px);
+  --obs-col-right: minmax(248px, 290px);
+  display: grid;
+  gap: 14px;
+  grid-template-columns:
+    var(--obs-gutter-x)
+    var(--obs-rail-w)
+    var(--obs-col-left)
+    minmax(0, 1fr)
+    minmax(0, 1.15fr)
+    var(--obs-col-right)
+    var(--obs-gutter-x);
+  grid-template-rows:
+    var(--obs-gutter-y)
+    auto
+    minmax(0, 1fr)
+    auto
+    auto
+    var(--obs-gutter-bottom);
+  /* The dock spans the three right-hand columns because its cells are fixed
+     px and sum wider than any single fraction track; the instrument strip
+     then gets its own row beneath, as in the reference sheet. */
+  /* brand and field span into the free row so neither can inflate the
+     masthead row and squeeze the rail out of its own track. */
+  grid-template-areas:
+    ".  .     .     .    .    .     ."
+    ".  brand brand .    .    field ."
+    ".  rail  .     .    .    field ."
+    ".  rail  spec  dock dock dock  ."
+    ".  .     reso  taxo taxo rel   ."
+    ".  .     .     .    .    .     .";
 }
 
 .observatory-shell button,
@@ -2352,9 +2395,9 @@ body.living-world-mode {
 }
 
 .obs-brand {
-  position: absolute;
-  top: 24px;
-  left: 28px;
+  grid-area: brand;
+  align-self: start;
+  justify-self: start;
   display: flex;
   align-items: stretch;
   gap: 17px;
@@ -2458,9 +2501,9 @@ body.living-world-mode {
 }
 
 .obs-rail {
-  position: absolute;
-  top: 178px;
-  left: 27px;
+  grid-area: rail;
+  align-self: start;
+  justify-self: end;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2560,10 +2603,8 @@ body.living-world-mode {
 }
 
 .obs-field-card {
-  position: absolute;
-  top: 24px;
-  right: 28px;
-  width: 276px;
+  grid-area: field;
+  align-self: start;
   padding: 18px 20px 16px;
   border-radius: 25px 4px 25px 4px;
   pointer-events: auto;
@@ -2737,11 +2778,27 @@ body.living-world-mode {
   min-width: 160px;
 }
 
-.obs-specimen {
+/* Overlays sit outside grid flow so they never claim a track. Because the
+   shell's gutters are tracks rather than padding, inset:0 here is the
+   viewport — which is the frame projected callout coordinates arrive in. */
+.obs-callouts {
   position: absolute;
-  left: var(--obs-specimen-left);
-  bottom: var(--obs-specimen-bottom);
-  width: var(--obs-specimen-width);
+  inset: 0;
+  pointer-events: none;
+}
+
+.obs-specimen-dock {
+  grid-area: spec;
+  align-self: end;
+  position: relative;
+  /* The paper card bleeds through the rail gutter to the viewport edge, the
+     way it did when it was pinned at left:0. */
+  margin-left: calc((var(--obs-gutter-x) + var(--obs-rail-w) + 14px) * -1);
+  pointer-events: none;
+}
+
+.obs-specimen {
+  position: relative;
   min-height: 245px;
   padding: 18px 26px 17px 58px;
   box-sizing: border-box;
@@ -2775,7 +2832,7 @@ body.living-world-mode {
 }
 
 .obs-specimen.collapsed {
-  transform: translateX(calc(-100% - var(--obs-specimen-left) - 24px));
+  transform: translateX(calc(-100% - 24px));
 }
 
 .obs-specimen header {
@@ -2902,8 +2959,8 @@ body.living-world-mode {
 .obs-paper-tab {
   position: absolute;
   z-index: 4;
-  left: calc(var(--obs-specimen-left) + var(--obs-specimen-width) - 22px);
-  bottom: calc(var(--obs-specimen-bottom) + 18px);
+  right: var(--obs-tab-overhang);
+  bottom: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2921,8 +2978,9 @@ body.living-world-mode {
     inset 0 1px rgba(255, 255, 255, 0.42);
   text-shadow: none;
   cursor: pointer;
+  pointer-events: auto;
   transition:
-    left 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+    right 0.45s cubic-bezier(0.22, 1, 0.36, 1),
     width 0.35s ease,
     border-radius 0.35s ease,
     background 0.35s ease;
@@ -2952,8 +3010,11 @@ body.living-world-mode {
   text-transform: uppercase;
 }
 
+/* When the card slides out the tab parks at the dock's left edge, which is the
+   viewport edge — it stays reachable as the handle that brings the card back. */
 .obs-specimen.collapsed + .obs-paper-tab {
-  left: max(12px, var(--obs-specimen-left));
+  right: auto;
+  left: 0;
   width: 94px;
   justify-content: flex-start;
   padding: 0 9px 0 6px;
@@ -2965,10 +3026,8 @@ body.living-world-mode {
 }
 
 .obs-resonance {
-  position: absolute;
-  left: 28px;
-  bottom: var(--obs-bottom);
-  width: 348px;
+  grid-area: reso;
+  align-self: end;
   height: 142px;
   padding: 15px 17px;
   box-sizing: border-box;
@@ -3040,10 +3099,9 @@ body.living-world-mode {
 }
 
 .obs-dock {
-  position: absolute;
-  left: 50%;
-  bottom: 146px;
-  transform: translateX(-50%);
+  grid-area: dock;
+  align-self: end;
+  justify-self: center;
   display: grid;
   grid-template-columns: 126px 94px 134px 110px 120px 112px;
   align-items: stretch;
@@ -3173,10 +3231,8 @@ body.living-world-mode {
 }
 
 .obs-taxonomy {
-  position: absolute;
-  left: 395px;
-  right: 337px;
-  bottom: var(--obs-bottom);
+  grid-area: taxo;
+  align-self: end;
   height: 126px;
   padding: 14px 18px 12px;
   box-sizing: border-box;
@@ -3251,10 +3307,8 @@ body.living-world-mode {
 }
 
 .obs-relations {
-  position: absolute;
-  right: 28px;
-  bottom: var(--obs-bottom);
-  width: 290px;
+  grid-area: rel;
+  align-self: end;
   height: 126px;
   padding: 14px 17px 12px;
   box-sizing: border-box;
@@ -3698,8 +3752,8 @@ body.photo-mode .form-studio {
 
 @media (max-width: 1380px) {
   .observatory-shell {
-    --obs-specimen-width: 440px;
-    --obs-specimen-bottom: 168px;
+    --obs-col-left: minmax(300px, 440px);
+    --obs-col-right: minmax(240px, 270px);
   }
 
   .obs-brand h1 {
@@ -3710,48 +3764,103 @@ body.photo-mode .form-studio {
     height: 105px;
   }
 
-  .obs-specimen {
-    width: var(--obs-specimen-width);
-  }
-
   .obs-dock {
     grid-template-columns: 112px 82px 124px 98px 108px 100px;
   }
-
-  .obs-taxonomy {
-    left: 384px;
-    right: 306px;
-  }
-
-  .obs-relations {
-    width: 270px;
-  }
 }
 
-@media (max-width: 1120px) {
+/* Laptop heights. Every panel is open by default down to 1120px wide, and the
+   masthead + rail + specimen + instrument strip + dock only all fit above
+   roughly 880px. Compact the two elastic ones — the rail and the paper card —
+   rather than letting the rail ride up onto the specimen. */
+@media (max-height: 880px) and (min-width: 761px) {
+  /* Two columns rather than smaller buttons: it halves the rail's height so
+     the specimen keeps bleeding off the left edge, and the targets stay the
+     same size. */
   .observatory-shell {
-    --obs-specimen-left: 82px;
-    --obs-specimen-width: 350px;
-    --obs-specimen-bottom: 253px;
+    --obs-rail-w: 74px;
+  }
+
+  .obs-rail {
+    display: grid;
+    grid-template-columns: repeat(2, 30px);
+    gap: 3px;
+    padding: 8px 7px 6px;
+  }
+
+  .obs-rail-button {
+    width: 30px;
+    height: 30px;
+  }
+
+  .obs-rail-button svg,
+  .obs-rail-button .kw-glyph {
+    width: 16px;
+    height: 16px;
+  }
+
+  .obs-rail-count {
+    grid-column: 1 / -1;
+  }
+
+  .obs-brand h1 {
+    font-size: 44px;
+  }
+
+  .obs-mark {
+    height: 96px;
+  }
+
+  .obs-specimen {
+    min-height: 196px;
   }
 
   .obs-resonance {
-    left: 22px;
-    bottom: 14px;
-    width: 320px;
+    height: 130px;
+  }
+}
+
+/* Narrow desktop: the instrument strip drops below the dock rather than
+   competing with it for the same row. */
+/* Breakpoints below are mutually exclusive and each restates BOTH the columns
+   and the areas. A block that overrides only one of the pair inherits a
+   different column count from its neighbour and the named areas silently stop
+   lining up. */
+@media (max-width: 1120px) and (min-height: 651px) {
+  .observatory-shell {
+    --obs-gutter-x: 22px;
+    --obs-col-left: minmax(0, 1fr);
+    --obs-col-right: minmax(0, 244px);
+    grid-template-columns:
+      var(--obs-gutter-x)
+      var(--obs-rail-w)
+      var(--obs-col-left)
+      minmax(0, 1.1fr)
+      var(--obs-col-right)
+      var(--obs-gutter-x);
+    grid-template-areas:
+      ".  .     .     .    .     ."
+      ".  brand brand .    field ."
+      ".  rail  .     .    field ."
+      ".  rail  spec  dock dock  ."
+      ".  .     reso  taxo rel   ."
+      ".  .     .     .    .     .";
+    grid-template-rows:
+      var(--obs-gutter-y)
+      auto
+      minmax(0, 1fr)
+      auto
+      auto
+      var(--obs-gutter-bottom);
+  }
+
+  .obs-resonance,
+  .obs-taxonomy {
     height: 126px;
     padding-top: 12px;
   }
 
-  .obs-taxonomy {
-    left: 358px;
-    right: 22px;
-    bottom: 14px;
-    height: 126px;
-  }
-
   .obs-dock {
-    bottom: 136px;
     grid-template-columns: 88px 64px 100px 82px 92px 86px;
     min-height: 84px;
   }
@@ -3779,10 +3888,7 @@ body.photo-mode .form-studio {
   }
 
   .obs-relations {
-    right: 22px;
-    bottom: 273px;
     display: block;
-    width: 244px;
     height: 112px;
     padding: 12px 14px 10px;
   }
@@ -3794,65 +3900,118 @@ body.photo-mode .form-studio {
   .obs-relations-graph {
     height: 58px;
   }
-
-  .obs-field-card {
-    width: 248px;
-  }
 }
 
+/* Short viewports have no room for a stacked bottom band, so everything but
+   the dock shares one flexible middle row and the whole shell shrinks. */
 @media (max-height: 650px) and (min-width: 761px) {
   .observatory-shell {
-    --obs-specimen-left: 82px;
-    --obs-specimen-width: min(440px, calc(48vw - 82px));
-    --obs-specimen-bottom: 150px;
+    --obs-gutter-x: 20px;
+    --obs-gutter-y: 12px;
+    /* --obs-rail-w is left to the two-column rail rule above; narrowing it
+       here would squeeze that rail out of its own track. The instrument panel
+       sits directly beside the card, so the tab tucks in instead of reaching. */
+    --obs-tab-overhang: -8px;
+    gap: 10px;
+    grid-template-columns:
+      var(--obs-gutter-x)
+      var(--obs-rail-w)
+      minmax(0, 1fr)
+      minmax(0, 1.05fr)
+      minmax(0, 250px)
+      var(--obs-gutter-x);
+    grid-template-rows:
+      var(--obs-gutter-y)
+      auto
+      minmax(0, 1fr)
+      auto
+      var(--obs-gutter-bottom);
+    grid-template-areas:
+      ".  .     .     .     .     ."
+      ".  brand brand taxo  field ."
+      ".  rail  spec  reso  rel   ."
+      ".  .     dock  dock  dock  ."
+      ".  .     .     .     .     .";
+  }
+
+  .obs-brand h1 {
+    font-size: 34px;
+  }
+
+  .obs-mark {
+    width: 44px;
+    height: 72px;
+  }
+
+  .obs-brand p,
+  .obs-brand .obs-edition {
+    display: none;
+  }
+
+  /* Here the rail sits beside the card rather than above it, so the card
+     stays inside its own column instead of bleeding under the rail. */
+  .obs-specimen-dock {
+    margin-left: 0;
   }
 
   .obs-specimen {
-    min-height: 225px;
-    padding-left: 48px;
+    min-height: 0;
+    max-height: 100%;
+    padding-left: 26px;
+    border-left: 1px solid rgba(59, 53, 43, 0.42);
+    border-radius: 6px 100px 24px 6px / 6px 48px 20px 6px;
+    overflow-y: auto;
   }
 
   .obs-resonance,
   .obs-taxonomy,
   .obs-relations {
-    bottom: 150px;
+    align-self: start;
+    height: 118px;
   }
 
   .obs-dock {
-    bottom: 14px;
-  }
-}
-
-@media (max-height: 650px) and (min-width: 1200px) {
-  .obs-taxonomy {
-    top: 48px;
-    right: 312px;
-    bottom: auto;
-    left: 530px;
-  }
-
-  .obs-resonance {
-    left: 530px;
-    width: 260px;
-  }
-
-  .obs-relations {
-    right: 312px;
-    width: 255px;
+    min-height: 78px;
+    grid-template-columns: 88px 64px 100px 82px 92px 86px;
   }
 }
 
 @media (max-width: 760px) {
+  /* Phone: one column beside a slim rail. The specimen becomes a bottom sheet
+     that overlays the stack, so it keeps its own row only for ordering. */
   .observatory-shell {
-    --obs-bottom: max(8px, env(safe-area-inset-bottom));
-    --obs-specimen-left: 50px;
-    --obs-specimen-width: calc(100vw - 58px);
-    --obs-specimen-bottom: 89px;
+    --obs-gutter-x: 8px;
+    --obs-gutter-y: max(11px, env(safe-area-inset-top));
+    --obs-gutter-bottom: max(8px, env(safe-area-inset-bottom));
+    gap: 8px;
+    grid-template-columns:
+      var(--obs-gutter-x)
+      minmax(0, 1fr)
+      140px
+      var(--obs-gutter-x);
+    grid-template-rows:
+      var(--obs-gutter-y)
+      auto
+      auto
+      minmax(0, 1fr)
+      auto
+      auto
+      auto
+      auto
+      var(--obs-gutter-bottom);
+    grid-template-areas:
+      ".  .     .     ."
+      ".  brand field ."
+      ".  rail  rail  ."
+      ".  .     .     ."
+      ".  reso  reso  ."
+      ".  taxo  taxo  ."
+      ".  rel   rel   ."
+      ".  dock  dock  ."
+      ".  .     .     .";
   }
 
   .obs-brand {
-    top: max(11px, env(safe-area-inset-top));
-    left: 12px;
     gap: 9px;
   }
 
@@ -3873,15 +4032,18 @@ body.photo-mode .form-studio {
     display: none;
   }
 
+  .obs-brand {
+    min-width: 0;
+  }
+
   .obs-brand h1 {
     margin-top: 8px;
-    font-size: 34px;
+    font-size: 31px;
   }
 
   .obs-field-card {
-    top: max(10px, env(safe-area-inset-top));
-    right: 10px;
-    width: 152px;
+    justify-self: end;
+    width: 140px;
     padding: 10px 12px;
     border-radius: 17px 3px 17px 3px;
   }
@@ -3914,13 +4076,19 @@ body.photo-mode .form-studio {
     display: none;
   }
 
+  /* A horizontal strip under the masthead: a vertical rail would eat a third
+     of a phone's height before any instrument had been opened. */
   .obs-rail {
-    top: 96px;
-    left: 8px;
+    justify-self: start;
     display: flex;
+    flex-direction: row;
+    align-items: center;
     gap: 1px;
-    padding: 6px 3px 7px;
-    border-radius: 11px 0 0 11px;
+    padding: 3px 7px;
+    border-left: 0;
+    border-bottom: 1px solid var(--obs-gold-dim);
+    border-radius: 0 0 11px 11px;
+    background: linear-gradient(180deg, rgba(5, 16, 29, 0.52), transparent);
   }
 
   .obs-rail-button {
@@ -3942,17 +4110,15 @@ body.photo-mode .form-studio {
   }
 
   .obs-resonance,
-  .obs-taxonomy,
-  .obs-relations {
-    left: 50px;
-    right: 8px;
-    bottom: 89px;
+  .obs-taxonomy {
     display: block;
     width: auto;
     height: 126px;
   }
 
   .obs-relations {
+    display: block;
+    width: auto;
     height: 112px;
   }
 
@@ -3970,11 +4136,18 @@ body.photo-mode .form-studio {
     min-width: 58px;
   }
 
-  .obs-specimen {
-    left: var(--obs-specimen-left);
+  /* Bottom sheet: it leaves the grid entirely and docks to the viewport, so
+     the stacked instrument rows above are unaffected by its height. */
+  .obs-specimen-dock {
+    position: absolute;
+    left: 8px;
     right: 8px;
-    bottom: var(--obs-specimen-bottom);
-    width: var(--obs-specimen-width);
+    bottom: 78px;
+    margin-left: 0;
+    z-index: 5;
+  }
+
+  .obs-specimen {
     min-height: 214px;
     max-height: 45vh;
     padding: 14px 17px 13px 42px;
@@ -3998,15 +4171,15 @@ body.photo-mode .form-studio {
 
   .obs-paper-tab {
     left: auto;
-    right: 17px;
-    bottom: calc(var(--obs-specimen-bottom) + 7px);
+    right: 9px;
+    bottom: 7px;
     width: 32px;
     height: 32px;
   }
 
   .obs-specimen:not(.mobile-open) + .obs-paper-tab,
   .obs-specimen.collapsed + .obs-paper-tab {
-    left: 50px;
+    left: 0;
     right: auto;
     width: 102px;
     height: 32px;
@@ -4038,10 +4211,7 @@ body.photo-mode .form-studio {
   }
 
   .obs-dock {
-    left: 8px;
-    right: 8px;
-    bottom: var(--obs-bottom);
-    transform: none;
+    justify-self: stretch;
     grid-template-columns: repeat(5, 1fr);
     min-height: 70px;
     border-radius: 22px 3px 22px 3px;

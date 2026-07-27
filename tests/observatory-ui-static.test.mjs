@@ -36,6 +36,33 @@ for (const lens of ["field", "fauna", "flora", "relations", "catalog", "controls
 
 assert.ok(css.includes(".observatory-shell"), "observatory shell needs dedicated styling");
 assert.ok(css.includes("@media (max-width: 760px)"), "observatory needs a mobile layout");
+
+// The shell places panels by named grid area. Reverting to per-panel absolute
+// coordinates is what made every breakpoint a hand-tuned pixel exercise.
+assert.ok(
+  /\.observatory-shell\s*\{[^}]*grid-template-areas:/s.test(css),
+  "the observatory shell should place its panels on a named grid",
+);
+for (const area of ["brand", "rail", "spec", "reso", "dock", "taxo", "rel", "field"]) {
+  assert.ok(
+    css.includes(`grid-area: ${area}`),
+    `a panel should claim the ${area} grid area`,
+  );
+}
+// Every template that redefines the areas must redefine the columns too — a
+// block that changes only one inherits a different column count from its
+// neighbour and the named areas silently stop lining up.
+const areaBlocks = css.match(/grid-template-areas:/g) ?? [];
+const columnBlocks = css.match(/grid-template-columns:\s*\n?\s*var\(--obs-gutter-x\)/g) ?? [];
+assert.equal(
+  areaBlocks.length,
+  columnBlocks.length,
+  `each grid-template-areas needs a matching grid-template-columns (${areaBlocks.length} areas vs ${columnBlocks.length} column sets)`,
+);
+assert.ok(
+  html.includes('class="obs-specimen-dock"'),
+  "the specimen and its pull-tab should share one positioning context",
+);
 assert.ok(
   css.includes(".obs-specimen.collapsed + .obs-paper-tab"),
   "the collapsed specimen needs a persistent external handle",

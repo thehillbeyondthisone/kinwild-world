@@ -213,42 +213,46 @@
       </div>
     </div>
 
-    <section class="obs-specimen" id="obs-specimen" data-obs-panel="fauna" aria-label="selected specimen readout">
-      <header>
-        <span class="obs-paper-emblem" aria-hidden="true">⌇</span>
-        <div>
-          <div class="obs-paper-title">Specimen Readout</div>
-          <div class="obs-paper-caption" id="obs-selection-caption">focused living form</div>
-        </div>
-      </header>
-      <dl class="obs-specimen-table">
-        <dt>Genome</dt>
-        <dd><strong id="obs-genome">--------</strong></dd>
-        <dt>Species</dt>
-        <dd><strong id="obs-species">unobserved</strong><span class="obs-palette" id="obs-palette"></span></dd>
-        <dt>Movement</dt>
-        <dd><span id="obs-movement">awaiting</span><svg class="obs-sparkline" viewBox="0 0 160 18" preserveAspectRatio="none" aria-hidden="true"><path id="obs-movement-path" d="M0 9H160"></path></svg></dd>
-        <dt>Morphology</dt>
-        <dd class="obs-morphology" id="obs-morphology">—</dd>
-        <dt>Resonance</dt>
-        <dd><svg class="obs-resonance-line" viewBox="0 0 250 22" preserveAspectRatio="none" aria-hidden="true"><path id="obs-specimen-wave" d="M0 11H250"></path></svg></dd>
-        <dt>Habitat</dt>
-        <dd id="obs-habitat">elev. — &nbsp; slope — &nbsp; air mild</dd>
-        <dt>Traits</dt>
-        <dd class="obs-traits" id="obs-traits"><span>unobserved</span></dd>
-        <dt>Repairs</dt>
-        <dd id="obs-repairs">00 · canonical genome</dd>
-      </dl>
-    </section>
-    <button
-      class="obs-paper-tab"
-      id="obs-specimen-close"
-      type="button"
-      data-obs-panel="fauna"
-      aria-controls="obs-specimen"
-      aria-expanded="true"
-      aria-label="collapse specimen readout"
-    ><span aria-hidden="true">◉</span><span class="obs-paper-tab-label">specimen</span></button>
+    <!-- The specimen and its pull-tab share a positioning context so the tab
+         rides the card instead of being re-derived at every breakpoint. -->
+    <div class="obs-specimen-dock">
+      <section class="obs-specimen" id="obs-specimen" data-obs-panel="fauna" aria-label="selected specimen readout">
+        <header>
+          <span class="obs-paper-emblem" aria-hidden="true">⌇</span>
+          <div>
+            <div class="obs-paper-title">Specimen Readout</div>
+            <div class="obs-paper-caption" id="obs-selection-caption">focused living form</div>
+          </div>
+        </header>
+        <dl class="obs-specimen-table">
+          <dt>Genome</dt>
+          <dd><strong id="obs-genome">--------</strong></dd>
+          <dt>Species</dt>
+          <dd><strong id="obs-species">unobserved</strong><span class="obs-palette" id="obs-palette"></span></dd>
+          <dt>Movement</dt>
+          <dd><span id="obs-movement">awaiting</span><svg class="obs-sparkline" viewBox="0 0 160 18" preserveAspectRatio="none" aria-hidden="true"><path id="obs-movement-path" d="M0 9H160"></path></svg></dd>
+          <dt>Morphology</dt>
+          <dd class="obs-morphology" id="obs-morphology">—</dd>
+          <dt>Resonance</dt>
+          <dd><svg class="obs-resonance-line" viewBox="0 0 250 22" preserveAspectRatio="none" aria-hidden="true"><path id="obs-specimen-wave" d="M0 11H250"></path></svg></dd>
+          <dt>Habitat</dt>
+          <dd id="obs-habitat">elev. — &nbsp; slope — &nbsp; air mild</dd>
+          <dt>Traits</dt>
+          <dd class="obs-traits" id="obs-traits"><span>unobserved</span></dd>
+          <dt>Repairs</dt>
+          <dd id="obs-repairs">00 · canonical genome</dd>
+        </dl>
+      </section>
+      <button
+        class="obs-paper-tab"
+        id="obs-specimen-close"
+        type="button"
+        data-obs-panel="fauna"
+        aria-controls="obs-specimen"
+        aria-expanded="true"
+        aria-label="collapse specimen readout"
+      ><span aria-hidden="true">◉</span><span class="obs-paper-tab-label">specimen</span></button>
+    </div>
 
     <section class="obs-resonance obs-panel" data-obs-panel="flora" aria-label="field resonance">
       <div class="obs-panel-title">Field Resonance</div>

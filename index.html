@@ -189,6 +189,7 @@
         <button id="obs-photo" type="button">frame</button>
         <button id="obs-help" type="button">manual</button>
         <button id="obs-settings" type="button">controls</button>
+        <button class="obs-tool-primary" id="obs-create-form" type="button">new form</button>
       </div>
     </aside>
 
@@ -282,6 +283,7 @@
     <section class="obs-resonance obs-panel" data-obs-panel="flora" aria-label="field resonance">
       <div class="obs-panel-title">Field Resonance</div>
       <p><span id="obs-harmony">current near harmony</span><br><em id="obs-pulse-label">calm pulse</em></p>
+      <svg class="kw-glyph obs-resonance-orbital" aria-hidden="true"><use href="#kw-emblem-orbital"/></svg>
       <svg class="obs-resonance-plot" viewBox="0 0 330 74" preserveAspectRatio="none" aria-hidden="true">
         <path class="obs-plot-grid" d="M0 18H330M0 37H330M0 56H330"></path>
         <path class="obs-plot-wave" id="obs-field-wave" d="M0 37H330"></path>
@@ -293,36 +295,42 @@
       </div>
     </section>
 
+    <!--
+      Six even cells. The raised circular DRIFT knob is gone: it forced three
+      per-breakpoint re-tunings of its own, and the reference sheet reads the
+      dock as one flat instrument strip. CREATE moved to the field card's tool
+      row, which is where the manual and controls already live.
+    -->
     <nav class="obs-dock obs-panel" data-obs-panel="controls" aria-label="field controls">
       <button class="obs-dock-action" id="obs-focus" type="button">
         <span class="obs-action-kicker">Focus</span>
-        <strong>Specimen</strong>
+        <strong>Kin</strong>
         <small id="obs-focus-label">kinling 01</small>
+        <span class="obs-kin-filter" id="obs-kin-filter" aria-hidden="true"></span>
       </button>
-      <button class="obs-dock-action" id="obs-orbit" type="button">
+      <button class="obs-dock-action obs-dock-orbit" id="obs-orbit" type="button">
         <span class="obs-action-kicker">Orbit</span>
-        <svg viewBox="0 0 74 28" aria-hidden="true"><path d="M4 19c13-13 44-14 66-5M14 23c12-8 33-9 46-5"></path><circle cx="52" cy="12" r="2"></circle></svg>
+        <svg class="kw-glyph obs-orbit-art" aria-hidden="true"><use href="#kw-emblem-orbital-wide"/></svg>
       </button>
-      <button class="obs-dock-core" id="obs-drift" type="button" aria-label="enter drift camera">
-        <span class="obs-orbit-ring" aria-hidden="true"></span>
-        <span class="obs-orbit-dot" aria-hidden="true"></span>
-        <strong>Drift</strong>
-        <small>hold to wander</small>
+      <button class="obs-dock-action" id="obs-drift" type="button">
+        <span class="obs-action-kicker">Drift</span>
+        <strong>Wander</strong>
+        <small>hold to drift</small>
       </button>
       <button class="obs-dock-action" id="obs-catalog" type="button">
         <span class="obs-action-kicker">Catalog</span>
         <strong>View Entries</strong>
         <small id="obs-catalog-count">04 observed</small>
       </button>
-      <button class="obs-dock-action obs-dock-primary" id="obs-create-form" type="button">
-        <span class="obs-action-kicker">Create</span>
-        <strong>New Form</strong>
-        <small>guided authoring</small>
-      </button>
       <button class="obs-dock-action" id="obs-new-strain" type="button">
         <span class="obs-action-kicker">Grow</span>
         <strong>New Strain</strong>
         <small id="obs-strain-label">0x0000</small>
+      </button>
+      <button class="obs-dock-action" id="obs-mutate-field" type="button">
+        <span class="obs-action-kicker">Mutate</span>
+        <strong>New Field</strong>
+        <small>reseed everything</small>
       </button>
     </nav>
 

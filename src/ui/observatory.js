@@ -4,6 +4,7 @@ import { generateIslandName } from "../islandname.js";
 import {
   GLYPHS,
   conditionGlyphs,
+  glyphSvg,
   morphologyGlyphs,
   renderGlyphDial,
   renderGlyphRun,
@@ -47,6 +48,9 @@ const MAX_RETURNING_FORMS = 4;
 // variant) so the fallback only fires when animationend genuinely never does.
 const BRAND_PULSE_SETTLE_MS = 5200;
 const METER_DOTS = 10;
+// The taxonomy rail always shows eight medallions; a field with fewer taxa
+// pads with dimmed ghosts rather than changing the panel's rhythm per seed.
+const TAXONOMY_SLOTS = 8;
 const WAVE_SAMPLES = 56;
 // Window the kin-activity rate is measured over. Long enough that a single
 // footfall does not spike it, short enough to track a herd settling.
@@ -199,15 +203,22 @@ function setPalette(target, palette, keys = ["body", "head", "limb", "eye"]) {
   }
 }
 
-function createTaxon({ name, glyph, color, kind, key }) {
+function createTaxon({ name, glyph, color, kind, key, detail }) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "obs-taxon";
+  if (kind === "unobserved") {
+    button.classList.add("is-unobserved");
+    button.disabled = true;
+  }
   button.dataset.kind = kind;
   button.dataset.key = key;
+  if (detail) button.title = `${name} · ${detail}`;
   const icon = document.createElement("span");
   icon.className = "obs-taxon-icon";
-  icon.textContent = glyph;
+  // Sprite glyphs rather than unicode: the medallions now draw from the same
+  // botanical set as the rail and the specimen rows.
+  icon.append(glyphSvg(glyph, "kw-glyph obs-taxon-glyph"));
   const colorDot = document.createElement("i");
   colorDot.style.backgroundColor = color;
   icon.append(colorDot);
@@ -215,7 +226,42 @@ function createTaxon({ name, glyph, color, kind, key }) {
   label.className = "obs-taxon-name";
   label.textContent = name;
   button.append(icon, label);
+  // Three kinling medallions all read "Kinling" without this — the phenotype
+  // is the only thing telling them apart, so it belongs on the rail rather
+  // than in a tooltip nobody hovers.
+  if (detail) {
+    const sub = document.createElement("span");
+    sub.className = "obs-taxon-detail";
+    sub.textContent = detail;
+    button.append(sub);
+  }
   return button;
+}
+
+/**
+ * Which of the three kinling silhouettes an individual is wearing.
+ *
+ * The phenotype index itself never leaves the generator, but the silhouettes
+ * differ measurably — leg length, body radius — so it is recoverable from the
+ * DNA. Keying taxonomy on `speciesId` alone collapsed all three into one
+ * medallion labelled "Kinling"; these are the field's real families.
+ *
+ * The suffixes describe what the numbers say. Nothing here is invented.
+ */
+function kinlingPhenotype(dna) {
+  if (dna.legs.length > 0.58) {
+    return { suffix: "longleg", glyph: "kw-taxon-walker-tall" };
+  }
+  if (dna.body.radius > 0.37) {
+    return { suffix: "roundbody", glyph: "kw-taxon-walker-mid" };
+  }
+  return { suffix: "longbody", glyph: "kw-taxon-walker-low" };
+}
+
+function floraGlyph(role) {
+  if (role === "hero-mushroom" || role === "hero") return "kw-taxon-canopy";
+  if (role === "groundcover" || role === "ground") return "kw-taxon-ground";
+  return "kw-taxon-bloom";
 }
 
 function taxonomyRecords(runtime) {
@@ -224,13 +270,18 @@ function taxonomyRecords(runtime) {
   const fauna = new Map();
   for (const actor of runtime.fauna ?? []) {
     const dna = actor.agent?.dna;
-    if (!dna || fauna.has(dna.speciesId)) continue;
-    fauna.set(dna.speciesId, true);
+    if (!dna) continue;
+    const phenotype = kinlingPhenotype(dna);
+    const key = `${dna.speciesId}/${phenotype.suffix}`;
+    if (fauna.has(key)) continue;
+    fauna.set(key, true);
     records.push({
       kind: "fauna",
-      key: dna.speciesId,
+      key,
+      speciesKey: dna.speciesId,
       name: dna.name,
-      glyph: dna.legs.count === 6 ? "✣" : dna.legs.count === 2 ? "⋔" : "◉",
+      detail: phenotype.suffix,
+      glyph: phenotype.glyph,
       color: dna.palette.body,
     });
   }
@@ -244,17 +295,27 @@ function taxonomyRecords(runtime) {
     records.push({
       kind: "flora",
       key,
+      speciesKey: key,
       name: species?.name ?? entry.recipe?.dna?.name ?? "Field flora",
-      glyph:
-        role === "hero-mushroom"
-          ? "♁"
-          : role === "groundcover"
-            ? "≋"
-            : "✥",
+      detail: role ?? "flora",
+      glyph: floraGlyph(role),
       color: entry.recipe?.palette?.primary ?? "#d8aa62",
     });
   }
-  return records.slice(0, 8);
+  const observed = records.slice(0, TAXONOMY_SLOTS);
+  // Pad to a fixed rail so the panel's rhythm does not change between seeds.
+  // The ghosts are labelled for what they are — no invented species names.
+  while (observed.length < TAXONOMY_SLOTS) {
+    observed.push({
+      kind: "unobserved",
+      key: `unobserved/${observed.length}`,
+      name: "unobserved",
+      detail: "",
+      glyph: "kw-taxon-unobserved",
+      color: "transparent",
+    });
+  }
+  return observed;
 }
 
 /**
@@ -389,6 +450,7 @@ export function initObservatory() {
     catalogCount: element("obs-catalog-count"),
     strain: element("obs-strain-label"),
     focus: element("obs-focus-label"),
+    kinFilter: element("obs-kin-filter"),
     relationStatus: element("obs-relation-status"),
     relationLinks: document.querySelector("#obs-relations-graph .obs-relation-links"),
     relationNodes: document.querySelector("#obs-relations-graph .obs-relation-nodes"),
@@ -615,16 +677,44 @@ export function initObservatory() {
       : "· potential";
   }
 
+  /**
+   * One dot per kinling phenotype present in the field, in that phenotype's
+   * own body colour. An indicator this pass — the dock cell it sits in still
+   * focuses the followed kin; filtering by phenotype is a later commit.
+   */
+  function renderKinFilter(runtime) {
+    if (!refs.kinFilter) return;
+    const seen = new Map();
+    for (const actor of runtime?.fauna ?? []) {
+      const dna = actor.agent?.dna;
+      if (!dna) continue;
+      const { suffix } = kinlingPhenotype(dna);
+      if (!seen.has(suffix)) seen.set(suffix, dna.palette.body);
+    }
+    refs.kinFilter.replaceChildren(
+      ...[...seen.values()].map((color) => {
+        const dot = document.createElement("i");
+        dot.style.backgroundColor = color;
+        return dot;
+      }),
+    );
+  }
+
   function updateTaxonomy(runtime) {
     const records = taxonomyRecords(runtime);
     refs.taxonomy.replaceChildren(
       ...records.map((record) => {
         const button = createTaxon(record);
         button.addEventListener("click", () => {
+          if (record.kind === "unobserved") return;
           if (record.kind === "fauna") {
-            const actor = runtime.fauna.find(
-              (entry) => entry.agent.dna.speciesId === record.key,
-            );
+            // Match the phenotype, not just the species: three medallions
+            // share one speciesId and each should focus its own silhouette.
+            const actor = runtime.fauna.find((entry) => {
+              const dna = entry.agent?.dna;
+              if (!dna) return false;
+              return `${dna.speciesId}/${kinlingPhenotype(dna).suffix}` === record.key;
+            });
             if (actor) {
               selectedFacade = actor.facade;
               ctx.setFollowTarget(actor.facade);
@@ -644,8 +734,11 @@ export function initObservatory() {
         return button;
       }),
     );
-    refs.railCount.textContent = String(records.length).padStart(2, "0");
-    refs.catalogCount.textContent = `${String(records.length).padStart(2, "0")} observed`;
+    // Counts report what was actually observed, never the padded ghosts.
+    const observed = records.filter((record) => record.kind !== "unobserved").length;
+    refs.railCount.textContent = String(observed).padStart(2, "0");
+    refs.catalogCount.textContent = `${String(observed).padStart(2, "0")} observed`;
+    renderKinFilter(runtime);
   }
 
   function updateSpecimen(runtime, selected, time) {
@@ -900,6 +993,11 @@ export function initObservatory() {
     }
     const viewport = { width: window.innerWidth, height: window.innerHeight };
     let leaderIndex = 0;
+    // Callouts avoid each other as well as the panels. They are excluded from
+    // the cached reserved list — a callout must not reserve space against
+    // itself — so each placement joins a per-frame copy instead. Order is
+    // stable and the list is rebuilt every frame, so this cannot oscillate.
+    const frameReserved = reservedRects.slice();
 
     for (const target of calloutTargets) {
       if (!target.el) continue;
@@ -909,7 +1007,7 @@ export function initObservatory() {
         ? placeCallout(
             { x: anchor.x + CALLOUT_GAP, y: anchor.y + target.dy },
             size,
-            reservedRects,
+            frameReserved,
             viewport,
           )
         : null;
@@ -926,11 +1024,14 @@ export function initObservatory() {
       target.el.style.transform = `translate3d(${left.toFixed(0)}px, ${top.toFixed(0)}px, 0)`;
       target.el.dataset.side = left < anchor.x ? "right" : "left";
       target.el.classList.add("visible");
-      const leader = leaderPoints(
-        anchor,
-        { left, right: left + size.width, top, bottom: top + size.height },
-        viewport,
-      );
+      const box = {
+        left,
+        right: left + size.width,
+        top,
+        bottom: top + size.height,
+      };
+      frameReserved.push(box);
+      const leader = leaderPoints(anchor, box, viewport);
       drawLeader(leaderIndex++, leader, anchor);
     }
     while (leaderIndex < leaderPool.length) hideLeader(leaderIndex++);
@@ -1073,6 +1174,13 @@ export function initObservatory() {
   });
   element("obs-settings").addEventListener("click", () => {
     ctx.setSettingsOpen(true);
+  });
+  element("obs-mutate-field").addEventListener("click", () => {
+    // Reseeds into a different biome. applyLivingWorldDocumentIdentity marks
+    // that control `hidden` in living-world mode, which does not stop a
+    // synthetic click — but it does mean this dependency is invisible from
+    // the markup, so it is written down here.
+    element("regen-random-biome")?.click();
   });
   element("obs-new-strain").addEventListener("click", () => {
     element("regen-same-biome")?.click();

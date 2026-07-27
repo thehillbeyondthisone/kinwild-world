@@ -171,6 +171,42 @@ for (const id of ["obs-callout-ground", "obs-callout-peer"]) {
   assert.ok(html.includes(`id="${id}"`), `the mockup's fourth and fifth callouts need #${id}`);
 }
 
+// The dock is six even cells. Fixed per-cell widths meant every breakpoint
+// re-derived six numbers, and the raised core needed three of its own.
+assert.ok(
+  /\.obs-dock \{[^}]*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/s.test(css),
+  "the dock should be six even cells",
+);
+for (const dead of ["obs-dock-core", "obs-orbit-ring", "obs-orbit-dot"]) {
+  assert.ok(!css.includes(dead), `${dead} should be gone from the stylesheet`);
+  assert.ok(!html.includes(dead), `${dead} should be gone from the markup`);
+}
+assert.ok(html.includes('id="obs-mutate-field"'), "the dock needs its sixth cell");
+assert.ok(
+  ui.includes('element("regen-random-biome")?.click()'),
+  "mutate field should reseed into a different biome",
+);
+// Authoring must keep an entry point now that the dock has no CREATE cell.
+assert.ok(
+  /<div class="obs-field-tools">[\s\S]*?id="obs-create-form"[\s\S]*?<\/div>/.test(html),
+  "Form Studio should be reachable from the field card's tools",
+);
+
+// Taxonomy: three kinling phenotypes are three families, not one medallion.
+assert.ok(
+  ui.includes("kinlingPhenotype") && ui.includes("${dna.speciesId}/${phenotype.suffix}"),
+  "taxonomy should key fauna by phenotype, not by species alone",
+);
+assert.ok(ui.includes("TAXONOMY_SLOTS"), "the taxonomy rail should have a fixed width");
+assert.ok(
+  ui.includes('glyphSvg(glyph, "kw-glyph obs-taxon-glyph")'),
+  "medallions should draw sprite glyphs, not unicode",
+);
+assert.ok(
+  css.includes(".obs-taxon.is-unobserved"),
+  "unobserved slots need a dimmed ghost treatment",
+);
+
 // --obs-violet had zero var() references; `unknown` is what finally uses it.
 assert.ok(
   /--obs-rel-unknown:\s*var\(--obs-violet\)/.test(css),

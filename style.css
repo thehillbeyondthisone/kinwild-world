@@ -2819,6 +2819,28 @@ body.living-world-mode {
   color: var(--obs-gold-hot);
 }
 
+/* Authoring is the one tool here that creates something, so it carries the
+   coral accent the dock's CREATE cell used to. */
+.obs-tool-primary {
+  border-color: rgba(232, 115, 94, 0.5) !important;
+  color: var(--obs-coral) !important;
+}
+
+.obs-tool-primary:hover {
+  border-color: var(--obs-coral) !important;
+  background: rgba(232, 115, 94, 0.1);
+}
+
+.obs-resonance-orbital {
+  position: absolute;
+  right: 14px;
+  top: 12px;
+  width: 74px;
+  height: 40px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .obs-callout {
   position: absolute;
   min-width: 148px;
@@ -3180,6 +3202,7 @@ body.living-world-mode {
 }
 
 .obs-resonance {
+  position: relative;
   grid-area: reso;
   align-self: end;
   height: 142px;
@@ -3257,7 +3280,10 @@ body.living-world-mode {
   align-self: end;
   justify-self: center;
   display: grid;
-  grid-template-columns: 126px 94px 134px 110px 120px 112px;
+  /* Six even cells. Fixed per-cell widths meant every breakpoint re-derived
+     six numbers; an even track lets the dock scale as one instrument. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  width: min(696px, calc(100vw - 2 * var(--obs-gutter-x)));
   align-items: stretch;
   min-height: 94px;
   padding: 4px;
@@ -3297,8 +3323,7 @@ body.living-world-mode {
   padding: 10px 8px;
 }
 
-.obs-dock-action strong,
-.obs-dock-core strong {
+.obs-dock-action strong {
   font-family: "Cormorant Infant", Georgia, serif;
   font-size: 14px;
   font-weight: 500;
@@ -3306,8 +3331,7 @@ body.living-world-mode {
   text-transform: uppercase;
 }
 
-.obs-dock-action small,
-.obs-dock-core small {
+.obs-dock-action small {
   font-size: 6px;
   letter-spacing: 0.13em;
   color: rgba(216, 170, 98, 0.52);
@@ -3329,59 +3353,32 @@ body.living-world-mode {
   border-radius: 50%;
 }
 
-.obs-dock-core {
-  top: -17px;
-  height: 126px;
-  border: 1px solid var(--obs-gold-dim) !important;
+/* The wide orbital bleeds past its own cell, as on the reference sheet — the
+   dock clips at its rounded corners, not per button. */
+.obs-dock-orbit {
+  overflow: visible;
+}
+
+.obs-orbit-art {
+  width: 118px;
+  height: 30px;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
+/* Indicator only this pass: one dot per kinling phenotype in the field, in
+   that phenotype's own body colour. */
+.obs-kin-filter {
+  display: flex;
+  gap: 4px;
+  margin-top: 1px;
+}
+
+.obs-kin-filter i {
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
-  background: rgba(7, 19, 33, 0.92) !important;
-  box-shadow:
-    0 0 0 7px rgba(7, 19, 33, 0.7),
-    0 0 0 8px rgba(216, 170, 98, 0.18);
-}
-
-.obs-dock-core strong {
-  position: absolute;
-  bottom: 25px;
-  left: 0;
-  right: 0;
-}
-
-.obs-dock-core small {
-  position: absolute;
-  bottom: 12px;
-  left: 0;
-  right: 0;
-}
-
-.obs-orbit-ring {
-  position: absolute;
-  top: 18px;
-  left: 25px;
-  width: 76px;
-  height: 37px;
-  border: 1px solid var(--obs-gold-dim);
-  border-radius: 50%;
-  transform: rotate(-19deg);
-}
-
-.obs-orbit-ring::after {
-  content: "";
-  position: absolute;
-  inset: 7px 13px;
-  border: 1px dashed rgba(216, 170, 98, 0.38);
-  border-radius: 50%;
-}
-
-.obs-orbit-dot {
-  position: absolute;
-  top: 30px;
-  left: 58px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--obs-gold-hot);
-  box-shadow: 0 0 16px rgba(243, 197, 110, 0.86);
+  opacity: 0.9;
 }
 
 .obs-taxonomy {
@@ -3400,16 +3397,32 @@ body.living-world-mode {
   text-transform: lowercase;
 }
 
+/* Eight medallions do not fit every panel width, so the rail scrolls rather
+   than squeezing them into illegibility — the same treatment the mobile
+   layout already used, applied everywhere. */
 .obs-taxonomy-list {
   display: flex;
   align-items: flex-end;
-  justify-content: space-around;
+  justify-content: flex-start;
   gap: 10px;
   height: 83px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.obs-taxonomy-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* Ghosts are placeholders, not entries: they take the narrowest slot that
+   still reads as a medallion. */
+.obs-taxon.is-unobserved {
+  flex: 0 0 auto;
+  min-width: 40px;
 }
 
 .obs-taxon {
-  flex: 1;
+  flex: 1 0 auto;
   min-width: 56px;
   max-width: 96px;
   display: flex;
@@ -3435,6 +3448,32 @@ body.living-world-mode {
   transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
+.obs-taxon-glyph {
+  width: 24px;
+  height: 24px;
+}
+
+/* Ghost slots keep the rail eight wide whatever the field holds. Dimmed and
+   inert — they are the shape of what has not been observed, not a species. */
+.obs-taxon.is-unobserved {
+  cursor: default;
+  color: var(--obs-gold-faint);
+}
+
+.obs-taxon.is-unobserved .obs-taxon-icon {
+  border-style: dashed;
+  border-color: rgba(216, 170, 98, 0.16);
+}
+
+.obs-taxon.is-unobserved .obs-taxon-name {
+  opacity: 0.5;
+}
+
+.obs-taxon.is-unobserved:hover .obs-taxon-icon {
+  border-color: rgba(216, 170, 98, 0.16);
+  transform: none;
+}
+
 .obs-taxon:hover .obs-taxon-icon {
   border-color: var(--obs-gold);
   transform: translateY(-2px);
@@ -3457,6 +3496,19 @@ body.living-world-mode {
   letter-spacing: 0.17em;
   text-overflow: ellipsis;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.obs-taxon-detail {
+  max-width: 100%;
+  margin-top: -2px;
+  overflow: hidden;
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 9px;
+  font-style: italic;
+  letter-spacing: 0.05em;
+  color: rgba(216, 170, 98, 0.5);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -4069,7 +4121,7 @@ body.photo-mode .form-studio {
   }
 
   .obs-dock {
-    grid-template-columns: 112px 82px 124px 98px 108px 100px;
+    width: min(600px, calc(100vw - 2 * var(--obs-gutter-x)));
   }
 }
 
@@ -4169,7 +4221,7 @@ body.photo-mode .form-studio {
   }
 
   .obs-dock {
-    grid-template-columns: 88px 64px 100px 82px 92px 86px;
+    width: min(512px, calc(100vw - 2 * var(--obs-gutter-x)));
     min-height: 84px;
   }
 
@@ -4187,23 +4239,6 @@ body.photo-mode .form-studio {
 
   .obs-paper-tab {
     bottom: 16px;
-  }
-
-  .obs-dock-core {
-    top: -12px;
-    height: 110px;
-  }
-
-  .obs-orbit-ring {
-    top: 15px;
-    left: 18px;
-    width: 64px;
-    height: 31px;
-  }
-
-  .obs-orbit-dot {
-    top: 24px;
-    left: 45px;
   }
 
   .obs-relations {
@@ -4292,7 +4327,7 @@ body.photo-mode .form-studio {
 
   .obs-dock {
     min-height: 78px;
-    grid-template-columns: 88px 64px 100px 82px 92px 86px;
+    width: min(512px, calc(100vw - 2 * var(--obs-gutter-x)));
   }
 }
 
@@ -4539,6 +4574,7 @@ body.photo-mode .form-studio {
 
   .obs-dock {
     justify-self: stretch;
+    width: auto;
     grid-template-columns: repeat(5, 1fr);
     min-height: 70px;
     border-radius: 22px 3px 22px 3px;
@@ -4552,38 +4588,15 @@ body.photo-mode .form-studio {
     padding: 5px 2px;
   }
 
-  .obs-dock-action strong,
-  .obs-dock-core strong {
+  .obs-dock-action strong {
     font-size: 10px;
     letter-spacing: 0.07em;
   }
 
   .obs-action-kicker,
   .obs-dock-action small,
-  .obs-dock-core small,
   .obs-dock-action svg,
   #obs-catalog-count {
-    display: none;
-  }
-
-  .obs-dock-core {
-    position: relative;
-    top: 0;
-    width: auto;
-    height: auto;
-    border: 0 !important;
-    border-right: 1px solid var(--obs-gold-faint) !important;
-    border-radius: 0;
-    background: transparent !important;
-    box-shadow: none;
-  }
-
-  .obs-dock-core strong {
-    position: static;
-  }
-
-  .obs-orbit-ring,
-  .obs-orbit-dot {
     display: none;
   }
 

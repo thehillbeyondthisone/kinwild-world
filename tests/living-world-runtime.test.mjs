@@ -111,6 +111,31 @@ assert.equal(worldState.creatures.length, faunaCount);
 assert.ok(worldState.obstacles.some((entry) => entry.kind === "living:veilcrown"));
 assert.ok(worldState.flowerSpots.length > 0);
 assert.ok(worldState.perchSpots.length > 0);
+
+// The legacy world consumes nectar and perch; the plants advertise five more
+// kinds that used to be computed and thrown away inside the same loop.
+const affordances = runtime.registrations.affordances;
+assert.ok(
+  affordances.length > worldState.flowerSpots.length + worldState.perchSpots.length,
+  "retaining every affordance should keep more than the two legacy kinds",
+);
+const retainedTypes = new Set(affordances.map((entry) => entry.type));
+for (const type of ["nectar", "perch", "landmark", "shelter", "pollen"]) {
+  assert.ok(retainedTypes.has(type), `the ${type} affordance should survive registration`);
+}
+for (const entry of affordances) {
+  assert.ok(Number.isFinite(entry.x) && Number.isFinite(entry.y) && Number.isFinite(entry.z));
+  assert.ok(Number.isFinite(entry.radius) && entry.radius > 0);
+  assert.ok(typeof entry.floraKey === "string" && entry.floraKey.length > 0);
+  assert.ok(typeof entry.speciesId === "string" && entry.speciesId.length > 0);
+}
+// Ordinals are what a downstream consumer ties a deterministic layout to, so
+// they must stay a dense, stable sequence.
+assert.deepEqual(
+  affordances.map((entry) => entry.ordinal),
+  affordances.map((_, index) => index),
+  "affordance ordinals should be dense and placement-ordered",
+);
 for (const creature of worldState.creatures) {
   assert.ok(Number.isFinite(creature.scale));
   assert.ok(creature.generatedAgent);
@@ -216,5 +241,10 @@ assert.equal(disposeLivingWorld(worldState), true);
 assert.equal(worldState.livingWorld, null);
 assert.equal(worldState.creatures.length, 0);
 assert.equal(runtime.disposed, true);
+assert.equal(
+  runtime.registrations.affordances.length,
+  0,
+  "disposal must drop the affordance bucket, which back-references every flora",
+);
 
 console.log("living-world-runtime.test.mjs passed");

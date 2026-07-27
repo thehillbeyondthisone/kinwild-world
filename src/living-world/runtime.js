@@ -414,6 +414,14 @@ function alignFloraToSurface(instance, worldContext, yaw, alignToSlope) {
   instance.root.quaternion.copy(align.multiply(spin));
 }
 
+/**
+ * The legacy world only knows two kinds of affordance — a flower to visit and
+ * a cap to land on — so everything else a plant advertises (landmark, shelter,
+ * pollen, forage, soft-cover) used to be computed and dropped on the floor.
+ * They are kept in `runtime.registrations.affordances` now: one compact record
+ * per affordance, pushed inside the traversal that already exists, so the
+ * ecology and the relations panel can read what the field actually offers.
+ */
 function registerFloraAffordances(runtime, flora) {
   for (const affordance of flora.instance.affordances()) {
     const record = {
@@ -422,6 +430,18 @@ function registerFloraAffordances(runtime, flora) {
       z: affordance.position.z,
       source: flora,
     };
+    runtime.registrations.affordances.push({
+      type: affordance.type,
+      x: record.x,
+      y: record.y,
+      z: record.z,
+      radius: affordance.radius,
+      capacity: affordance.capacity,
+      floraKey: flora.recipe.key,
+      role: flora.recipe.role,
+      speciesId: flora.species.id,
+      ordinal: runtime.registrations.affordances.length,
+    });
     if (affordance.type === "nectar") {
       runtime.worldState.flowerSpots.push(record);
       runtime.registrations.flowerSpots.push(record);
@@ -1117,6 +1137,10 @@ export function createLivingWorldRuntime({
       obstacles: [],
       perches: [],
       flowerSpots: [],
+      // Every affordance the placed flora advertises, not just the two the
+      // legacy world consumes. Runtime-owned, so disposal clears it outright
+      // rather than filtering it out of a worldState array.
+      affordances: [],
     },
     scratch: {
       cameraTarget: new THREE.Vector3(),
@@ -1165,6 +1189,10 @@ export function disposeLivingWorld(worldState) {
     worldState.flowerSpots,
     runtime.registrations.flowerSpots,
   );
+  // Nothing outside the runtime holds these, so they are dropped rather than
+  // unstitched — and dropping them releases the `source` back-reference to
+  // every disposed flora instance.
+  runtime.registrations.affordances.length = 0;
   worldState.livingWorld = null;
   return true;
 }

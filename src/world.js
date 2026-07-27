@@ -44,6 +44,12 @@ let _generationRunId = 0;
 
 const STALE_GENERATION = Symbol("stale-generation");
 const GENERATION_FRAME_BUDGET_MS = 8;
+// Browsers stop firing rAF entirely in a backgrounded or non-compositing tab.
+// Since every world-gen phase awaits nextGenerationFrame(), a bare rAF promise
+// would park generation forever behind the loading overlay. Fall back to a
+// timer so the world still builds; 32ms keeps the yield cadence close to a
+// dropped frame rather than stalling the phase pipeline.
+const GENERATION_FRAME_TIMEOUT_MS = 32;
 
 // Re-exported for back-compat (QA-009 hoisted these to module scope so tests
 // can import-and-assert the data invariant); canonical definition now lives
@@ -58,7 +64,20 @@ function generationNow() {
 }
 
 function nextGenerationFrame() {
-  return new Promise((resolve) => requestAnimationFrame(resolve));
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    // Whichever fires first wins, and the loser is cleared — a bare
+    // Promise.race would leave one timer per yield outstanding, and a regen
+    // yields dozens of times.
+    const timer = setTimeout(finish, GENERATION_FRAME_TIMEOUT_MS);
+    requestAnimationFrame(finish);
+  });
 }
 
 function setWorldLoading(active) {

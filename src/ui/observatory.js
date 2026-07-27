@@ -11,6 +11,16 @@ import {
 import { ctx } from "./context.js";
 
 const CYCLE_KEY = "living-field:observation-cycle:v1";
+const PANEL_VISIBILITY_KEY = "living-field:panel-visibility:v1";
+const PANEL_LENSES = [
+  "field",
+  "fauna",
+  "flora",
+  "relations",
+  "catalog",
+  "controls",
+];
+const CONTENT_LENSES = PANEL_LENSES.filter((lens) => lens !== "controls");
 const MAX_RETURNING_FORMS = 4;
 const vector = new THREE.Vector3();
 const surfaceHit = { height: 0, normal: new THREE.Vector3(), material: null };
@@ -210,7 +220,11 @@ function projectCallout(target, object, camera, offsetX, offsetY) {
     ".obs-relations",
   ]
     .map((selector) => document.querySelector(selector))
-    .filter((element) => element && getComputedStyle(element).display !== "none")
+    .filter((element) => {
+      if (!element) return false;
+      const style = getComputedStyle(element);
+      return style.display !== "none" && style.visibility !== "hidden";
+    })
     .map((element) => element.getBoundingClientRect());
   const collides = (left) => {
     const box = {
@@ -368,6 +382,107 @@ export function initObservatory() {
   let currentCandidates = [];
   let candidateIndex = -1;
   let requestController = null;
+  const compactPanelQuery = window.matchMedia(
+    "(max-width: 1120px), (max-height: 650px)",
+  );
+  const defaultPanelVisibility = () => {
+    const spacious = !compactPanelQuery.matches;
+    return Object.fromEntries(
+      PANEL_LENSES.map((lens) => [
+        lens,
+        spacious || lens === "field" || lens === "controls",
+      ]),
+    );
+  };
+  const loadPanelVisibility = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(PANEL_VISIBILITY_KEY));
+      if (!stored || typeof stored !== "object") return defaultPanelVisibility();
+      return Object.fromEntries(
+        PANEL_LENSES.map((lens) => [lens, stored[lens] !== false]),
+      );
+    } catch {
+      return defaultPanelVisibility();
+    }
+  };
+  const panelVisibility = loadPanelVisibility();
+
+  function renderPanelVisibility({ persist = false } = {}) {
+    const firstRender = !shell.classList.contains("obs-panels-ready");
+    for (const lens of PANEL_LENSES) {
+      const visible = panelVisibility[lens] !== false;
+      const button = document.querySelector(`[data-obs-lens="${lens}"]`);
+      button?.classList.toggle("active", visible);
+      button?.setAttribute("aria-pressed", String(visible));
+      document
+        .querySelectorAll(`[data-obs-panel="${lens}"]`)
+        .forEach((panel) => {
+          panel.classList.toggle("obs-lens-hidden", !visible);
+          panel.setAttribute("aria-hidden", String(!visible));
+        });
+    }
+    const anyVisible = PANEL_LENSES.some(
+      (lens) => panelVisibility[lens] !== false,
+    );
+    element("obs-density-toggle").setAttribute(
+      "aria-pressed",
+      String(anyVisible),
+    );
+    shell.dataset.panelMode = compactPanelQuery.matches
+      ? "exclusive"
+      : "independent";
+    shell.classList.toggle(
+      "obs-instrument-focus",
+      compactPanelQuery.matches &&
+        CONTENT_LENSES.some(
+          (lens) => lens !== "field" && panelVisibility[lens] !== false,
+        ),
+    );
+    if (
+      firstRender &&
+      panelVisibility.fauna !== false &&
+      window.matchMedia("(max-width: 760px)").matches
+    ) {
+      element("obs-specimen").classList.add("mobile-open");
+      element("obs-specimen-close").setAttribute("aria-expanded", "true");
+      element("obs-specimen-close").setAttribute(
+        "aria-label",
+        "collapse specimen readout",
+      );
+    }
+    shell.classList.add("obs-panels-ready");
+    if (persist) {
+      localStorage.setItem(
+        PANEL_VISIBILITY_KEY,
+        JSON.stringify(panelVisibility),
+      );
+    }
+  }
+
+  function togglePanelLens(lens) {
+    const opening = panelVisibility[lens] === false;
+    if (opening && compactPanelQuery.matches && lens !== "controls") {
+      for (const contentLens of CONTENT_LENSES) {
+        panelVisibility[contentLens] = contentLens === lens;
+      }
+    } else {
+      panelVisibility[lens] = !panelVisibility[lens];
+    }
+    if (lens === "fauna" && window.matchMedia("(max-width: 760px)").matches) {
+      const specimen = element("obs-specimen");
+      specimen.classList.toggle("mobile-open", opening);
+      if (opening) specimen.classList.remove("collapsed");
+      element("obs-specimen-close").setAttribute(
+        "aria-expanded",
+        String(opening),
+      );
+      element("obs-specimen-close").setAttribute(
+        "aria-label",
+        opening ? "collapse specimen readout" : "open specimen readout",
+      );
+    }
+    renderPanelVisibility({ persist: true });
+  }
 
   function bindRuntime(runtime) {
     if (runtime === observedRuntime) return;
@@ -642,8 +757,11 @@ export function initObservatory() {
   });
 
   element("obs-density-toggle").addEventListener("click", () => {
-    const compact = shell.classList.toggle("compact");
-    element("obs-density-toggle").setAttribute("aria-pressed", String(!compact));
+    const showPanels = !PANEL_LENSES.some(
+      (lens) => panelVisibility[lens] !== false,
+    );
+    for (const lens of PANEL_LENSES) panelVisibility[lens] = showPanels;
+    renderPanelVisibility({ persist: true });
   });
   const specimen = element("obs-specimen");
   const specimenToggle = element("obs-specimen-close");
@@ -671,19 +789,14 @@ export function initObservatory() {
   syncSpecimenToggle();
   document.querySelectorAll("[data-obs-lens]").forEach((button) => {
     button.addEventListener("click", () => {
-      document.querySelectorAll("[data-obs-lens]").forEach((entry) => {
-        const active = entry === button;
-        entry.classList.toggle("active", active);
-        entry.setAttribute("aria-pressed", String(active));
-      });
       const lens = button.dataset.obsLens;
-      if (lens === "catalog") ctx.toggleCatalogPanel();
-      if (lens === "fauna") {
-        const selected = currentSelection(state.livingWorld);
-        if (selected) ctx.setFollowTarget(selected);
-      }
+      if (PANEL_LENSES.includes(lens)) togglePanelLens(lens);
     });
   });
+  compactPanelQuery.addEventListener("change", () => {
+    renderPanelVisibility();
+  });
+  renderPanelVisibility();
 
   const studio = element("form-studio");
   const description = element("form-description");

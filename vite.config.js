@@ -10,7 +10,9 @@ export default {
   },
 
   server: {
+    host: "0.0.0.0",
     port: 2001,
+    strictPort: true,
     open: true,
     proxy: {
       "/llm": {
@@ -19,6 +21,12 @@ export default {
         rewrite: (path) => path.replace(/^\/llm/, ""),
       },
     },
+  },
+
+  preview: {
+    host: "0.0.0.0",
+    port: 2001,
+    strictPort: true,
   },
 
   build: {

@@ -25,6 +25,10 @@ Open `http://localhost:2001/`. Kinwild is the default experience and writes
 http://localhost:2001/?seed=0x001e&livingWorld=1
 ```
 
+The development and preview servers bind to all local interfaces. Devices on
+the same network can open `http://<computer-LAN-IP>:2001/`; allow Node.js
+through the host firewall if the page is not reachable.
+
 The borrowed Small World experience is retained only as a regression harness:
 
 ```text

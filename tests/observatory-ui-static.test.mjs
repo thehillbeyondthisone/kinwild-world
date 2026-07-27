@@ -5,6 +5,7 @@ const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const css = readFileSync(new URL("../style.css", import.meta.url), "utf8");
 const ui = readFileSync(new URL("../src/ui/observatory.js", import.meta.url), "utf8");
 const entry = readFileSync(new URL("../src/ui.js", import.meta.url), "utf8");
+const vite = readFileSync(new URL("../vite.config.js", import.meta.url), "utf8");
 
 for (const id of [
   "observatory-shell",
@@ -22,6 +23,17 @@ for (const id of [
   assert.ok(html.includes(`id="${id}"`), `observatory markup should expose #${id}`);
 }
 
+for (const lens of ["field", "fauna", "flora", "relations", "catalog", "controls"]) {
+  assert.ok(
+    html.includes(`data-obs-lens="${lens}"`),
+    `the instrument rail should expose the ${lens} lens`,
+  );
+  assert.ok(
+    html.includes(`data-obs-panel="${lens}"`),
+    `the ${lens} lens should control a real panel`,
+  );
+}
+
 assert.ok(css.includes(".observatory-shell"), "observatory shell needs dedicated styling");
 assert.ok(css.includes("@media (max-width: 760px)"), "observatory needs a mobile layout");
 assert.ok(
@@ -36,6 +48,18 @@ assert.ok(
 assert.ok(ui.includes("requestCreatureCandidates"), "Form Studio should call the authoring client");
 assert.ok(ui.includes("introduceLivingFauna"), "accepted forms should enter the live field");
 assert.ok(ui.includes("meanHeadingCoherence"), "resonance must derive from live field telemetry");
+assert.ok(
+  ui.includes("PANEL_VISIBILITY_KEY"),
+  "panel visibility should persist between observations",
+);
+assert.ok(
+  ui.includes("compactPanelQuery.matches"),
+  "compact layouts should use exclusive content lenses",
+);
 assert.ok(entry.includes("initObservatory()"), "the public UI entry should initialize the observatory");
+assert.ok(
+  vite.includes('host: "0.0.0.0"'),
+  "the dev and preview servers should be reachable on the local LAN",
+);
 
 console.log("observatory-ui-static.test.mjs passed");

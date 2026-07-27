@@ -2294,6 +2294,21 @@ body.living-world-mode {
   -webkit-backdrop-filter: blur(11px) saturate(0.88);
 }
 
+[data-obs-panel] {
+  transition:
+    opacity 0.24s ease,
+    visibility 0s linear 0s,
+    filter 0.24s ease;
+}
+
+[data-obs-panel].obs-lens-hidden {
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none !important;
+  filter: blur(3px);
+  transition-delay: 0s, 0.24s, 0s;
+}
+
 .obs-panel-title,
 .obs-card-kicker,
 .obs-kicker,
@@ -2313,6 +2328,9 @@ body.living-world-mode {
   align-items: stretch;
   gap: 17px;
   pointer-events: none;
+  transition:
+    opacity 0.24s ease,
+    visibility 0s linear 0s;
 }
 
 .obs-mark {
@@ -2397,6 +2415,7 @@ body.living-world-mode {
 }
 
 .obs-rail-button {
+  position: relative;
   width: 35px;
   height: 35px;
   display: grid;
@@ -2408,11 +2427,62 @@ body.living-world-mode {
   transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
 }
 
+.obs-rail-button::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+  box-shadow: 0 0 8px currentColor;
+  transition: opacity 0.2s ease;
+}
+
+.obs-rail-button::after {
+  content: attr(aria-label);
+  position: absolute;
+  z-index: 12;
+  left: 43px;
+  top: 50%;
+  width: max-content;
+  max-width: 150px;
+  padding: 5px 7px;
+  transform: translate3d(-5px, -50%, 0);
+  border: 1px solid var(--obs-gold-faint);
+  background: rgba(5, 16, 29, 0.94);
+  color: var(--obs-gold);
+  font-family: "DM Mono", monospace;
+  font-size: 7px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease,
+    visibility 0s linear 0.16s;
+}
+
 .obs-rail-button:hover,
 .obs-rail-button.active {
   color: var(--obs-gold-hot);
   background: radial-gradient(circle, rgba(216, 170, 98, 0.13), transparent 70%);
   transform: translateX(2px);
+}
+
+.obs-rail-button.active::before {
+  opacity: 1;
+}
+
+.obs-rail-button:hover::after,
+.obs-rail-button:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translate3d(0, -50%, 0);
+  transition-delay: 0s;
 }
 
 .obs-rail-button svg {
@@ -3193,33 +3263,6 @@ body.living-world-mode {
   cursor: pointer;
 }
 
-.observatory-shell.compact .obs-specimen,
-.observatory-shell.compact .obs-resonance,
-.observatory-shell.compact .obs-taxonomy,
-.observatory-shell.compact .obs-relations,
-.observatory-shell.compact .obs-callouts,
-.observatory-shell.compact .obs-rail {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.observatory-shell.compact .obs-dock {
-  bottom: var(--obs-bottom);
-}
-
-.observatory-shell.compact .obs-brand p,
-.observatory-shell.compact .obs-edition {
-  display: none;
-}
-
-.observatory-shell.compact .obs-mark {
-  height: 84px;
-}
-
-.observatory-shell.compact .obs-brand h1 {
-  font-size: 43px;
-}
-
 /* ── Form studio ─────────────────────────────────────────────────────────── */
 .form-studio {
   position: fixed;
@@ -3562,6 +3605,22 @@ body.photo-mode .form-studio {
   pointer-events: none !important;
 }
 
+@media (max-width: 1120px), (max-height: 650px) {
+  .observatory-shell.obs-instrument-focus .obs-brand {
+    opacity: 0;
+    visibility: hidden;
+    transition-delay: 0s, 0.24s;
+  }
+
+  .observatory-shell:not(.obs-panels-ready)
+    [data-obs-panel]:not([data-obs-panel="field"]):not(
+      [data-obs-panel="controls"]
+    ) {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
 @media (max-width: 1380px) {
   .observatory-shell {
     --obs-specimen-width: 440px;
@@ -3666,11 +3725,34 @@ body.photo-mode .form-studio {
   }
 }
 
+@media (max-height: 650px) and (min-width: 761px) {
+  .observatory-shell {
+    --obs-specimen-left: 82px;
+    --obs-specimen-width: min(440px, calc(48vw - 82px));
+    --obs-specimen-bottom: 150px;
+  }
+
+  .obs-specimen {
+    min-height: 225px;
+    padding-left: 48px;
+  }
+
+  .obs-resonance,
+  .obs-taxonomy,
+  .obs-relations {
+    bottom: 150px;
+  }
+
+  .obs-dock {
+    bottom: 14px;
+  }
+}
+
 @media (max-width: 760px) {
   .observatory-shell {
     --obs-bottom: max(8px, env(safe-area-inset-bottom));
-    --obs-specimen-left: 8px;
-    --obs-specimen-width: calc(100vw - 16px);
+    --obs-specimen-left: 50px;
+    --obs-specimen-width: calc(100vw - 58px);
     --obs-specimen-bottom: 89px;
   }
 
@@ -3734,12 +3816,64 @@ body.photo-mode .form-studio {
     margin: 7px 0;
   }
 
-  .obs-rail,
-  .obs-resonance,
-  .obs-taxonomy,
-  .obs-relations,
   .obs-callouts {
     display: none;
+  }
+
+  .obs-rail {
+    top: 96px;
+    left: 8px;
+    display: flex;
+    gap: 1px;
+    padding: 6px 3px 7px;
+    border-radius: 11px 0 0 11px;
+  }
+
+  .obs-rail-button {
+    width: 31px;
+    height: 31px;
+  }
+
+  .obs-rail-button svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .obs-rail-button::after {
+    left: 36px;
+  }
+
+  .obs-rail-count {
+    font-size: 7px;
+  }
+
+  .obs-resonance,
+  .obs-taxonomy,
+  .obs-relations {
+    left: 50px;
+    right: 8px;
+    bottom: 89px;
+    display: block;
+    width: auto;
+    height: 126px;
+  }
+
+  .obs-relations {
+    height: 112px;
+  }
+
+  .obs-taxonomy-list {
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .obs-taxonomy-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .obs-taxon {
+    min-width: 58px;
   }
 
   .obs-specimen {
@@ -3778,7 +3912,7 @@ body.photo-mode .form-studio {
 
   .obs-specimen:not(.mobile-open) + .obs-paper-tab,
   .obs-specimen.collapsed + .obs-paper-tab {
-    left: 15px;
+    left: 50px;
     right: auto;
     width: 102px;
     height: 32px;

@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.10.0 - 2026-07-28
+
+### Added
+
+- Procedural plants: a plant's silhouette is compiled from its DNA rather than
+  chosen from three fixed renderers. A deterministic skeleton (stems, curve,
+  branching, habit, path-derived node ids, 40-node budget) carries organs drawn
+  from a nine-piece module library, and nine archetype presets — canopy, spire,
+  cap, bell, frond, pad, reed, cover, coral — sit on top. Adding a silhouette
+  is a row in a table, not a renderer.
+- Flora DNA v2 splits the two axes v1 fused: `role` is the compositional tier,
+  `archetype` is the shape. `shape` is keyed per archetype, so a groundcover
+  cannot request trunk fields. v1 role strings still resolve.
+- Archetypes declare the habitat they want — elevation, slope, distance from
+  the island centre — and the composition lets the site choose the plant.
+- Structural variants per species, and a distance LOD for organs an archetype
+  marks as detail.
+
+### Changed
+
+- The field fills its island. Placement is drawn inside five to nine habitat
+  patches sampled from the terrain instead of three clumps around one anchor:
+  on 0x0007 verdant that is 24 plants reaching under 2% of the island, to 140
+  reaching 81% of its radius. The arrival clearing survives as the first hero's
+  site with negative space kept around it, and kin orbit their home patch
+  instead of pacing the clearing.
+- Plants are rows in per-species instanced batches rather than groups of
+  meshes, so draw calls scale with the roster and not the field: 20 flora draw
+  calls for 140 plants, where the previous approach would have spent ~308.
+  Frame time is unchanged from the same measurement at 24 plants.
+- Per-plant touch moved into the vertex shader through a shared per-plant data
+  texture. The spring itself stays on the CPU, so the observatory's resonance
+  trace reads the same snapshot it always did.
+- Groundcover carries 26-96 blades per patch rather than 60-240, against ~118
+  patches instead of 24.
+
+### Fixed
+
+- The good hand-authored hero and flower detail was gated behind
+  `dna.name === "Veilcrown"` / `"Pulsebells"`. Once the species roster started
+  generating names every field silently got the plainer fallback renderer. The
+  seven-lobe crown, pendant signals, lathed hood and blooming pulse are organ
+  counts now, reachable by any species that rolls them.
+
+### Verified
+
+- 99 tests, lint, production build, and an explicit `determinism-seed` run.
+- Browser sweep across verdant, desert, coral, ashen and obsidian: the hero is
+  no longer a mushroom in every field, silhouettes differ within a field as
+  well as between fields, and growth reaches the island's edge.
+- `?livingWorld=0` still renders the donor world untouched; the observatory's
+  taxonomy, FIELD RELATIONS and specimen resonance still populate.
+
 ## 1.9.0 - 2026-07-27
 
 ### Added

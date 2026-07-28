@@ -21,13 +21,14 @@ import {
 import { islandFalloff } from "../terrain.js";
 import { makeDustKick } from "../environment.js";
 import { catalogSubjectFromInspect } from "../catalog.js";
-import { LOWFX } from "../lowfx.js";
+import { LOWFX, LOWFX_DENSITY } from "../lowfx.js";
 import {
   LIVING_WORLD_PALETTE,
   LIVING_WORLD_STYLE_ID,
   createLivingWorldBiome,
   resolveLivingWorldFlags,
 } from "./style.js";
+import { habitatScore } from "../generated-flora/archetypes.js";
 import { createFaunaRoster, createFloraRoster } from "./roster.js";
 
 /**
@@ -148,88 +149,213 @@ export function selectLivingWorldAnchor(worldState, seed, footprint = 2.4) {
 }
 
 /**
- * Serializable authored-feeling layout around the chosen focal clearing.
+ * Habitat descriptors, normalized to 0..1 so an archetype can state a
+ * preference without knowing this world's terrain amplitude.
  */
-export function planLivingComposition(seed, anchor, { lowfx = LOWFX } = {}) {
-  const rng = createRng(hashSeed(seed, LIVING_WORLD_STYLE_ID, "composition/layout"));
-  const flora = [{ role: "hero", ordinal: 0, x: anchor.x, z: anchor.z, scale: 1 }];
-  const midCount = lowfx ? 4 : 9;
-  const groundCount = lowfx ? 10 : 24;
-  const faunaCount = lowfx ? 2 : 4;
-  const facingAngle = Math.atan2(11.7, 10.8);
-  const baseAngle = rng.range(-0.24, 0.24);
-  const midClumps = [
-    { angle: facingAngle - 1.38, radius: 5.05 },
-    { angle: facingAngle + 1.25, radius: 4.65 },
-    { angle: facingAngle + 2.65, radius: 5.4 },
-  ];
-  const midRankCenter =
-    (Math.ceil(midCount / midClumps.length) - 1) * 0.5;
+function sampleElevationRange(worldState) {
+  const centers = worldState.currentLayout?.centers ?? [];
+  const center = centers[0] ?? { cx: 0, cz: 0, radius: 20 };
+  let low = Infinity;
+  let high = -Infinity;
+  // A fixed lattice rather than a roll: the range must not depend on which
+  // stream happens to be reading it.
+  for (let ring = 0; ring <= 4; ring++) {
+    const radial = (ring / 4) * center.radius;
+    for (let spoke = 0; spoke < 12; spoke++) {
+      const angle = (spoke / 12) * Math.PI * 2;
+      const height = worldState.heightFn(
+        center.cx + Math.cos(angle) * radial,
+        center.cz + Math.sin(angle) * radial,
+      );
+      low = Math.min(low, height);
+      high = Math.max(high, height);
+    }
+  }
+  return { low, span: Math.max(0.35, high - low) };
+}
 
-  for (let index = 0; index < midCount; index++) {
-    const clump = midClumps[index % midClumps.length];
-    const rank =
-      Math.floor(index / midClumps.length) - midRankCenter;
-    const angle =
-      baseAngle +
-      clump.angle +
-      rank * 0.16 +
-      rng.range(-0.13, 0.13);
-    const radius =
-      clump.radius +
-      rank * 0.32 +
-      rng.range(-0.2, 0.24);
-    flora.push({
-      role: "mid",
-      ordinal: index,
-      x: anchor.x + Math.cos(angle) * radius,
-      z: anchor.z + Math.sin(angle) * radius,
-      scale: rng.range(0.88, 1.12),
+function sampleHabitat(worldState, elevationRange, x, z) {
+  const layout = worldState.currentLayout;
+  const centers = layout?.centers ?? [];
+  const center = centers[0] ?? { cx: 0, cz: 0, radius: 20 };
+  const surface = sampleFootprint(worldState, x, z, 1.15);
+  return {
+    y: surface.center,
+    min: surface.min,
+    falloff: maxIslandFalloff(layout, x, z),
+    elevation: Math.min(
+      1,
+      Math.max(0, (surface.center - elevationRange.low) / elevationRange.span),
+    ),
+    slope: Math.min(1, surface.variance / 0.9),
+    edge: Math.min(
+      1,
+      Math.hypot(x - center.cx, z - center.cz) / Math.max(center.radius, 1),
+    ),
+  };
+}
+
+/**
+ * Per-role plant budgets for a full-quality field.
+ *
+ * The first cut placed 1 hero, 9 mid and 24 ground in three clumps at radius
+ * 4.4-5.5 from a single anchor — under 2% of a 46-unit island, which is why
+ * it read as an oasis rather than a world.
+ */
+const ROLE_BUDGET = Object.freeze({ hero: 3, mid: 52, ground: 118 });
+
+/** Negative space kept around the arrival clearing, in world units. */
+const CLEARING_RADIUS = 3.4;
+
+/** Minimum spacing between placements of the same role. */
+const ROLE_SPACING = Object.freeze({ hero: 14, mid: 1.9, ground: 2.4 });
+
+function pickPatchCenters(worldState, elevationRange, seed, count) {
+  const centers = worldState.currentLayout?.centers ?? [];
+  const island = centers[0] ?? { cx: 0, cz: 0, radius: 20 };
+  const patches = [];
+  // A namespaced stream per patch: adding a species must not move where the
+  // patches themselves land.
+  for (let index = 0; index < count; index++) {
+    const rng = createRng(hashSeed("kinwild/patch", index, seed));
+    let best = null;
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const angle = index * GOLDEN_ANGLE + rng.range(-0.5, 0.5);
+      const radial = Math.sqrt(rng.range(0.04, 0.94)) * island.radius;
+      const x = island.cx + Math.cos(angle) * radial;
+      const z = island.cz + Math.sin(angle) * radial;
+      const habitat = sampleHabitat(worldState, elevationRange, x, z);
+      if (habitat.falloff < 0.62 || habitat.min < MIN_SURFACE_Y) continue;
+      const spread = patches.reduce(
+        (worst, patch) => Math.min(worst, Math.hypot(x - patch.x, z - patch.z)),
+        Infinity,
+      );
+      const score = Math.min(spread, island.radius * 0.7) + habitat.falloff * 3;
+      if (!best || score > best.score) best = { x, z, habitat, score };
+    }
+    if (!best) continue;
+    patches.push({
+      index,
+      x: best.x,
+      z: best.z,
+      radius: island.radius * rng.range(0.16, 0.34),
+      habitat: best.habitat,
+      // Each patch leans toward one tier, which is what makes the island read
+      // as a set of places rather than an even sprinkle.
+      weight: Object.freeze({
+        hero: rng.range(0.2, 1),
+        mid: rng.range(0.35, 1),
+        ground: rng.range(0.4, 1),
+      }),
     });
   }
+  return patches;
+}
 
-  const groundClumps = [
-    { angle: facingAngle - 1.08, radius: 4.75 },
-    { angle: facingAngle + 1.12, radius: 4.45 },
-    { angle: facingAngle + 2.35, radius: 5.15 },
-    { angle: facingAngle + 3.55, radius: 5.45 },
-  ];
-  const groundRankCenter =
-    (Math.ceil(groundCount / groundClumps.length) - 1) * 0.5;
-  for (let index = 0; index < groundCount; index++) {
-    const clump = groundClumps[index % groundClumps.length];
-    const rank =
-      Math.floor(index / groundClumps.length) -
-      groundRankCenter;
-    const angle =
-      baseAngle * 0.65 +
-      clump.angle +
-      rank * 0.11 +
-      rng.range(-0.16, 0.16);
-    const radius =
-      clump.radius +
-      rank * 0.18 +
-      rng.range(-0.18, 0.22);
-    flora.push({
-      role: "ground",
-      ordinal: index,
-      x: anchor.x + Math.cos(angle) * radius,
-      z: anchor.z + Math.sin(angle) * radius,
-      scale: rng.range(0.84, 1.14),
-    });
+function pickPatch(patches, role, roll) {
+  const total = patches.reduce((sum, patch) => sum + patch.weight[role], 0);
+  if (total <= 0) return patches[0];
+  let cursor = roll * total;
+  for (const patch of patches) {
+    cursor -= patch.weight[role];
+    if (cursor <= 0) return patch;
+  }
+  return patches[patches.length - 1];
+}
+
+/**
+ * An island-wide composed layout.
+ *
+ * Placements are drawn inside habitat patches rather than scattered globally,
+ * so the field reads as a set of places instead of an even sprinkle. The
+ * arrival clearing survives as the hero's site with negative space kept
+ * around it, and every stream is namespaced by patch and role so adding a
+ * species cannot shift the terrain or the placements that already exist.
+ */
+export function planLivingComposition(seed, anchor, { worldState, lowfx = LOWFX } = {}) {
+  if (!worldState?.heightFn || !worldState.currentLayout) {
+    throw new TypeError("planLivingComposition requires a world to compose onto");
+  }
+  const density = lowfx ? LOWFX_DENSITY : 1;
+  const faunaCount = lowfx ? 2 : 5;
+  const baseRng = createRng(hashSeed(seed, LIVING_WORLD_STYLE_ID, "composition/layout"));
+
+  const elevationRange = sampleElevationRange(worldState);
+  const patchCount = Math.max(4, Math.round((5 + baseRng.int(0, 4)) * (lowfx ? 0.7 : 1)));
+  const patches = pickPatchCenters(worldState, elevationRange, seed, patchCount);
+  const island = worldState.currentLayout.centers?.[0] ?? { cx: 0, cz: 0, radius: 20 };
+
+  const flora = [];
+  const placed = [];
+  // The hero holds the arrival clearing; the composition is built around it
+  // rather than replacing it.
+  flora.push({
+    role: "hero",
+    ordinal: 0,
+    x: anchor.x,
+    z: anchor.z,
+    scale: 1,
+    patch: -1,
+    habitat: Object.freeze(
+      sampleHabitat(worldState, elevationRange, anchor.x, anchor.z),
+    ),
+  });
+  placed.push({ role: "hero", x: anchor.x, z: anchor.z });
+
+  for (const role of ["hero", "mid", "ground"]) {
+    const target = Math.max(role === "hero" ? 1 : 0, Math.round(ROLE_BUDGET[role] * density));
+    const spacing = ROLE_SPACING[role];
+    const rng = createRng(hashSeed("kinwild/composition", role, seed));
+    let ordinal = role === "hero" ? 1 : 0;
+
+    for (let attempt = 0; attempt < target * 12 && ordinal < target; attempt++) {
+      const patch = pickPatch(patches, role, rng.next());
+      if (!patch) break;
+      const angle = rng.range(0, Math.PI * 2);
+      const radial = Math.sqrt(rng.next()) * patch.radius;
+      const x = patch.x + Math.cos(angle) * radial;
+      const z = patch.z + Math.sin(angle) * radial;
+
+      if (Math.hypot(x - anchor.x, z - anchor.z) < CLEARING_RADIUS) continue;
+      const habitat = sampleHabitat(worldState, elevationRange, x, z);
+      if (habitat.falloff < 0.6 || habitat.min < MIN_SURFACE_Y) continue;
+      if (habitat.slope > (role === "ground" ? 0.72 : 0.55)) continue;
+      const crowded = placed.some(
+        (entry) =>
+          entry.role === role && Math.hypot(x - entry.x, z - entry.z) < spacing,
+      );
+      if (crowded) continue;
+
+      flora.push({
+        role,
+        ordinal,
+        x,
+        z,
+        scale: rng.range(role === "hero" ? 0.9 : 0.84, role === "hero" ? 1.1 : 1.16),
+        patch: patch.index,
+        habitat: Object.freeze(habitat),
+      });
+      placed.push({ role, x, z });
+      ordinal++;
+    }
   }
 
+  // Kin are re-homed onto patches. Orbiting the arrival clearing was right
+  // when the clearing was the whole field; on a populated island it reads as
+  // pacing one spot.
   const fauna = [];
   for (let index = 0; index < faunaCount; index++) {
+    const rng = createRng(hashSeed("kinwild/fauna-path", index, seed));
+    const home = patches.length > 0 ? patches[index % patches.length] : null;
     fauna.push({
       ordinal: index,
-      phase:
-        -0.68 +
-        (index / faunaCount) * Math.PI * 2 +
-        (index === 0 ? 0 : baseAngle * 0.35),
-      orbitRadius: 5.25 + (index % 2) * 1.15 + rng.range(-0.16, 0.22),
+      phase: -0.68 + (index / faunaCount) * Math.PI * 2,
+      home: Object.freeze(
+        home ? { x: home.x, z: home.z } : { x: anchor.x, z: anchor.z },
+      ),
+      orbitRadius: Math.min(island.radius * 0.42, 5.6 + rng.range(0, 6.4)),
       direction: index % 2 === 0 ? 1 : -1,
-      speed: rng.range(0.42, 0.62),
+      speed: rng.range(0.42, 0.66),
       scale: index === faunaCount - 1 && faunaCount > 2 ? 1.08 : rng.range(1.28, 1.48),
     });
   }
@@ -237,6 +363,16 @@ export function planLivingComposition(seed, anchor, { lowfx = LOWFX } = {}) {
   return Object.freeze({
     styleId: LIVING_WORLD_STYLE_ID,
     anchor: Object.freeze({ ...anchor }),
+    patches: Object.freeze(
+      patches.map((patch) =>
+        Object.freeze({
+          index: patch.index,
+          x: patch.x,
+          z: patch.z,
+          radius: patch.radius,
+        }),
+      ),
+    ),
     flora: Object.freeze(flora.map((record) => Object.freeze(record))),
     fauna: Object.freeze(fauna.map((record) => Object.freeze(record))),
   });
@@ -474,8 +610,10 @@ function registerFloraAffordances(runtime, flora) {
 
 function addLivingFlora(runtime, recipe, species, provider, record) {
   const footprint = species.bounds.footprintRadius * record.scale;
+  // The first hero holds the arrival clearing. Later heroes are landmarks
+  // elsewhere on the island and take the position the composition planned.
   const pose =
-    recipe.role === "hero"
+    recipe.role === "hero" && record.ordinal === 0
       ? {
           x: runtime.composition.anchor.x,
           y: runtime.worldState.heightFn(
@@ -544,7 +682,7 @@ function addLivingFlora(runtime, recipe, species, provider, record) {
     };
     runtime.worldState.obstacles.push(obstacle);
     runtime.registrations.obstacles.push(obstacle);
-    runtime.hero = flora;
+    if (!runtime.hero) runtime.hero = flora;
   }
   return flora;
 }
@@ -604,15 +742,24 @@ export function populateLivingFlora(runtime) {
       runtime.seed,
       heroSpecies?.bounds.footprintRadius ?? 2.4,
     );
-    runtime.composition = planLivingComposition(runtime.seed, anchor);
+    runtime.composition = planLivingComposition(runtime.seed, anchor, {
+      worldState: runtime.worldState,
+    });
   }
 
   for (const record of runtime.composition.flora) {
     const options = byRole.get(record.role);
     if (!options?.length) continue;
-    // Keyed on the placement ordinal, not a fresh roll: the same seed must
-    // plant the same species in the same spot on every regeneration.
-    const choice = options[record.ordinal % options.length];
+    // Habitat decides, with the placement ordinal as the tie-break — never a
+    // fresh roll, so the same seed plants the same species in the same spot on
+    // every regeneration. A reed wants low flat ground, a spire wants a ridge;
+    // letting the site choose is what stops a patch reading as a shuffle.
+    const choice = options.reduce((best, option, index) => {
+      const score =
+        habitatScore(option.recipe.archetype, record.habitat) *
+        (1 + ((record.ordinal + index) % options.length) * 1e-3);
+      return !best || score > best.score ? { ...option, score, index } : best;
+    }, null);
     addLivingFlora(runtime, choice.recipe, choice.species, choice.provider, record);
   }
   installLivingFieldLights(runtime);
@@ -701,10 +848,13 @@ function disposeLivingFaunaFacade(runtime, facade) {
 function faunaPathPoint(anchor, record, phase, out) {
   const lobe = Math.sin(phase * 2 + record.ordinal * 0.7) * 0.52;
   const radius = record.orbitRadius + lobe;
+  // Kin orbit their home patch, not the arrival clearing — on a populated
+  // island a shared centre reads as several creatures pacing one spot.
+  const home = record.home ?? anchor;
   return out.set(
-    anchor.x + Math.cos(phase) * radius,
+    home.x + Math.cos(phase) * radius,
     0,
-    anchor.z + Math.sin(phase) * radius * 0.78,
+    home.z + Math.sin(phase) * radius * 0.78,
   );
 }
 
@@ -745,7 +895,9 @@ export function populateLivingFauna(runtime) {
   if (!runtime?.flags.generatedFauna || runtime.disposed) return 0;
   if (!runtime.composition) {
     const anchor = selectLivingWorldAnchor(runtime.worldState, runtime.seed);
-    runtime.composition = planLivingComposition(runtime.seed, anchor);
+    runtime.composition = planLivingComposition(runtime.seed, anchor, {
+      worldState: runtime.worldState,
+    });
   }
   const provider = runtime.creatureProvider ?? makeCreatureProvider();
   runtime.creatureProvider = provider;
@@ -837,7 +989,9 @@ export function introduceLivingFauna(runtime, dna, authoring = {}) {
   }
   if (!runtime.composition) {
     const anchor = selectLivingWorldAnchor(runtime.worldState, runtime.seed);
-    runtime.composition = planLivingComposition(runtime.seed, anchor);
+    runtime.composition = planLivingComposition(runtime.seed, anchor, {
+      worldState: runtime.worldState,
+    });
   }
   const provider = runtime.creatureProvider ?? makeCreatureProvider();
   runtime.creatureProvider = provider;

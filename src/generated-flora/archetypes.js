@@ -46,6 +46,7 @@ function jitterScale(rng, low = 0.84, high = 1.18) {
  * ------------------------------------------------------------------ */
 const canopy = {
   key: "canopy",
+  habitat: { elevation: [0.2, 0.8], slope: [0, 0.5], edge: [0, 0.75] },
   role: "hero",
   habit: "upright",
   affordances: ["landmark", "perch", "shelter"],
@@ -125,6 +126,7 @@ const canopy = {
  * ------------------------------------------------------------------ */
 const spire = {
   key: "spire",
+  habitat: { elevation: [0.55, 1], slope: [0, 0.7], edge: [0, 0.9] },
   role: "hero",
   habit: "upright",
   affordances: ["landmark", "perch"],
@@ -179,6 +181,7 @@ const spire = {
     },
     {
       key: "ring",
+      lod: true,
       type: "berry",
       params: { radius: s.budRadius * 0.34, elongation: 0.9 },
       material: {
@@ -232,6 +235,7 @@ const spire = {
  * ------------------------------------------------------------------ */
 const cap = {
   key: "cap",
+  habitat: { elevation: [0.05, 0.55], slope: [0, 0.35], edge: [0, 0.7] },
   role: "hero",
   habit: "upright",
   affordances: ["landmark", "perch", "shelter"],
@@ -309,6 +313,7 @@ const cap = {
     },
     {
       key: "spot",
+      lod: true,
       type: "berry",
       params: { radius: Math.max(0.045, s.capRadius * 0.07), elongation: 0.4 },
       material: {
@@ -321,6 +326,7 @@ const cap = {
     },
     {
       key: "filament",
+      lod: true,
       type: "tendril",
       params: {
         length: s.capDepth * 0.95,
@@ -331,6 +337,7 @@ const cap = {
     },
     {
       key: "pendant",
+      lod: true,
       type: "berry",
       params: {
         radius: Math.max(0.05, s.capRadius * 0.055),
@@ -441,6 +448,7 @@ const cap = {
  * ------------------------------------------------------------------ */
 const bell = {
   key: "bell",
+  habitat: { elevation: [0.2, 0.8], slope: [0, 0.45], edge: [0, 0.9] },
   role: "mid",
   habit: "clumping",
   affordances: ["nectar", "pollen"],
@@ -578,6 +586,7 @@ const bell = {
  * ------------------------------------------------------------------ */
 const frond = {
   key: "frond",
+  habitat: { elevation: [0, 0.5], slope: [0.1, 0.7], edge: [0.2, 1] },
   role: "mid",
   habit: "arching",
   affordances: ["shelter", "soft-cover"],
@@ -659,6 +668,7 @@ const frond = {
  * ------------------------------------------------------------------ */
 const pad = {
   key: "pad",
+  habitat: { elevation: [0.45, 1], slope: [0, 0.6], edge: [0.1, 1] },
   role: "mid",
   habit: "rosette",
   affordances: ["forage", "shelter"],
@@ -708,6 +718,7 @@ const pad = {
     },
     {
       key: "spine",
+      lod: true,
       type: "spine",
       params: {
         length: s.padRadius * 0.34,
@@ -751,6 +762,7 @@ const pad = {
  * ------------------------------------------------------------------ */
 const reed = {
   key: "reed",
+  habitat: { elevation: [0, 0.35], slope: [0, 0.3], edge: [0, 0.85] },
   role: "ground",
   habit: "clumping",
   affordances: ["soft-cover", "forage"],
@@ -848,6 +860,7 @@ const reed = {
  * ------------------------------------------------------------------ */
 const cover = {
   key: "cover",
+  habitat: { elevation: [0, 1], slope: [0, 0.7], edge: [0, 1] },
   role: "ground",
   habit: "creeping",
   affordances: ["forage", "soft-cover"],
@@ -920,6 +933,7 @@ const cover = {
  * ------------------------------------------------------------------ */
 const coral = {
   key: "coral",
+  habitat: { elevation: [0, 0.3], slope: [0, 0.5], edge: [0.3, 1] },
   role: "mid",
   habit: "upright",
   affordances: ["shelter", "perch"],
@@ -989,6 +1003,32 @@ const coral = {
     })),
   }),
 };
+
+
+/**
+ * How well a habitat suits an archetype.
+ *
+ * Each archetype states the window it prefers on three normalized axes —
+ * elevation, slope and distance from the island's centre. Outside the window
+ * the score falls off rather than cutting to zero, so a species is never
+ * unplaceable on a world whose terrain does not happen to offer its ideal.
+ */
+function windowScore(value, [low, high]) {
+  if (value >= low && value <= high) return 1;
+  const distance = value < low ? low - value : value - high;
+  return Math.max(0.05, 1 - distance * 2.2);
+}
+
+export function habitatScore(archetypeKey, habitat) {
+  const archetype = ARCHETYPES[archetypeKey];
+  if (!archetype || !habitat) return 1;
+  const preference = archetype.habitat;
+  return (
+    windowScore(habitat.elevation ?? 0.5, preference.elevation) *
+    windowScore(habitat.slope ?? 0, preference.slope) *
+    windowScore(habitat.edge ?? 0.5, preference.edge)
+  );
+}
 
 const ENTRIES = [canopy, spire, cap, bell, frond, pad, reed, cover, coral];
 

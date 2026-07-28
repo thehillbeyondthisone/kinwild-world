@@ -44,8 +44,7 @@ const VARIANTS_BY_ROLE = Object.freeze({ hero: 1, mid: 3, ground: 3 });
 /** How hard a touched plant squashes, per tier. Matches the old pivot pose. */
 const SQUASH_BY_ROLE = Object.freeze({ hero: 0.035, mid: 0.055, ground: 0.18 });
 
-/** Organs smaller than this collapse at distance instead of being drawn. */
-const LOD_ORGAN_REACH = 0.35;
+/** Where organs an archetype marks as detail stop being drawn. */
 const LOD_DISTANCE = LOWFX ? 32 : 60;
 
 function finite(value, fallback = 0) {
@@ -153,17 +152,17 @@ export function buildSpecies(rawDNA, options = {}) {
   const touchField = createTouchField();
   const squash = SQUASH_BY_ROLE[dna.role] ?? 0.05;
 
-  const bendMaterial = (material, reach) =>
+  const bendMaterial = (material, lod) =>
     applyTouchBend(material, {
       field: touchField,
       maxLean: dna.motion.maxLean,
       squash,
-      lodDistance: reach > 0 && reach < LOD_ORGAN_REACH ? LOD_DISTANCE : 0,
+      lodDistance: lod ? LOD_DISTANCE : 0,
       viewer: FLORA_VIEWER,
     });
 
-  if (compiled.stemMaterial) bendMaterial(compiled.stemMaterial, 0);
-  for (const plan of compiled.organPlans) bendMaterial(plan.material, plan.reach);
+  if (compiled.stemMaterial) bendMaterial(compiled.stemMaterial, false);
+  for (const plan of compiled.organPlans) bendMaterial(plan.material, plan.lod);
 
   // One batch set per structural variant. Batches are compact — a plant only
   // ever occupies rows in the variant it actually wears — so an unused

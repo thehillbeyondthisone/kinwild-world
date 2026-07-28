@@ -16,32 +16,6 @@ const {
 const { createLivingWorldBiome } = await import("../src/living-world/style.js");
 const { createFloraRoster } = await import("../src/living-world/roster.js");
 
-const originalRandom = Math.random;
-Math.random = () => {
-  throw new Error("composition planning must not consume ambient Math.random");
-};
-let planA;
-let planB;
-try {
-  const anchor = { x: 2, y: 0.4, z: -1 };
-  planA = planLivingComposition(0x1e, anchor, { lowfx: false });
-  planB = planLivingComposition(0x1e, anchor, { lowfx: false });
-} finally {
-  Math.random = originalRandom;
-}
-assert.deepEqual(planA, planB);
-assert.equal(planA.flora.filter((entry) => entry.role === "hero").length, 1);
-assert.equal(planA.flora.filter((entry) => entry.role === "mid").length, 9);
-assert.equal(planA.flora.filter((entry) => entry.role === "ground").length, 24);
-assert.equal(planA.fauna.length, 4);
-const lowfxPlan = planLivingComposition(0x1e, {
-  x: 2,
-  y: 0.4,
-  z: -1,
-}, { lowfx: true });
-assert.equal(lowfxPlan.flora.length, 15);
-assert.equal(lowfxPlan.fauna.length, 2);
-
 const biome = createLivingWorldBiome({
   id: "grove",
   ground: ["#111111", "#222222", "#333333"],
@@ -93,6 +67,34 @@ const worldState = {
   livingWorld: null,
 };
 
+// Composition planning is deterministic and never touches ambient randomness.
+// Its shape — how far it spreads, what it avoids — is asserted in
+// living-world-composition.test.mjs.
+const originalRandom = Math.random;
+Math.random = () => {
+  throw new Error("composition planning must not consume ambient Math.random");
+};
+let planA;
+let planB;
+try {
+  const anchor = { x: 2, y: 0.4, z: -1 };
+  planA = planLivingComposition(0x1e, anchor, { worldState, lowfx: false });
+  planB = planLivingComposition(0x1e, anchor, { worldState, lowfx: false });
+} finally {
+  Math.random = originalRandom;
+}
+assert.deepEqual(planA, planB);
+assert.equal(planA.flora.filter((entry) => entry.role === "hero").length >= 1, true);
+const lowfxPlan = planLivingComposition(
+  0x1e,
+  { x: 2, y: 0.4, z: -1 },
+  { worldState, lowfx: true },
+);
+assert.ok(
+  lowfxPlan.flora.length < planA.flora.length,
+  "LOWFX should thin the field, not rebuild it",
+);
+
 const anchorA = selectLivingWorldAnchor(worldState, 0x1e);
 const anchorB = selectLivingWorldAnchor(worldState, 0x1e);
 assert.deepEqual(anchorA, anchorB);
@@ -106,9 +108,14 @@ const runtime = createLivingWorldRuntime({
 worldState.livingWorld = runtime;
 const floraCount = populateLivingFlora(runtime);
 const faunaCount = populateLivingFauna(runtime);
-// Moves with plant footprints — a bigger hero rejects more nearby placements.
-assert.equal(floraCount, 32);
-assert.equal(faunaCount, 4);
+// The field fills the island now rather than one clearing. The exact number
+// moves with plant footprints and terrain, so this is a band, not a constant —
+// the spread itself is asserted in living-world-composition.test.mjs.
+assert.ok(
+  floraCount > 90,
+  `a field should populate the island, planted ${floraCount}`,
+);
+assert.equal(faunaCount, 5);
 assert.equal(worldState.creatures.length, faunaCount);
 assert.ok(worldState.obstacles.some((entry) => entry.kind === "living:hero"));
 assert.ok(worldState.flowerSpots.length > 0);
@@ -127,27 +134,20 @@ const midFamilies = new Set(
     .map((entry) => entry.recipe.family),
 );
 assert.ok(midFamilies.size > 1, "a single role should carry more than one species");
-// Placement is keyed on the composition ordinal, so the field is reproducible:
-// the species planted at each spot follows the plan, not a fresh roll.
+// Species selection is habitat-driven, not a fresh roll: the site picks the
+// plant. It must still be reproducible, and must only ever pick a species the
+// roster actually drew for that tier.
 const roster = createFloraRoster(biome, 0x1e);
-const rosterByRole = new Map();
+const familiesByRole = new Map();
 for (const recipe of roster) {
-  if (!rosterByRole.has(recipe.role)) rosterByRole.set(recipe.role, []);
-  rosterByRole.get(recipe.role).push(recipe);
+  if (!familiesByRole.has(recipe.role)) familiesByRole.set(recipe.role, new Set());
+  familiesByRole.get(recipe.role).add(recipe.family);
 }
-const expectedFamilies = runtime.composition.flora.map((record) => {
-  const options = rosterByRole.get(record.role);
-  return options[record.ordinal % options.length].family;
-});
-// A subsequence rather than an equality: a placement whose footprint cannot
-// be repaired onto usable ground is dropped, so the planted list is the plan
-// minus its rejections — but never re-ordered and never re-rolled.
-const planted = runtime.flora.map((entry) => entry.recipe.family);
-let cursor = 0;
-for (const family of planted) {
-  const found = expectedFamilies.indexOf(family, cursor);
-  assert.notEqual(found, -1, `${family} was planted out of the plan's order`);
-  cursor = found + 1;
+for (const entry of runtime.flora) {
+  assert.ok(
+    familiesByRole.get(entry.recipe.role).has(entry.recipe.family),
+    `${entry.recipe.family} is not in the roster's ${entry.recipe.role} tier`,
+  );
 }
 
 // Kin are distinct species rather than phenotypes of one.

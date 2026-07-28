@@ -161,8 +161,12 @@ export const FLORA_FAMILIES = Object.freeze([
     archetype: "cover",
     stems: ["Velvet", "Nap", "Down", "Thread"],
     shape: (rng) => ({
+      // Retuned for the island-wide composition: the field carries ~118
+      // groundcover patches now rather than 24, so a patch is a smaller
+      // contribution to a much larger whole. Keeping the old per-patch count
+      // would have quintupled the blade budget for the same coverage.
       patchRadius: rng.range(1.2, 3.4),
-      count: rng.int(60, 240),
+      count: rng.int(26, 96),
       bladeHeight: rng.range(0.18, 0.75),
       bladeWidth: rng.range(0.05, 0.16),
       clumpiness: rng.range(0.35, 0.95),

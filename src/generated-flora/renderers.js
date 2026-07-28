@@ -330,6 +330,11 @@ export function compileArchetype(dna, colors, { variantCount = 1 } = {}) {
     key: plan.key,
     type: plan.type,
     reach: plan.reach ?? 0,
+    // Detail organs are the ones a plant can lose at distance without
+    // changing its silhouette. Declared, not inferred from size: a
+    // groundcover blade is small and still load-bearing for how the far side
+    // of the island reads.
+    lod: plan.lod === true,
     colorSlot: plan.material.colorSlot,
     vertexColors: plan.material.vertexColors ?? false,
     bloom: plan.material.bloom ?? false,

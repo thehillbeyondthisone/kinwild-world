@@ -57,7 +57,17 @@ export function jitterGeo(geo, amount = 0.05, { sphericalUvs = false } = {}) {
  * @param {number} [strength=1.0] - per-material wind sway multiplier
  * @returns {THREE.Material} the same `material`, mutated
  */
-export function applyWindSway(material, strength = 1.0) {
+/**
+ * @param {THREE.Material} material
+ * @param {number} [strength]
+ * @param {{plantRelative?: boolean}} [options] `plantRelative` drives the sway
+ *   from height above `aPlantBase` instead of from local geometry Y. Batched
+ *   generated flora needs it: a plant is rows of organ geometry there, each
+ *   built around its own origin, so `transformed.y` is the height within a
+ *   leaf rather than the height up the tree. Donor flora builds a whole plant
+ *   as one mesh and is already plant-relative — do not pass this for those.
+ */
+export function applyWindSway(material, strength = 1.0, { plantRelative = false } = {}) {
   // Chain any prior onBeforeCompile so multiple patches on the same material
   // compose cleanly. `prev` is the previous handler captured before reassign;
   // it's necessarily a different function than the closure we install below.
@@ -70,14 +80,23 @@ export function applyWindSway(material, strength = 1.0) {
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
-        "#include <common>\nuniform float uTime;\nuniform float uWindStrength;\nuniform float uFoliageWind;"
+        `#include <common>
+uniform float uTime;
+uniform float uWindStrength;
+uniform float uFoliageWind;${plantRelative ? `
+// Guarded because the batched-flora touch patch declares the same attribute,
+// and the two patches are installed in either order on the same material.
+#ifndef KW_PLANT_BASE_DECLARED
+#define KW_PLANT_BASE_DECLARED
+attribute vec4 aPlantBase;
+#endif` : ""}`
       )
       .replace(
         "#include <begin_vertex>",
         `#include <begin_vertex>
         {
-          float windY = max(transformed.y, 0.0);
-          float windAmp = windY * windY * uWindStrength * uFoliageWind;
+          ${plantRelative ? "" : `float windY = max(transformed.y, 0.0);
+          float windAmp = windY * windY * uWindStrength * uFoliageWind;`}
           // World-space wind: noise is sampled in world coords so neighbouring
           // instances bend coherently. For InstancedMesh with random per-instance
           // Y yaw (wildflowers, etc.) the world-space bend has to be inverse-
@@ -87,15 +106,32 @@ export function applyWindSway(material, strength = 1.0) {
           // motion instead of "wind blowing through." Same trick the grass
           // shader uses.
           #ifdef USE_INSTANCING
-            vec4 wp = modelMatrix * instanceMatrix * vec4(transformed, 1.0);
+            vec4 kwInstance = instanceMatrix * vec4(transformed, 1.0);
+            vec4 wp = modelMatrix * kwInstance;
             vec2 axW = vec2(instanceMatrix[0].x, instanceMatrix[0].z);
             vec2 azW = vec2(instanceMatrix[2].x, instanceMatrix[2].z);
             float invXZScaleSq = 1.0 / max(dot(axW, axW), 1e-6);
+            ${plantRelative ? `// Height up the *plant*, not up the organ. A batched leaf is
+            // built around its own origin, so local Y says how far up the leaf
+            // a vertex is — every leaf on a tree would sway identically.
+            // Amplitude scales with the plant's span so a tall crown travels
+            // further than a groundcover blade, as it should.
+            //
+            // Calibrated against the donor tree, which is the established
+            // look: its crown travels ~2.5% of plant height at strength 0.18.
+            // A generated canopy at the hero tier's ~0.25 lands at ~1.5%, and
+            // groundcover at ~1.2 lands at ~7% — heroes barely move, grass
+            // whips, which is what the roster's motion ranges intend.
+            float kwSpan = max(aPlantBase.w, 1e-3);
+            float kwT = clamp((kwInstance.y - aPlantBase.y) / kwSpan, 0.0, 1.0);
+            float windAmp = kwT * kwT * kwSpan * uWindStrength * uFoliageWind;` : ""}
           #else
             vec4 wp = modelMatrix * vec4(transformed, 1.0);
             vec2 axW = vec2(1.0, 0.0);
             vec2 azW = vec2(0.0, 1.0);
             float invXZScaleSq = 1.0;
+            ${plantRelative ? `float windY = max(transformed.y, 0.0);
+            float windAmp = windY * windY * uWindStrength * uFoliageWind;` : ""}
           #endif
           float w1 = sin(uTime * 1.4 + wp.x * 0.30 + wp.z * 0.40);
           float w2 = sin(uTime * 0.9 + wp.x * 0.15 - wp.z * 0.25);

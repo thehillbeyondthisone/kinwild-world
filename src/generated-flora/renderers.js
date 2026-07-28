@@ -60,7 +60,7 @@ function makeMaterial(resources, color, {
   });
   material.userData.generatedFlora = true;
   material.userData.windStrength = wind;
-  if (wind > 0) applyWindSway(material, wind);
+  if (wind > 0) applyWindSway(material, wind, { plantRelative: true });
   return resources.material(material);
 }
 

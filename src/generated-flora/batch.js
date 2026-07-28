@@ -116,7 +116,12 @@ uniform float uFloraMaxLean;
 uniform float uFloraSquash;
 uniform float uFloraLodDistance;
 uniform vec3 uFloraViewer;
-attribute vec3 aPlantBase;
+// Guarded because applyWindSway's plant-relative variant declares the same
+// attribute, and the two patches are installed in either order.
+#ifndef KW_PLANT_BASE_DECLARED
+#define KW_PLANT_BASE_DECLARED
+attribute vec4 aPlantBase;
+#endif
 attribute float aPlantIndex;
 `;
 
@@ -132,7 +137,7 @@ vec4 mvPosition = vec4( transformed, 1.0 );
       ( floor( aPlantIndex / uFloraTouchSize.x ) + 0.5 ) / uFloraTouchSize.y
     );
     vec4 touch = texture2D( uFloraTouch, touchUv );
-    vec3 rel = mvPosition.xyz - aPlantBase;
+    vec3 rel = mvPosition.xyz - aPlantBase.xyz;
 
     // Squash on impact, matching the pivot scale the group pose used to apply.
     float impact = touch.w * uFloraSquash;
@@ -148,15 +153,15 @@ vec4 mvPosition = vec4( transformed, 1.0 );
       rel = rel * c + cross( axis, rel ) * s + axis * dot( axis, rel ) * ( 1.0 - c );
     }
 
-    mvPosition.xyz = aPlantBase + rel;
+    mvPosition.xyz = aPlantBase.xyz + rel;
 
     // Distance LOD: small detail organs collapse into the plant's base
     // rather than being culled per row on the CPU, which would mean
     // rewriting matrices every time the camera moved.
     if ( uFloraLodDistance > 0.0 ) {
-      float viewerDistance = distance( aPlantBase, uFloraViewer );
+      float viewerDistance = distance( aPlantBase.xyz, uFloraViewer );
       if ( viewerDistance > uFloraLodDistance ) {
-        mvPosition.xyz = aPlantBase;
+        mvPosition.xyz = aPlantBase.xyz;
       }
     }
   }
@@ -233,7 +238,7 @@ export function createBatch({ name, geometry, material, stride, capacity = 16 })
     created.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     const rows = plantCapacity * stride;
-    const base = new THREE.InstancedBufferAttribute(new Float32Array(rows * 3), 3);
+    const base = new THREE.InstancedBufferAttribute(new Float32Array(rows * 4), 4);
     const index = new THREE.InstancedBufferAttribute(new Float32Array(rows), 1);
     created.userData.plantBase = base;
     created.userData.plantIndex = index;
@@ -300,12 +305,14 @@ export function createBatch({ name, geometry, material, stride, capacity = 16 })
       activePlants = Math.min(plantCapacity, Math.max(activePlants, count));
       mesh.count = activePlants * stride;
     },
-    setRow(row, matrix, plantIndex, base) {
+    /** `span` is the plant's height, which the wind shader needs to normalize. */
+    setRow(row, matrix, plantIndex, base, span) {
       mesh.setMatrixAt(row, matrix);
       const attribute = mesh.userData.plantBase;
-      attribute.array[row * 3] = base.x;
-      attribute.array[row * 3 + 1] = base.y;
-      attribute.array[row * 3 + 2] = base.z;
+      attribute.array[row * 4] = base.x;
+      attribute.array[row * 4 + 1] = base.y;
+      attribute.array[row * 4 + 2] = base.z;
+      attribute.array[row * 4 + 3] = span;
       attribute.needsUpdate = true;
       mesh.userData.plantIndex.array[row] = plantIndex;
       mesh.userData.plantIndex.needsUpdate = true;

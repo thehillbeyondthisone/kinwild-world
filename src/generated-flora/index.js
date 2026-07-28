@@ -258,13 +258,16 @@ export function buildSpecies(rawDNA, options = {}) {
     const writeRows = () => {
       group.updateMatrix();
       basePoint.setFromMatrixPosition(group.matrix);
+      // The wind shader normalizes height against the plant's own span, so it
+      // travels with the row rather than being looked up per species.
+      const span = compiled.metrics.height * Math.abs(group.scale.y);
       for (const [key, batch] of variantState.batches) {
         batch.ensureCapacity(variantState.slots.high);
         batch.setActivePlants(variantState.slots.high);
         const start = batch.rowsFor(slot);
         if (key === "__stem") {
           rowMatrix.multiplyMatrices(group.matrix, restMatrix);
-          batch.setRow(start, rowMatrix, plantIndex, basePoint);
+          batch.setRow(start, rowMatrix, plantIndex, basePoint, span);
         } else {
           const placements = layout[key] ?? [];
           for (let index = 0; index < batch.stride; index++) {
@@ -277,7 +280,7 @@ export function buildSpecies(rawDNA, options = {}) {
             rowMatrix
               .multiplyMatrices(group.matrix, restMatrix)
               .multiply(placementMatrix);
-            batch.setRow(start + index, rowMatrix, plantIndex, basePoint);
+            batch.setRow(start + index, rowMatrix, plantIndex, basePoint, span);
           }
         }
         batch.flush();

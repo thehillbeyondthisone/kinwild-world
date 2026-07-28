@@ -30,6 +30,7 @@ import {
 } from "./style.js";
 import { habitatScore } from "../generated-flora/archetypes.js";
 import { createFaunaRoster, createFloraRoster } from "./roster.js";
+import { createKinNeeds, releaseKinGoal, stepKinGoal } from "./kin-goals.js";
 
 /**
  * The hero plant blocks ground creatures whatever it is. It was named for the
@@ -845,6 +846,9 @@ function disposeLivingFaunaFacade(runtime, facade) {
   const index = runtime.fauna.findIndex((actor) => actor.facade === facade);
   if (index < 0) return facade.generatedAgent.dispose();
   const [actor] = runtime.fauna.splice(index, 1);
+  // Drop the claim first: capacity is counted by walking live actors, so a
+  // removed one must not keep holding an affordance against the rest.
+  releaseKinGoal(actor);
   const creatureIndex = runtime.worldState.creatures.indexOf(facade);
   if (creatureIndex >= 0) {
     runtime.worldState.creatures.splice(creatureIndex, 1);
@@ -944,6 +948,7 @@ function addLivingFaunaActor(runtime, provider, dna, record) {
     phase: record.phase,
     position: initial,
     velocity: new THREE.Vector3(),
+    needs: createKinNeeds(record.ordinal),
     nextProximityAt: record.ordinal * 0.07,
     intent: null,
     frame: null,
@@ -1105,6 +1110,52 @@ function installPresentationReactions(runtime) {
   runtime.unsubscribers.push(unsubscribe);
 }
 
+/**
+ * Steer around what is in the way, rather than only being pushed out of it.
+ *
+ * `resolveAgainstObstacles` corrects a position after the fact — it never
+ * changes where the actor was trying to go. That was survivable while kin
+ * followed an orbit, whose target sweeps past an obstacle rather than sitting
+ * behind it. With real goals it is not: a kin whose destination lies straight
+ * through a hero plant presses into it every frame and the resolver pushes it
+ * back out by the same amount, so it stands still. Measured before this
+ * existed: one kin of five held at the same spot for three simulated minutes
+ * with every need pinned at 1.0 while the others roamed freely.
+ *
+ * The donor world has the same idea in `avoidObstacles`' slide heading. This
+ * is the steering half: deflect the intended direction along the tangent of
+ * the nearest blocker ahead, on whichever side the actor is already favouring.
+ */
+function deflectAroundObstacles(runtime, actor, toward) {
+  const length = Math.hypot(toward.x, toward.z);
+  if (length < 1e-4) return;
+  const dirX = toward.x / length;
+  const dirZ = toward.z / length;
+  const radius = Math.max(0.32, actor.agent.traits.radius * 0.68);
+  const reach = Math.min(length, 3.4);
+
+  let blocker = null;
+  for (const obstacle of runtime.worldState.obstacles ?? []) {
+    const toObstacleX = obstacle.x - actor.position.x;
+    const toObstacleZ = obstacle.z - actor.position.z;
+    const ahead = toObstacleX * dirX + toObstacleZ * dirZ;
+    if (ahead <= 0 || ahead > reach) continue;
+    // Signed distance from the intended line, so the sign says which way to go.
+    const lateral = toObstacleX * -dirZ + toObstacleZ * dirX;
+    const clearance = finite(obstacle.r) + radius + 0.3;
+    if (Math.abs(lateral) >= clearance) continue;
+    if (!blocker || ahead < blocker.ahead) blocker = { ahead, lateral, clearance };
+  }
+  if (!blocker) return;
+
+  // Push perpendicular, away from the obstacle's centre. A dead-on approach
+  // (lateral ~0) still resolves, deterministically, to one side.
+  const side = blocker.lateral >= 0 ? -1 : 1;
+  const push = (blocker.clearance - Math.abs(blocker.lateral)) * side;
+  toward.x += -dirZ * push;
+  toward.z += dirX * push;
+}
+
 function resolveAgainstObstacles(runtime, actor, candidate) {
   const radius = Math.max(0.32, actor.agent.traits.radius * 0.68);
   for (const obstacle of runtime.worldState.obstacles ?? []) {
@@ -1180,9 +1231,19 @@ function stepLivingFauna(runtime, dt, time, camera) {
       dt *
       record.direction *
       (record.speed / Math.max(record.orbitRadius, 0.1));
-    faunaPathPoint(anchor, record, actor.phase, desired);
+
+    // The field says what it offers; the kin decide what to do about it. The
+    // orbit remains the fallback for a field with nothing matching an actor's
+    // needs — and for authored kin introduced into an empty registry — so
+    // behaviour degrades to the old pacing rather than stalling.
+    const pursuit = stepKinGoal(runtime, actor, dt, time, desired);
+    if (!pursuit.goal) faunaPathPoint(anchor, record, actor.phase, desired);
+
     const toward = desired.sub(actor.position);
-    const maxSpeed = record.speed * 1.35;
+    deflectAroundObstacles(runtime, actor, toward);
+    // Ease off on arrival instead of vibrating on the spot.
+    const arrivalEase = pursuit.arrived ? 0.35 : 1;
+    const maxSpeed = record.speed * 1.35 * arrivalEase;
     if (toward.lengthSq() > maxSpeed * maxSpeed) toward.setLength(maxSpeed);
     candidate.copy(actor.position).addScaledVector(toward, dt);
     resolveAgainstObstacles(runtime, actor, candidate);
@@ -1234,9 +1295,11 @@ function stepLivingFauna(runtime, dt, time, camera) {
     actor.intent.lookTarget = lookTarget;
     actor.intent.action = lookTarget
       ? "notice"
-      : actor.velocity.lengthSq() > 0.025
-        ? "wander"
-        : "arrive";
+      : pursuit.arrived
+        ? pursuit.action
+        : actor.velocity.lengthSq() > 0.025
+          ? "wander"
+          : "arrive";
     actor.frame.dt = dt;
     actor.frame.time = time;
     const frame = agent.update(actor.frame);

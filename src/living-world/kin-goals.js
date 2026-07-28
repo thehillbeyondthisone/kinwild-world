@@ -1,0 +1,309 @@
+/**
+ * What a kin is trying to do.
+ *
+ * Every plant in the field advertises what it offers — `registrations
+ * .affordances` carries one record per affordance, with a position, a radius
+ * and a capacity. Until now only the observatory read them: the field
+ * published an ecology and nothing consumed it, while the kin walked a fixed
+ * lissajous orbit around their home patch. On a clearing of 34 plants that
+ * read as pacing; on an island of 140 it read as ignoring the world.
+ *
+ * This module supplies the goal. It does not move anything — `stepLivingFauna`
+ * still owns steering, obstacle resolution, edge repair and the gait solver.
+ * All that changes is where the actor is heading, which is the smallest seam
+ * that makes the field matter.
+ *
+ * Per-frame behaviour runs after `generateWorld` restores the real
+ * `Math.random`, so this is outside the seeded window and free to jitter — the
+ * same latitude `stepCreature` takes in the donor world.
+ *
+ * DOM-free.
+ */
+
+/**
+ * The needs a kin carries, each mapping to the affordance types that answer
+ * it. Rates are per second: forage comes back fastest, attending to a
+ * landmark is a slow curiosity.
+ */
+export const KIN_NEEDS = Object.freeze([
+  Object.freeze({
+    key: "forage",
+    types: Object.freeze(["forage", "nectar"]),
+    rate: 0.055,
+    dwell: Object.freeze([3.5, 6.5]),
+    action: "graze",
+  }),
+  Object.freeze({
+    key: "shelter",
+    types: Object.freeze(["shelter", "soft-cover"]),
+    rate: 0.034,
+    dwell: Object.freeze([4.5, 9]),
+    action: "settle",
+  }),
+  Object.freeze({
+    key: "attend",
+    types: Object.freeze(["landmark", "pollen", "perch"]),
+    rate: 0.021,
+    dwell: Object.freeze([2.5, 5]),
+    action: "notice",
+  }),
+]);
+
+/** Below this a need is not worth crossing the island for. */
+const NEED_THRESHOLD = 0.28;
+
+/** How far a kin will consider travelling, in world units. */
+const MAX_TRAVEL = 26;
+
+/** Where the approach stops curving and starts homing. */
+const APPROACH_ARC = 6;
+
+/**
+ * How often a goalless kin reconsiders, in seconds.
+ *
+ * Deciding every frame is both wasteful — the scan is over every affordance
+ * in the field — and worse behaviour, since a kin with two equally good
+ * options would dither between them at frame rate.
+ */
+const DECIDE_INTERVAL = 0.4;
+
+/**
+ * How long a kin will pursue one goal before giving up on it, in seconds.
+ *
+ * Without this a goal it cannot physically reach is held forever: obstacle
+ * resolution holds the kin just outside the arrival radius, so it never
+ * arrives, never dwells, never drains and never reconsiders. Observed as one
+ * kin of five standing still for three minutes with every need pinned at 1.0.
+ */
+const PURSUIT_TIMEOUT = 22;
+
+/** A need this low is met; there is no point standing there any longer. */
+const SATISFIED = 0.08;
+
+/**
+ * Per-actor need state. Seeded off the ordinal so two kin created together do
+ * not move in lockstep, then advanced purely by time.
+ */
+export function createKinNeeds(ordinal = 0) {
+  const levels = {};
+  for (const [index, need] of KIN_NEEDS.entries()) {
+    // Staggered starts, so a fresh field does not send every kin foraging on
+    // the same frame.
+    levels[need.key] = ((ordinal * 0.37 + index * 0.29) % 1) * 0.6;
+  }
+  return {
+    levels,
+    goal: null,
+    dwellUntil: 0,
+    arc: ordinal * 1.7,
+    // Staggered so a field of kin does not all scan on the same frame.
+    nextDecisionAt: ordinal * 0.11,
+    giveUpAt: 0,
+    // The affordance just finished with. Excluded from the next choice: a kin
+    // that has just grazed is standing on the nearest forage in the field, so
+    // without this it would re-pick the same plant and never leave it.
+    lastOrdinal: null,
+  };
+}
+
+function needByKey(key) {
+  return KIN_NEEDS.find((need) => need.key === key) ?? null;
+}
+
+/**
+ * Which affordances are already spoken for. Capacity is declared per
+ * affordance by the plant that offers it; honouring it is what stops every
+ * kin converging on one bloom.
+ */
+function claimCounts(runtime) {
+  const counts = new Map();
+  for (const actor of runtime.fauna) {
+    const ordinal = actor.needs?.goal?.ordinal;
+    if (ordinal === undefined) continue;
+    counts.set(ordinal, (counts.get(ordinal) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * How close a kin can actually get to a point.
+ *
+ * A plant's affordances sit at the plant, and a hero plant also registers a
+ * collision obstacle sized from its whole crown footprint — 5.77 units on a
+ * canopy. So a `shelter` or `landmark` goal is inside a circle the kin is
+ * pushed out of every frame: it would stand at the obstacle's edge forever,
+ * never arriving, never satisfying the need that sent it. Measured before this
+ * existed: one kin of five pinned at 6.72 from a goal with a 2.17 arrival
+ * radius for three simulated minutes.
+ *
+ * Standing at the trunk to shelter under a tree is the correct reading
+ * anyway, so the arrival radius grows to whatever the kin can reach rather
+ * than the affordance being skipped.
+ */
+function reachableRadius(runtime, actor, x, z, base) {
+  const obstacles = runtime.worldState?.obstacles ?? [];
+  if (obstacles.length === 0) return base;
+  // Mirrors the convention in `resolveAgainstObstacles`.
+  const body = Math.max(0.32, (actor.agent?.traits?.radius ?? 0.5) * 0.68);
+  let needed = base;
+  for (const obstacle of obstacles) {
+    const gap = Math.hypot(x - (obstacle.x ?? 0), z - (obstacle.z ?? 0));
+    const minDistance = (obstacle.r ?? 0) + body;
+    if (gap >= minDistance) continue;
+    needed = Math.max(needed, minDistance - gap + 0.45);
+  }
+  return needed;
+}
+
+/**
+ * Choose an affordance answering the actor's strongest need.
+ *
+ * Nearer is better, and a roomier affordance breaks ties, but the score keeps
+ * a little noise so a field of equivalent options does not send every kin to
+ * the same one.
+ */
+export function chooseKinGoal(runtime, actor) {
+  const needs = actor.needs;
+  let strongest = null;
+  for (const need of KIN_NEEDS) {
+    const level = needs.levels[need.key] ?? 0;
+    if (level < NEED_THRESHOLD) continue;
+    if (!strongest || level > needs.levels[strongest.key]) strongest = need;
+  }
+  if (!strongest) return null;
+
+  const affordances = runtime.registrations?.affordances ?? [];
+  if (affordances.length === 0) return null;
+
+  const claims = claimCounts(runtime);
+  let best = null;
+  for (const affordance of affordances) {
+    if (!strongest.types.includes(affordance.type)) continue;
+    if (affordance.ordinal === needs.lastOrdinal) continue;
+    const distance = Math.hypot(
+      affordance.x - actor.position.x,
+      affordance.z - actor.position.z,
+    );
+    if (distance > MAX_TRAVEL) continue;
+    if ((claims.get(affordance.ordinal) ?? 0) >= Math.max(1, affordance.capacity)) {
+      continue;
+    }
+    const score =
+      1 / (1 + distance * 0.22) +
+      Math.min(affordance.capacity, 6) * 0.012 +
+      Math.random() * 0.06;
+    if (!best || score > best.score) {
+      best = {
+        score,
+        ordinal: affordance.ordinal,
+        need: strongest.key,
+        action: strongest.action,
+        x: affordance.x,
+        z: affordance.z,
+        // Arrive somewhere on the plant, not inside its stem — and no closer
+        // than the plant's own collision envelope actually permits.
+        radius: reachableRadius(
+          runtime,
+          actor,
+          affordance.x,
+          affordance.z,
+          Math.max(0.55, affordance.radius * 0.85),
+        ),
+      };
+    }
+  }
+  return best;
+}
+
+/**
+ * Advance needs, hold or release a goal, and write the point the actor should
+ * steer toward into `out`.
+ *
+ * @returns {{action: string, arrived: boolean, goal: object|null}}
+ */
+export function stepKinGoal(runtime, actor, dt, time, out) {
+  const needs = actor.needs;
+  for (const need of KIN_NEEDS) {
+    needs.levels[need.key] = Math.min(
+      1,
+      (needs.levels[need.key] ?? 0) + need.rate * dt,
+    );
+  }
+  needs.arc += dt * 0.55;
+
+  // Dwelling: the need drains while the kin is actually at the thing that
+  // answers it, which is what makes a visit read as a visit.
+  if (needs.goal && needs.dwellUntil > 0) {
+    const need = needByKey(needs.goal.need);
+    if (need) {
+      needs.levels[need.key] = Math.max(
+        0,
+        needs.levels[need.key] - dt / Math.max(need.dwell[0], 0.5),
+      );
+    }
+    const met = need ? needs.levels[need.key] <= SATISFIED : false;
+    if (time >= needs.dwellUntil || met) {
+      needs.lastOrdinal = needs.goal.ordinal;
+      needs.goal = null;
+      needs.dwellUntil = 0;
+    } else {
+      out.set(needs.goal.x, 0, needs.goal.z);
+      return { action: need?.action ?? "arrive", arrived: true, goal: needs.goal };
+    }
+  }
+
+  if (!needs.goal) {
+    if (time < needs.nextDecisionAt) {
+      return { action: null, arrived: false, goal: null };
+    }
+    needs.nextDecisionAt = time + DECIDE_INTERVAL;
+    needs.goal = chooseKinGoal(runtime, actor);
+    if (!needs.goal) return { action: null, arrived: false, goal: null };
+    needs.giveUpAt = time + PURSUIT_TIMEOUT;
+    // Only the immediately preceding affordance is off-limits, and only until
+    // something else has been chosen — a two-plant field still works.
+    needs.lastOrdinal = null;
+  }
+
+  const goal = needs.goal;
+  if (time >= needs.giveUpAt) {
+    // Unreachable, or something got in the way. Drop it and let the next
+    // decision pick elsewhere; the abandoned one is skipped once so the kin
+    // does not immediately re-commit to it.
+    needs.lastOrdinal = goal.ordinal;
+    needs.goal = null;
+    needs.dwellUntil = 0;
+    return { action: null, arrived: false, goal: null };
+  }
+  const dx = goal.x - actor.position.x;
+  const dz = goal.z - actor.position.z;
+  const distance = Math.hypot(dx, dz);
+
+  if (distance <= goal.radius) {
+    const need = needByKey(goal.need);
+    const span = need ? need.dwell : [3, 5];
+    needs.dwellUntil = time + span[0] + Math.random() * (span[1] - span[0]);
+    out.set(goal.x, 0, goal.z);
+    return { action: need?.action ?? "arrive", arrived: true, goal };
+  }
+
+  // Curve in rather than beelining. The arc decays with distance so the last
+  // stretch is a straight, unhurried approach instead of a spiral.
+  const arc = Math.min(1, distance / APPROACH_ARC);
+  out.set(
+    goal.x + Math.cos(needs.arc) * 0.95 * arc,
+    0,
+    goal.z + Math.sin(needs.arc) * 0.95 * arc,
+  );
+  return { action: "travel", arrived: false, goal };
+}
+
+/**
+ * Release a goal — used when an actor is removed, so its claim does not hold
+ * an affordance's capacity against the kin still in the field.
+ */
+export function releaseKinGoal(actor) {
+  if (!actor?.needs) return;
+  actor.needs.goal = null;
+  actor.needs.dwellUntil = 0;
+}

@@ -787,7 +787,9 @@ function makeFaunaFacade(runtime, agent, dna, scale, ordinal) {
     genomeHash: agent.genomeHash,
     scale,
     segRadius: agent.traits.radius / Math.max(scale, 1e-6),
-    flies: false,
+    // The donor world's shadow discs and grass push both branch on these, so
+    // a flier has to report its state rather than claiming to be planted.
+    flies: agent.traits.airborne === true,
     isFish: false,
     isBee: false,
     landState: "landed",
@@ -899,6 +901,8 @@ function faunaDnaFor(species, seed, ordinal) {
     head: { ...species.head, offset: [...species.head.offset] },
     legs: { ...species.legs },
     motion: { ...species.motion },
+    locomotion: species.locomotion ?? "walker",
+    ...(species.wings ? { wings: { ...species.wings } } : {}),
   };
 }
 
@@ -918,12 +922,18 @@ export function populateLivingFauna(runtime) {
   const roster = createFaunaRoster(runtime.biome, runtime.seed);
   for (const record of runtime.composition.fauna) {
     const species = roster[record.ordinal % roster.length];
-    addLivingFaunaActor(runtime, provider, faunaDnaFor(species, runtime.seed, record.ordinal), record);
+    addLivingFaunaActor(
+      runtime,
+      provider,
+      faunaDnaFor(species, runtime.seed, record.ordinal),
+      record,
+      species.flight ?? null,
+    );
   }
   return runtime.fauna.length;
 }
 
-function addLivingFaunaActor(runtime, provider, dna, record) {
+function addLivingFaunaActor(runtime, provider, dna, record, flight = null) {
   const scratch = new THREE.Vector3();
   const tangent = new THREE.Vector3();
   const initial = faunaPathPoint(
@@ -948,7 +958,10 @@ function addLivingFaunaActor(runtime, provider, dna, record) {
     phase: record.phase,
     position: initial,
     velocity: new THREE.Vector3(),
-    needs: createKinNeeds(record.ordinal),
+    needs: createKinNeeds(record.ordinal, flight ? "flier" : "walker"),
+    // Present only on winged kin; its absence is what marks a walker.
+    flight: flight ?? null,
+    landState: flight ? "flying" : "landed",
     nextProximityAt: record.ordinal * 0.07,
     intent: null,
     frame: null,
@@ -1212,6 +1225,63 @@ function cameraTargetInWorldLocal(runtime, camera, out) {
   );
 }
 
+/**
+ * How high a flier should be right now, and what it should do on arrival.
+ *
+ * Height is a blend rather than a state machine with hard edges: the agent
+ * eases its own hover toward whatever it is handed, so cruising, descending,
+ * settling and lifting off all fall out of one target that moves smoothly.
+ * What the FSM *is* for is the transition — the frame a flier first touches
+ * down is the frame the plant beneath it should feel the weight.
+ *
+ * The perch affordance already carries the height of the thing offering it,
+ * so a flier lands exactly on a hero's crown rather than at a guessed
+ * altitude, and the same capacity accounting that stops two kin grazing one
+ * bloom stops two of them sharing one perch.
+ */
+function updateFlight(runtime, actor, pursuit, dt, time) {
+  const flight = actor.flight;
+  if (!flight) return 0;
+  const goal = pursuit.goal;
+  const perching = Boolean(goal) && goal.type === "perch";
+  const cruise = flight.hover;
+
+  let target = cruise;
+  if (perching && pursuit.arrived) {
+    // The affordance's own height, measured from the ground under the flier.
+    const ground = runtime.worldState.heightFn(actor.position.x, actor.position.z);
+    target = Math.max(0.12, (goal.y ?? ground + cruise) - ground);
+  } else if (perching) {
+    // Shed altitude on the way in so the approach is a glide, not a drop.
+    const distance = Math.hypot(goal.x - actor.position.x, goal.z - actor.position.z);
+    const closing = Math.min(1, distance / 7);
+    target = cruise * (0.42 + closing * 0.58);
+  }
+
+  const settled = perching && pursuit.arrived;
+  if (settled && actor.landState !== "perched") {
+    actor.landState = "perched";
+    // The frame of contact: the plant it landed on takes the weight.
+    touchFloraNear(runtime, actor.position, 0.85, time, 1.4);
+    runtime.events.emit(
+      PRESENTATION_EVENTS.FOOTFALL,
+      {
+        creature: actor.facade,
+        foot: "perch",
+        position: actor.position.clone(),
+        material: null,
+      },
+      { time },
+    );
+  } else if (!settled && actor.landState === "perched") {
+    actor.landState = "flying";
+  }
+
+  actor.facade.landState = actor.landState;
+  actor.facade.currentHover = target;
+  return target;
+}
+
 function stepLivingFauna(runtime, dt, time, camera) {
   const anchor = runtime.composition.anchor;
   const {
@@ -1239,15 +1309,23 @@ function stepLivingFauna(runtime, dt, time, camera) {
     const pursuit = stepKinGoal(runtime, actor, dt, time, desired);
     if (!pursuit.goal) faunaPathPoint(anchor, record, actor.phase, desired);
 
+    const hover = updateFlight(runtime, actor, pursuit, dt, time);
+
     const toward = desired.sub(actor.position);
-    deflectAroundObstacles(runtime, actor, toward);
+    // A flier in the air is over the obstacles, not among them.
+    if (!actor.flight || actor.landState === "perched") {
+      deflectAroundObstacles(runtime, actor, toward);
+    }
     // Ease off on arrival instead of vibrating on the spot.
     const arrivalEase = pursuit.arrived ? 0.35 : 1;
-    const maxSpeed = record.speed * 1.35 * arrivalEase;
+    const cruiseSpeed = actor.flight ? actor.flight.speed : record.speed;
+    const maxSpeed = cruiseSpeed * 1.35 * arrivalEase;
     if (toward.lengthSq() > maxSpeed * maxSpeed) toward.setLength(maxSpeed);
     candidate.copy(actor.position).addScaledVector(toward, dt);
-    resolveAgainstObstacles(runtime, actor, candidate);
-    resolveAgainstDynamicObstacles(runtime, actor, candidate, dt);
+    if (!actor.flight || actor.landState === "perched") {
+      resolveAgainstObstacles(runtime, actor, candidate);
+      resolveAgainstDynamicObstacles(runtime, actor, candidate, dt);
+    }
 
     if (maxIslandFalloff(runtime.worldState.currentLayout, candidate.x, candidate.z) < 0.56) {
       candidate.lerp(anchorTarget, Math.min(1, dt * 1.8));
@@ -1300,6 +1378,7 @@ function stepLivingFauna(runtime, dt, time, camera) {
         : actor.velocity.lengthSq() > 0.025
           ? "wander"
           : "arrive";
+    actor.intent.hover = hover;
     actor.frame.dt = dt;
     actor.frame.time = time;
     const frame = agent.update(actor.frame);

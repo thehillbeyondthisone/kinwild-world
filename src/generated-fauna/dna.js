@@ -1,5 +1,13 @@
 const COLOR_RE = /^#[0-9a-f]{6}$/i;
 const LEG_COUNTS = [2, 4, 6];
+const LOCOMOTIONS = ["walker", "flier"];
+
+const CURATED_WINGS = deepFreeze({
+  span: 0.44,
+  chord: 0.13,
+  beat: 7.5,
+  dihedral: 0.26,
+});
 
 export const GENERATED_FAUNA_SCHEMA_VERSION = 1;
 export const GENERATED_FAUNA_MAX_PRIMITIVES = 16;
@@ -7,6 +15,7 @@ export const GENERATED_FAUNA_MAX_INFLUENCES = 8;
 
 export const CURATED_WALKER_DNA = deepFreeze({
   schemaVersion: GENERATED_FAUNA_SCHEMA_VERSION,
+  locomotion: "walker",
   speciesId: "moss-trundle",
   name: "Moss Trundle",
   seed: 0x4d31,
@@ -84,10 +93,15 @@ export function normalizeWalkerDNA(raw, options = {}) {
   const legsSource = isRecord(source.legs) ? source.legs : {};
   const motionSource = isRecord(source.motion) ? source.motion : {};
 
-  let legCount = nearestLegCount(numberOr(legsSource.count, 4));
+  const locomotion = safeLocomotion(source.locomotion, repairs);
+  const flier = locomotion === "flier";
+  const wingsSource = isRecord(source.wings) ? source.wings : {};
+  // Fliers default to two legs: they spend most of their time with them
+  // tucked, and a lighter body plan leaves headroom for the wings.
+  let legCount = nearestLegCount(numberOr(legsSource.count, flier ? 2 : 4));
   while (
-    (primitiveCountForLegs(legCount) > maxPrimitives ||
-      legCount + 2 > maxInfluences) &&
+    (primitiveCountFor(legCount, locomotion) > maxPrimitives ||
+      influenceCountFor(legCount, locomotion) + 1 > maxInfluences) &&
     legCount > 2
   ) {
     legCount = LEG_COUNTS[LEG_COUNTS.indexOf(legCount) - 1];
@@ -98,6 +112,7 @@ export function normalizeWalkerDNA(raw, options = {}) {
 
   const dna = {
     schemaVersion: GENERATED_FAUNA_SCHEMA_VERSION,
+    locomotion,
     speciesId: safeId(source.speciesId, CURATED_WALKER_DNA.speciesId, repairs),
     name: safeName(source.name, CURATED_WALKER_DNA.name, repairs),
     seed: finiteInteger(source.seed, CURATED_WALKER_DNA.seed) >>> 0,
@@ -248,6 +263,24 @@ export function normalizeWalkerDNA(raw, options = {}) {
     },
   };
 
+  if (flier) {
+    dna.wings = {
+      span: clamped(
+        wingsSource.span, 0.22, 0.95, CURATED_WINGS.span, "wings.span", repairs,
+      ),
+      chord: clamped(
+        wingsSource.chord, 0.05, 0.34, CURATED_WINGS.chord, "wings.chord", repairs,
+      ),
+      beat: clamped(
+        wingsSource.beat, 3, 16, CURATED_WINGS.beat, "wings.beat", repairs,
+      ),
+      dihedral: clamped(
+        wingsSource.dihedral, 0, 0.6, CURATED_WINGS.dihedral, "wings.dihedral",
+        repairs,
+      ),
+    };
+  }
+
   // Relational constraints matter more than independently valid scalars.
   const maxThickness = dna.legs.length * 0.24;
   if (dna.legs.thickness > maxThickness) {
@@ -260,8 +293,26 @@ export function normalizeWalkerDNA(raw, options = {}) {
     repairs.push("head.eyeRadius: reduced to fit head");
   }
 
-  const primitiveCount = primitiveCountForLegs(dna.legs.count);
-  if (primitiveCount > maxPrimitives || dna.legs.count + 2 > maxInfluences) {
+  if (flier) {
+    // A wing wider than the body reads as a glider, not a kinling. Hold the
+    // span against the body it hangs off rather than against an absolute.
+    const maxSpan = dna.body.radius * 2.6;
+    if (dna.wings.span > maxSpan) {
+      dna.wings.span = maxSpan;
+      repairs.push("wings.span: reduced to fit the body");
+    }
+    const maxChord = dna.wings.span * 0.42;
+    if (dna.wings.chord > maxChord) {
+      dna.wings.chord = maxChord;
+      repairs.push("wings.chord: reduced to fit the span");
+    }
+  }
+
+  const primitiveCount = primitiveCountFor(dna.legs.count, locomotion);
+  if (
+    primitiveCount > maxPrimitives ||
+    influenceCountFor(dna.legs.count, locomotion) + 1 > maxInfluences
+  ) {
     throw new RangeError("normalized generated walker exceeds renderer budget");
   }
 
@@ -274,8 +325,32 @@ export function normalizeWalkerDNA(raw, options = {}) {
   };
 }
 
+function safeLocomotion(value, repairs) {
+  if (value === undefined) return "walker";
+  if (typeof value === "string" && LOCOMOTIONS.includes(value)) return value;
+  repairs.push("locomotion: repaired to walker");
+  return "walker";
+}
+
 export function primitiveCountForLegs(count) {
   return 2 + count * 2;
+}
+
+/**
+ * Primitives a body plan costs. A flier pays two more than a walker with the
+ * same leg count — one capsule per wing.
+ */
+export function primitiveCountFor(count, locomotion = "walker") {
+  return primitiveCountForLegs(count) + (locomotion === "flier" ? 2 : 0);
+}
+
+/**
+ * Entries in the body's own influence list: the head, every upper leg, and
+ * each wing. This is what caps a flier at four legs — six would need ten
+ * influences against a budget of eight.
+ */
+export function influenceCountFor(count, locomotion = "walker") {
+  return 1 + count + (locomotion === "flier" ? 2 : 0);
 }
 
 /** Stable per-channel value in [0, 1); independent of ambient Math.random. */

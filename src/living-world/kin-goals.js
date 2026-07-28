@@ -25,7 +25,7 @@
  * it. Rates are per second: forage comes back fastest, attending to a
  * landmark is a slow curiosity.
  */
-export const KIN_NEEDS = Object.freeze([
+export const WALKER_NEEDS = Object.freeze([
   Object.freeze({
     key: "forage",
     types: Object.freeze(["forage", "nectar"]),
@@ -49,11 +49,73 @@ export const KIN_NEEDS = Object.freeze([
   }),
 ]);
 
+/**
+ * Winged kin want different things. Perching is the long one on purpose — a
+ * landing only reads if the flier stays put long enough to be seen doing it,
+ * and sitting on the crown of a plant is the whole reason perches are
+ * advertised.
+ */
+export const FLIER_NEEDS = Object.freeze([
+  Object.freeze({
+    key: "perch",
+    types: Object.freeze(["perch"]),
+    rate: 0.05,
+    dwell: Object.freeze([7, 12]),
+    action: "settle",
+  }),
+  Object.freeze({
+    key: "forage",
+    types: Object.freeze(["nectar", "pollen"]),
+    rate: 0.045,
+    dwell: Object.freeze([3, 5.5]),
+    action: "graze",
+  }),
+  Object.freeze({
+    key: "attend",
+    types: Object.freeze(["landmark"]),
+    rate: 0.02,
+    dwell: Object.freeze([3, 6]),
+    action: "notice",
+  }),
+]);
+
+/** Back-compat alias: the walker set is what an unqualified kin carries. */
+export const KIN_NEEDS = WALKER_NEEDS;
+
+const NEED_SETS = { walker: WALKER_NEEDS, flier: FLIER_NEEDS };
+
 /** Below this a need is not worth crossing the island for. */
 const NEED_THRESHOLD = 0.28;
 
-/** How far a kin will consider travelling, in world units. */
-const MAX_TRAVEL = 26;
+/**
+ * How far a kin will consider travelling, in world units.
+ *
+ * A flier ranges much further: it crosses the island over the top of
+ * everything, and the perches worth landing on are rare enough that a
+ * walker's radius would leave most fields with exactly one in reach.
+ */
+const MAX_TRAVEL = { walker: 26, flier: 48 };
+
+/**
+ * How sharply distance discounts a candidate.
+ *
+ * A walker pays for every metre and should take the near option. A flier goes
+ * over the top of the field, so distance is close to free — weighting it as
+ * heavily left it shuttling between one perch and the nearest flower while
+ * two other heroes went unvisited for four minutes.
+ */
+const DISTANCE_WEIGHT = { walker: 0.22, flier: 0.055 };
+
+/**
+ * How far a new goal has to be to be worth going to.
+ *
+ * With 450-odd affordances in a field the nearest match is almost always
+ * underfoot, so without a floor a kin picks the thing it is already standing
+ * on, satisfies it without moving, and never leaves. Observed as a flier that
+ * shuttled between one hero and the flowers at its base for four minutes
+ * while two other heroes went unvisited.
+ */
+const MIN_TRAVEL = { walker: 2.4, flier: 7 };
 
 /** Where the approach stops curving and starts homing. */
 const APPROACH_ARC = 6;
@@ -75,7 +137,7 @@ const DECIDE_INTERVAL = 0.4;
  * arrives, never dwells, never drains and never reconsiders. Observed as one
  * kin of five standing still for three minutes with every need pinned at 1.0.
  */
-const PURSUIT_TIMEOUT = 22;
+const PURSUIT_TIMEOUT = 34;
 
 /** A need this low is met; there is no point standing there any longer. */
 const SATISFIED = 0.08;
@@ -84,21 +146,27 @@ const SATISFIED = 0.08;
  * Per-actor need state. Seeded off the ordinal so two kin created together do
  * not move in lockstep, then advanced purely by time.
  */
-export function createKinNeeds(ordinal = 0) {
+export function createKinNeeds(ordinal = 0, locomotion = "walker") {
+  const set = NEED_SETS[locomotion] ?? WALKER_NEEDS;
   const levels = {};
-  for (const [index, need] of KIN_NEEDS.entries()) {
+  for (const [index, need] of set.entries()) {
     // Staggered starts, so a fresh field does not send every kin foraging on
     // the same frame.
     levels[need.key] = ((ordinal * 0.37 + index * 0.29) % 1) * 0.6;
   }
   return {
+    set,
     levels,
     goal: null,
+    dwellFrom: 0,
     dwellUntil: 0,
     arc: ordinal * 1.7,
     // Staggered so a field of kin does not all scan on the same frame.
     nextDecisionAt: ordinal * 0.11,
     giveUpAt: 0,
+    maxTravel: MAX_TRAVEL[locomotion] ?? MAX_TRAVEL.walker,
+    distanceWeight: DISTANCE_WEIGHT[locomotion] ?? DISTANCE_WEIGHT.walker,
+    minTravel: MIN_TRAVEL[locomotion] ?? MIN_TRAVEL.walker,
     // The affordance just finished with. Excluded from the next choice: a kin
     // that has just grazed is standing on the nearest forage in the field, so
     // without this it would re-pick the same plant and never leave it.
@@ -106,8 +174,8 @@ export function createKinNeeds(ordinal = 0) {
   };
 }
 
-function needByKey(key) {
-  return KIN_NEEDS.find((need) => need.key === key) ?? null;
+function needByKey(needs, key) {
+  return (needs.set ?? WALKER_NEEDS).find((need) => need.key === key) ?? null;
 }
 
 /**
@@ -165,7 +233,7 @@ function reachableRadius(runtime, actor, x, z, base) {
 export function chooseKinGoal(runtime, actor) {
   const needs = actor.needs;
   let strongest = null;
-  for (const need of KIN_NEEDS) {
+  for (const need of needs.set ?? WALKER_NEEDS) {
     const level = needs.levels[need.key] ?? 0;
     if (level < NEED_THRESHOLD) continue;
     if (!strongest || level > needs.levels[strongest.key]) strongest = need;
@@ -178,18 +246,20 @@ export function chooseKinGoal(runtime, actor) {
   const claims = claimCounts(runtime);
   let best = null;
   for (const affordance of affordances) {
-    if (!strongest.types.includes(affordance.type)) continue;
+    const type = affordance.type;
+    if (!strongest.types.includes(type)) continue;
     if (affordance.ordinal === needs.lastOrdinal) continue;
     const distance = Math.hypot(
       affordance.x - actor.position.x,
       affordance.z - actor.position.z,
     );
-    if (distance > MAX_TRAVEL) continue;
+    if (distance > (needs.maxTravel ?? MAX_TRAVEL.walker)) continue;
+    if (distance < (needs.minTravel ?? MIN_TRAVEL.walker)) continue;
     if ((claims.get(affordance.ordinal) ?? 0) >= Math.max(1, affordance.capacity)) {
       continue;
     }
     const score =
-      1 / (1 + distance * 0.22) +
+      1 / (1 + distance * (needs.distanceWeight ?? DISTANCE_WEIGHT.walker)) +
       Math.min(affordance.capacity, 6) * 0.012 +
       Math.random() * 0.06;
     if (!best || score > best.score) {
@@ -198,7 +268,11 @@ export function chooseKinGoal(runtime, actor) {
         ordinal: affordance.ordinal,
         need: strongest.key,
         action: strongest.action,
+        // A flier needs both: the type to know a perch is a perch, and the
+        // height to land on the crown that offered it rather than guessing.
+        type,
         x: affordance.x,
+        y: affordance.y,
         z: affordance.z,
         // Arrive somewhere on the plant, not inside its stem — and no closer
         // than the plant's own collision envelope actually permits.
@@ -223,7 +297,7 @@ export function chooseKinGoal(runtime, actor) {
  */
 export function stepKinGoal(runtime, actor, dt, time, out) {
   const needs = actor.needs;
-  for (const need of KIN_NEEDS) {
+  for (const need of needs.set ?? WALKER_NEEDS) {
     needs.levels[need.key] = Math.min(
       1,
       (needs.levels[need.key] ?? 0) + need.rate * dt,
@@ -234,14 +308,19 @@ export function stepKinGoal(runtime, actor, dt, time, out) {
   // Dwelling: the need drains while the kin is actually at the thing that
   // answers it, which is what makes a visit read as a visit.
   if (needs.goal && needs.dwellUntil > 0) {
-    const need = needByKey(needs.goal.need);
+    const need = needByKey(needs, needs.goal.need);
     if (need) {
       needs.levels[need.key] = Math.max(
         0,
         needs.levels[need.key] - dt / Math.max(need.dwell[0], 0.5),
       );
     }
-    const met = need ? needs.levels[need.key] <= SATISFIED : false;
+    // A visit has to last long enough to read as one. Without the floor a
+    // need that was only just over threshold drains in well under a second,
+    // and a flier would touch a perch and leave in the same breath.
+    const stayed = time - needs.dwellFrom;
+    const met =
+      need && needs.levels[need.key] <= SATISFIED && stayed >= need.dwell[0] * 0.6;
     if (time >= needs.dwellUntil || met) {
       needs.lastOrdinal = needs.goal.ordinal;
       needs.goal = null;
@@ -280,8 +359,9 @@ export function stepKinGoal(runtime, actor, dt, time, out) {
   const distance = Math.hypot(dx, dz);
 
   if (distance <= goal.radius) {
-    const need = needByKey(goal.need);
+    const need = needByKey(needs, goal.need);
     const span = need ? need.dwell : [3, 5];
+    needs.dwellFrom = time;
     needs.dwellUntil = time + span[0] + Math.random() * (span[1] - span[0]);
     out.set(goal.x, 0, goal.z);
     return { action: need?.action ?? "arrive", arrived: true, goal };

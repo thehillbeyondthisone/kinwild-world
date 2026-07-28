@@ -183,7 +183,14 @@ const SPECIES_SUFFIXES = Object.freeze([
   "tuft", "shade", "drift", "weave", "plume", "coil",
 ]);
 
-/** Kinling body plans. The three original silhouettes are the floor. */
+/**
+ * Kinling body plans. The three original silhouettes are the floor.
+ *
+ * Every entry here walks. Fliers are drawn from their own pool below, because
+ * a field wants one of each rather than two of whatever the dice give it —
+ * the perches the hero plants advertise are only worth advertising if
+ * something in the field can use them.
+ */
 export const FAUNA_FAMILIES = Object.freeze([
   Object.freeze({
     key: "kinling",
@@ -202,6 +209,35 @@ export const FAUNA_FAMILIES = Object.freeze([
     stems: ["Stilt", "Reed", "Lank", "Stride"],
     body: { radius: [0.26, 0.33], halfLength: [0.24, 0.32] },
     legs: { count: 6, length: [0.58, 0.72], thickness: [0.052, 0.068] },
+  }),
+]);
+
+/**
+ * Winged kin. Two legs, tucked in flight and folded on a perch.
+ *
+ * Wing dimensions are rolled *off the body* rather than from absolute ranges,
+ * so the normalizer never has to repair a span against the torso it hangs
+ * from — the roster is expected to land inside the rig's limits by
+ * construction, the same contract the flora roster holds to.
+ */
+export const FLIER_FAMILIES = Object.freeze([
+  Object.freeze({
+    key: "driftkin",
+    locomotion: "flier",
+    stems: ["Drift", "Mote", "Flit", "Gossam"],
+    body: { radius: [0.2, 0.27], halfLength: [0.13, 0.19] },
+    legs: { count: 2, length: [0.25, 0.32] },
+    wings: { spanRatio: [1.7, 2.45], chordRatio: [0.2, 0.32], beat: [6, 11], dihedral: [0.16, 0.4] },
+    motion: { hover: [1.5, 2.4], speed: [0.72, 1.05] },
+  }),
+  Object.freeze({
+    key: "emberwing",
+    locomotion: "flier",
+    stems: ["Ember", "Spark", "Cinder", "Glim"],
+    body: { radius: [0.24, 0.31], halfLength: [0.16, 0.23] },
+    legs: { count: 2, length: [0.26, 0.36] },
+    wings: { spanRatio: [1.5, 2.1], chordRatio: [0.26, 0.38], beat: [4.5, 8], dihedral: [0.1, 0.3] },
+    motion: { hover: [1.9, 3.1], speed: [0.6, 0.9] },
   }),
 ]);
 
@@ -435,6 +471,13 @@ export function createFaunaRoster(biome, seed) {
     const take = Math.min(remaining.length - 1, Math.floor(chooser.next() * remaining.length));
     chosen.push(remaining.splice(take, 1)[0]);
   }
+  // One winged family always, drawn from its own pool. Leaving it to the same
+  // dice would give some fields two walkers and nothing to use the perches
+  // every hero plant advertises.
+  const flierChooser = createRng(hashSeed("kinwild/roster", "flier", seed));
+  chosen.push(
+    FLIER_FAMILIES[Math.floor(flierChooser.next() * FLIER_FAMILIES.length) % FLIER_FAMILIES.length],
+  );
 
   const fallback = deriveBiomePalette(biome);
   const genome = biome?.styleGenome;
@@ -444,6 +487,9 @@ export function createFaunaRoster(biome, seed) {
     chosen.map((family, index) => {
       const rng = createRng(hashSeed("kinwild/fauna-species", family.key, seed));
       const bodyRadius = rng.range(...family.body.radius);
+      const flier = family.locomotion === "flier";
+      const legLength = rng.range(...family.legs.length);
+      const wingSpan = flier ? bodyRadius * rng.range(...family.wings.spanRatio) : 0;
       // Kin are the warmest thing in the field by design — they read against
       // the terrain, never blend into it.
       const spread = rng.range(0.03, 0.08) * (index === 0 ? 1 : -1);
@@ -459,13 +505,34 @@ export function createFaunaRoster(biome, seed) {
           offset: Object.freeze([0, bodyRadius * rng.range(0.48, 0.6), bodyRadius * rng.range(1.05, 1.25)]),
           eyeRadius: bodyRadius * rng.range(0.14, 0.19),
         }),
+        locomotion: family.locomotion ?? "walker",
         legs: Object.freeze({
           count: family.legs.count,
-          length: rng.range(...family.legs.length),
-          thickness: rng.range(...family.legs.thickness),
+          length: legLength,
+          // Held against the leg it thickens rather than an absolute range, so
+          // the rig never has to trim it back.
+          // Floor of 0.155 keeps the thinnest leg above the rig's 0.035
+          // minimum; the ceiling stays under its length*0.24 relation.
+          thickness: flier
+            ? legLength * rng.range(0.155, 0.22)
+            : rng.range(...family.legs.thickness),
           stance: rng.range(0.19, 0.27),
           spread: rng.range(0.25, 0.32),
         }),
+        wings: flier
+          ? Object.freeze({
+              span: wingSpan,
+              chord: wingSpan * rng.range(...family.wings.chordRatio),
+              beat: rng.range(...family.wings.beat),
+              dihedral: rng.range(...family.wings.dihedral),
+            })
+          : null,
+        flight: flier
+          ? Object.freeze({
+              hover: rng.range(...family.motion.hover),
+              speed: rng.range(...family.motion.speed),
+            })
+          : null,
         motion: Object.freeze({
           stepDuration: rng.range(0.24, 0.34),
           stepTrigger: rng.range(0.11, 0.16),

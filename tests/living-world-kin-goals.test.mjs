@@ -114,9 +114,26 @@ const affordance = (ordinal, type, x, z, extra = {}) => ({
   assert.equal(pursuit.goal, null, "no goal means the orbit fallback takes over");
 }
 
+// A goal you are already standing on is not a journey. With hundreds of
+// affordances in a field the nearest match is almost always underfoot, and
+// without a floor a kin satisfies need after need without ever moving.
+{
+  const runtime = makeRuntime([
+    affordance(0, "forage", 0.3, 0),
+    affordance(1, "forage", 9, 0),
+  ]);
+  const actor = makeActor(runtime, 0);
+  actor.needs.levels.forage = 0.95;
+  assert.equal(
+    chooseKinGoal(runtime, actor).ordinal,
+    1,
+    "a kin should walk to the far option rather than the one underfoot",
+  );
+}
+
 // -------------------------------------------------------------- capacity
 {
-  const runtime = makeRuntime([affordance(0, "forage", 2, 0, { capacity: 1 })]);
+  const runtime = makeRuntime([affordance(0, "forage", 5, 0, { capacity: 1 })]);
   const first = makeActor(runtime, 0);
   const second = makeActor(runtime, 1);
   for (const actor of [first, second]) actor.needs.levels.forage = 0.95;
@@ -135,7 +152,7 @@ const affordance = (ordinal, type, x, z, extra = {}) => ({
 }
 
 {
-  const runtime = makeRuntime([affordance(0, "forage", 2, 0, { capacity: 3 })]);
+  const runtime = makeRuntime([affordance(0, "forage", 5, 0, { capacity: 3 })]);
   const actors = [0, 1, 2].map((ordinal) => makeActor(runtime, ordinal));
   for (const actor of actors) {
     actor.needs.levels.forage = 0.95;
@@ -193,9 +210,14 @@ const affordance = (ordinal, type, x, z, extra = {}) => ({
 
 // ------------------------------------------------------- arrival + dwell
 {
-  const runtime = makeRuntime([affordance(0, "forage", 0.2, 0, { radius: 2 })]);
+  const runtime = makeRuntime([affordance(0, "forage", 8, 0, { radius: 2 })]);
   const actor = makeActor(runtime, 0);
   actor.needs.levels.forage = 0.9;
+  // Chosen from across the field, then walked in: the minimum-travel floor
+  // governs what is worth going to, not what counts as being there.
+  stepKinGoal(runtime, actor, 1 / 60, 99, point);
+  assert.equal(actor.needs.goal.ordinal, 0);
+  actor.position.x = 7.8;
 
   const arrival = stepKinGoal(runtime, actor, 1 / 60, 100, point);
   assert.equal(arrival.arrived, true, "standing inside the radius counts as arrival");
@@ -272,8 +294,8 @@ const affordance = (ordinal, type, x, z, extra = {}) => ({
 // With somewhere else to go, a finished kin moves on rather than re-grazing.
 {
   const runtime = makeRuntime([
-    affordance(0, "forage", 0.2, 0, { radius: 2 }),
-    affordance(1, "forage", 6, 0, { radius: 1 }),
+    affordance(0, "forage", 4, 0, { radius: 2 }),
+    affordance(1, "forage", 9, 0, { radius: 1 }),
   ]);
   const actor = makeActor(runtime, 0);
   actor.needs.levels.forage = 0.95;

@@ -142,6 +142,11 @@ for (const biome of biomes.slice(0, 4)) {
   for (const seed of SEEDS) {
     const roster = createFaunaRoster(biome, seed);
     assert.ok(roster.length >= 2, "a field should carry more than one kin species");
+    // Hero plants advertise perches; a field needs something that can use one.
+    assert.ok(
+      roster.some((species) => species.locomotion === "flier"),
+      "every field should carry a winged kin",
+    );
     assert.equal(
       new Set(roster.map((species) => species.family)).size,
       roster.length,
@@ -150,9 +155,13 @@ for (const biome of biomes.slice(0, 4)) {
     for (const species of roster) {
       assert.ok(species.body.radius > 0 && species.legs.length > 0);
       assert.ok(
-        [4, 6].includes(species.legs.count),
-        "kin leg counts stay inside the walker rig's supported set",
+        [2, 4, 6].includes(species.legs.count),
+        "kin leg counts stay inside the rig's supported set",
       );
+      // Winged kin carry wings and a flight profile; walkers carry neither.
+      const flier = species.locomotion === "flier";
+      assert.equal(Boolean(species.wings), flier);
+      assert.equal(Boolean(species.flight), flier);
       assert.match(species.palette.body, /^#[0-9a-f]{6}$/i);
     }
   }

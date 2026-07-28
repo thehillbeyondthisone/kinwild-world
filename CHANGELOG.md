@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.11.0 - 2026-07-28
+
+### Added
+
+- Winged kin. `locomotion` is a genome field now, and a flier carries two wing
+  primitives, tucks its legs in flight, banks into its turns and beats its
+  wings. Every field draws one winged family alongside its walkers, from a
+  separate pool — the perches every hero plant advertises were unusable in
+  principle, because `airborne` was hardcoded false.
+- Fliers land on those perches. The perch affordance already carried the
+  height of the plant offering it, so a flier settles on a hero's crown rather
+  than at a guessed altitude, and the plant takes the weight — the frame of
+  contact sends a touch impulse into it, so the spire nods as the flier
+  arrives. Flora advertises, fauna uses, flora responds.
+- Winged kin have their own needs: perching is a long dwell on purpose, and
+  they range across the whole island where a walker works locally.
+
+### Changed
+
+- A goal has to be worth travelling to. With 450-odd affordances in a field
+  the nearest match is almost always underfoot, so kin were satisfying need
+  after need without moving. A minimum-travel floor sends them across the
+  field instead — measured on one flier, four minutes: one hero visited
+  becomes three, path length 127 to 177.
+- A visit lasts. A need only just over threshold used to drain in well under a
+  second, so a flier would touch a perch and leave in the same breath.
+
+### Verified
+
+- 102 tests, lint, production build, and an explicit `determinism-seed` run.
+- Four simulated minutes of a real runtime: the flier makes repeated landings
+  across different heroes, spends about a fifth of its time perched, and the
+  walkers never leave the ground.
+
 ## 1.10.1 - 2026-07-28
 
 ### Fixed

@@ -124,11 +124,13 @@ export class GeneratedFaunaWalker {
         : options.quality === "high"
           ? 1.35
           : 1;
-    const { specs, influences } = makeShellDefinition(
+    const { specs, influences, wingBase } = makeShellDefinition(
       this.dna,
       layout,
       qualityDetail,
     );
+    this._wingBase = wingBase;
+    this._flier = this.dna.locomotion === "flier";
     this.shell = new LocalBlendShell(specs, {
       influences,
       localBounds: layout.localBounds,
@@ -162,8 +164,11 @@ export class GeneratedFaunaWalker {
     this.interactionRoot.userData.generatedFaunaInteractionProxy = true;
     this.root.add(this.interactionRoot);
 
-    this.flies = false;
+    this.flies = this._flier;
     this.landState = "landed";
+    // Height above the sampled surface. Zero is planted; the host raises it.
+    this._hover = finiteNonNegativeOr(options.hover, 0);
+    this._bank = 0;
     this.heading = finiteNumber(options.heading, 0);
     this._intent = {
       position: new THREE.Vector3(
@@ -175,6 +180,7 @@ export class GeneratedFaunaWalker {
       heading: this.heading,
       lookTarget: null,
       action: "idle",
+      hover: this._hover,
     };
     this._lookTarget = new THREE.Vector3();
     if (options.intent) this.setIntent(options.intent);
@@ -234,15 +240,15 @@ export class GeneratedFaunaWalker {
       },
       mode: {
         enumerable: true,
-        value: "walker",
+        value: this.dna.locomotion,
       },
       locomotion: {
         enumerable: true,
-        value: "walker",
+        value: this.dna.locomotion,
       },
       airborne: {
         enumerable: true,
-        value: false,
+        value: this._flier,
       },
       aquatic: {
         enumerable: true,
@@ -336,6 +342,12 @@ export class GeneratedFaunaWalker {
     }
     if (intent.action !== undefined) {
       this._intent.action = String(intent.action).slice(0, 32);
+    }
+    if (intent.hover !== undefined) {
+      if (!Number.isFinite(intent.hover) || intent.hover < 0) {
+        throw new TypeError("intent.hover must be a non-negative finite number");
+      }
+      this._intent.hover = intent.hover;
     }
     return this;
   }
@@ -497,24 +509,53 @@ export class GeneratedFaunaWalker {
           this.dna.legs.length * 1.7 * planarScale,
         );
 
+    // Airborne is a blend, not a switch: it drives how much the body ignores
+    // the ground's tilt, how far the legs tuck, and how hard the wings beat,
+    // so a landing eases through all three at once instead of snapping.
+    const hoverTarget = this._flier ? this._intent.hover : 0;
+    this._hover += (hoverTarget - this._hover) * (1 - Math.exp(-dt * 4.5));
+    if (dt <= EPSILON) this._hover = hoverTarget;
+    const airborne = this._flier
+      ? THREE.MathUtils.smoothstep(this._hover, 0.05, 0.55)
+      : 0;
+
     if (surface) {
       sampleSurface(surface, targetPosition.x, targetPosition.z, this._surfaceHit);
       this.root.position.set(
         targetPosition.x,
-        this._surfaceHit.height,
+        this._surfaceHit.height + this._hover,
         targetPosition.z,
       );
       this.heading = this._intent.heading;
-      orientRoot(
-        this.root,
-        this.heading,
-        this._surfaceHit.normal,
-        scratch,
-      );
+      // In the air the body stops caring about the slope beneath it.
+      scratch.normal
+        .copy(this._surfaceHit.normal)
+        .lerp(Y_AXIS, airborne)
+        .normalize();
+      orientRoot(this.root, this.heading, scratch.normal, scratch);
     } else {
-      this.root.position.set(targetPosition.x, 0, targetPosition.z);
+      this.root.position.set(targetPosition.x, this._hover, targetPosition.z);
       this.heading = this._intent.heading;
       this.root.rotation.set(0, this.heading, 0);
+    }
+
+    // Bank into the turn. Reading it off the heading the host already
+    // committed to keeps the roll consistent with the path actually flown.
+    if (this._flier) {
+      const turn =
+        dt > EPSILON
+          ? shortAngle(this.heading - this._previousHeading) / dt
+          : 0;
+      const bankTarget = THREE.MathUtils.clamp(turn * 0.38, -0.6, 0.6) * airborne;
+      this._bank += (bankTarget - this._bank) * (1 - Math.exp(-dt * 6));
+      if (Math.abs(this._bank) > 1e-4) {
+        this.root.quaternion.multiply(
+          scratch.bankRoll.setFromAxisAngle(
+            scratch.bankAxis.set(0, 0, 1),
+            -this._bank,
+          ),
+        );
+      }
     }
 
     const inferredSpeed =
@@ -560,7 +601,7 @@ export class GeneratedFaunaWalker {
     head.quaternion.identity();
     head.scale.setScalar(1 + breathe * 1.1);
 
-    if (surface) {
+    if (surface && airborne < 0.999) {
       this._updateFeet(
         dt,
         time,
@@ -571,7 +612,9 @@ export class GeneratedFaunaWalker {
     } else {
       this._poseFeetAtLocalHomes();
     }
+    if (airborne > 0.001) this._tuckFeet(bodyY, airborne);
     this._solveLegs(bodyY);
+    if (this._wingBase >= 0) this._poseWings(time, bodyY, airborne, speed);
     this._updateFace(time, head.position);
     this._updateAnchors(bodyY, head.position);
     this.shell.sync();
@@ -579,6 +622,64 @@ export class GeneratedFaunaWalker {
     this._previousPosition.copy(targetPosition);
     this._previousHeading = this.heading;
     this._initialized = this._initialized || Boolean(surface);
+  }
+
+  /**
+   * Draw the feet up under the body as the creature leaves the ground.
+   *
+   * The feet are tracked in world space, so the tuck is applied there too:
+   * lift toward the body's height and pull in toward its centre line, which
+   * the existing two-bone solver then folds the legs to reach.
+   */
+  _tuckFeet(bodyY, amount) {
+    const scale = this.root.scale;
+    for (const foot of this._feet) {
+      this._scratch.footLocal
+        .set(foot.homeX * 0.45, bodyY * 0.62, foot.homeZ * 0.5)
+        .multiply(scale)
+        .applyQuaternion(this.root.quaternion)
+        .add(this.root.position);
+      foot.position.lerp(this._scratch.footLocal, amount);
+      foot.target.copy(foot.position);
+    }
+  }
+
+  /**
+   * Beat the wings, folding them against the body when landed.
+   *
+   * A wing is one capsule from shoulder to tip, so the beat is just where the
+   * tip is: swept up and down around the body's forward axis, with a little
+   * rearward sweep so the silhouette reads as a wing rather than a paddle.
+   */
+  _poseWings(time, bodyY, airborne, speed) {
+    const wings = this.dna.wings;
+    const scratch = this._scratch;
+    const restLength = wings.span * 0.5;
+    // Folded wings still shiver a little; a hovering one beats fully.
+    const amplitude = 0.12 + airborne * 0.95;
+    const beat = Math.sin(time * wings.beat * Math.PI * 2) * amplitude;
+    const sweep = -0.12 - airborne * 0.1 - Math.min(speed, 1.2) * 0.08;
+    for (let index = 0; index < 2; index++) {
+      const side = index === 0 ? 1 : -1;
+      const angle = wings.dihedral * (0.35 + airborne * 0.65) + beat;
+      scratch.wingStart.set(
+        side * this.dna.body.radius * 0.72,
+        bodyY + this.dna.body.radius * 0.22,
+        this.dna.body.halfLength * 0.08,
+      );
+      scratch.wingEnd
+        .set(side * Math.cos(angle), Math.sin(angle), sweep)
+        .normalize()
+        .multiplyScalar(wings.span)
+        .add(scratch.wingStart);
+      placeCapsule(
+        this.shell.primitives[this._wingBase + index],
+        scratch.wingStart,
+        scratch.wingEnd,
+        restLength,
+        scratch,
+      );
+    }
   }
 
   _poseFeetAtLocalHomes() {
@@ -825,8 +926,13 @@ function makeLayout(dna) {
     );
   }
 
+  const wings = dna.wings ?? null;
   const xExtent =
-    Math.max(dna.legs.spread, dna.body.radius) +
+    Math.max(
+      dna.legs.spread,
+      dna.body.radius,
+      wings ? dna.body.radius * 0.72 + wings.span + wings.chord : 0,
+    ) +
     dna.legs.thickness +
     0.08;
   const headCenterY = bodyY + dna.head.offset[1];
@@ -836,11 +942,14 @@ function makeLayout(dna) {
     dna.body.halfLength + dna.body.radius + 0.08,
     headCenterZ + dna.head.radius + 0.08,
   );
+  // The upstroke lifts a wing tip above the head, so the shell's local bounds
+  // have to allow for it or the blend field is evaluated in too small a box.
+  const wingTop = wings ? bodyY + wings.span * 0.92 + wings.chord : 0;
   const localBounds = new THREE.Box3(
     new THREE.Vector3(-xExtent, -0.1, -zExtent),
     new THREE.Vector3(
       xExtent,
-      headCenterY + dna.head.radius + 0.08,
+      Math.max(headCenterY + dna.head.radius + 0.08, wingTop),
       zExtent,
     ),
   );
@@ -848,6 +957,7 @@ function makeLayout(dna) {
   return {
     bodyY,
     rows,
+    wings,
     localBounds,
     localSphere,
     mouthOffset: new THREE.Vector3(
@@ -898,17 +1008,34 @@ function makeShellDefinition(dna, layout, detail) {
     );
   }
 
+  const wingBase = specs.length;
+  if (dna.wings) {
+    for (let index = 0; index < 2; index++) {
+      specs.push({
+        type: "capsule",
+        radius: dna.wings.chord,
+        halfLength: dna.wings.span * 0.5,
+        color: dna.palette.limb,
+        blend: Math.min(0.09, dna.wings.chord * 0.8),
+        detail: detail * 0.9,
+      });
+    }
+  }
+
   const upperIndices = Array.from(
     { length: dna.legs.count },
     (_, index) => 2 + index * 2,
   );
-  const influences = [[1, ...upperIndices], [0]];
+  const wingIndices = dna.wings ? [wingBase, wingBase + 1] : [];
+  const influences = [[1, ...upperIndices, ...wingIndices], [0]];
   for (let index = 0; index < dna.legs.count; index++) {
     const upper = 2 + index * 2;
     const lower = upper + 1;
     influences.push([0, lower], [upper]);
   }
-  return { specs, influences };
+  // A wing blends only into the body, so a beat never drags a leg with it.
+  for (let index = 0; index < wingIndices.length; index++) influences.push([0]);
+  return { specs, influences, wingBase: dna.wings ? wingBase : -1 };
 }
 
 function makeFeet(dna, layout) {
@@ -1037,6 +1164,13 @@ function makeScratch() {
     knee: new THREE.Vector3(),
     bend: new THREE.Vector3(),
     quaternion: new THREE.Quaternion(),
+    // orientRoot consumes vectorA/B/C, so the blended normal and the bank
+    // roll need scratch of their own.
+    normal: new THREE.Vector3(),
+    bankAxis: new THREE.Vector3(),
+    bankRoll: new THREE.Quaternion(),
+    wingStart: new THREE.Vector3(),
+    wingEnd: new THREE.Vector3(),
     matrix: new THREE.Matrix4(),
     sphere: new THREE.Sphere(),
   };
@@ -1217,6 +1351,10 @@ function finiteHeight(value, x, z) {
     throw new RangeError(`terrain height must be finite at (${x}, ${z})`);
   }
   return value;
+}
+
+function finiteNonNegativeOr(value, fallback) {
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 function finiteNonNegative(value, label) {

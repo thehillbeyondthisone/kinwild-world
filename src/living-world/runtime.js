@@ -9,6 +9,7 @@ import {
   readIntegrationFeatureFlags,
 } from "../integration/index.js";
 import {
+  FLORA_VIEWER,
   buildSpecies,
   createRng,
   hashSeed,
@@ -585,6 +586,11 @@ export function populateLivingFlora(runtime) {
       seed: recipe.dna.seed,
     });
     const provider = makeFloraProvider(species, recipe);
+    // Plants are rows in the species' batches now, so the batches — not the
+    // plants — are what the world group has to hold. Parent them once, in
+    // the same space the per-plant groups live in, because a row's matrix is
+    // composed from that group's own matrix.
+    runtime.worldState.world.add(species.batchRoot);
     runtime.species.push(species);
     runtime.floraProviders.push(provider);
     if (!byRole.has(recipe.role)) byRole.set(recipe.role, []);
@@ -1099,6 +1105,12 @@ export function stepLivingWorld(runtime, dt, time, { camera = null } = {}) {
   if (safeDt === 0) return;
   const safeTime = finite(time);
   stepLivingFauna(runtime, safeDt, safeTime, camera);
+  if (camera) {
+    // The flora distance LOD measures against the world group's space, which
+    // is where a plant's base is expressed.
+    FLORA_VIEWER.value.copy(camera.position);
+    runtime.worldState.world.worldToLocal(FLORA_VIEWER.value);
+  }
   for (const flora of runtime.flora) flora.instance.update(safeDt);
 }
 

@@ -1,12 +1,9 @@
 import * as THREE from "three";
 import { applyWindSway } from "../util.js";
-import { BLOOM_LAYER } from "../postfx.js";
 import { ARCHETYPES } from "./archetypes.js";
 import { buildOrganGeometry } from "./organs.js";
 import { compileSkeleton } from "./skeleton.js";
 import { createRng } from "./rng.js";
-import { createTouchEnvelope } from "./touch.js";
-import { varyColor } from "./palette.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
 const SIDEWAYS = new THREE.Vector3(1, 0, 0);
@@ -67,12 +64,6 @@ function makeMaterial(resources, color, {
   return resources.material(material);
 }
 
-function setMeshPresentation(object, { castShadow = false, receiveShadow = true } = {}) {
-  object.castShadow = castShadow;
-  object.receiveShadow = receiveShadow;
-  return object;
-}
-
 function freezeBounds({
   centerY,
   radius,
@@ -90,71 +81,6 @@ function freezeBounds({
   });
 }
 
-/**
- * Rest lean, touch pivots and the touch envelope. Unchanged from the v1
- * compiler on purpose: the `{value, velocity, direction, active, max}`
- * snapshot this returns is what the observatory's resonance trace reads, and
- * the bridge in `living-world/runtime.js` passes it straight through.
- */
-function createAnimatedRoot(dna, rng, mode) {
-  const group = new THREE.Group();
-  const restPivot = new THREE.Group();
-  const touchPivot = new THREE.Group();
-  group.add(restPivot);
-  restPivot.add(touchPivot);
-
-  const restAngle = rng.range(0, Math.PI * 2);
-  const restLean = mode === "ground" ? 0 : dna.variation.lean;
-  restPivot.rotation.x = Math.cos(restAngle) * restLean;
-  restPivot.rotation.z = Math.sin(restAngle) * restLean;
-
-  const fallbackAngle = rng.range(0, Math.PI * 2);
-  const envelope = createTouchEnvelope({
-    strength: dna.motion.touchStrength,
-    stiffness: dna.motion.touchStiffness,
-    damping: dna.motion.touchDamping,
-    maxValue: 0.75,
-    fallbackDirection: {
-      x: Math.cos(fallbackAngle),
-      z: Math.sin(fallbackAngle),
-    },
-  });
-
-  const applyPose = (snapshot) => {
-    const lean = snapshot.value * dna.motion.maxLean;
-    touchPivot.rotation.x = snapshot.direction.z * lean;
-    touchPivot.rotation.z = -snapshot.direction.x * lean;
-    const impact = Math.min(Math.abs(snapshot.value), 0.6);
-    if (mode === "ground") {
-      touchPivot.scale.set(1 + impact * 0.07, 1 - impact * 0.18, 1 + impact * 0.07);
-    } else if (mode === "mid") {
-      touchPivot.scale.set(1 + impact * 0.025, 1 - impact * 0.055, 1 + impact * 0.025);
-    } else {
-      touchPivot.scale.set(1 + impact * 0.012, 1 - impact * 0.035, 1 + impact * 0.012);
-    }
-  };
-
-  return {
-    group,
-    content: touchPivot,
-    touch(amount, direction) {
-      return envelope.trigger(amount, direction);
-    },
-    update(dt) {
-      const snapshot = envelope.update(dt);
-      applyPose(snapshot);
-      return snapshot;
-    },
-    resetTouch() {
-      const snapshot = envelope.reset();
-      applyPose(snapshot);
-      return snapshot;
-    },
-    touchState() {
-      return envelope.snapshot();
-    },
-  };
-}
 
 /**
  * Every skeleton segment merged into one tapered tube.
@@ -309,14 +235,25 @@ function buildAffordances(types, metrics, layout) {
   return out;
 }
 
+
+const EMPTY_SKELETON = Object.freeze({
+  habit: "creeping",
+  nodes: Object.freeze([]),
+  terminals: Object.freeze([]),
+  extent: Object.freeze({ height: 0, radius: 0 }),
+});
+
 const scratchPosition = new THREE.Vector3();
 const scratchDirection = new THREE.Vector3();
 const scratchScale = new THREE.Vector3();
 const scratchQuaternion = new THREE.Quaternion();
 const scratchRoll = new THREE.Quaternion();
-const scratchMatrix = new THREE.Matrix4();
 
-function writePlacement(mesh, index, placement) {
+/**
+ * Turn an archetype placement — a position plus the direction its local +Y
+ * should point — into a matrix, written into `target`.
+ */
+export function composePlacement(target, placement) {
   scratchPosition.set(...placement.position);
   scratchDirection.set(...placement.dir);
   if (scratchDirection.lengthSq() < 1e-10) scratchDirection.copy(UP);
@@ -325,24 +262,23 @@ function writePlacement(mesh, index, placement) {
   scratchRoll.setFromAxisAngle(UP, placement.roll ?? 0);
   scratchQuaternion.multiply(scratchRoll);
   scratchScale.set(...placement.scale);
-  mesh.setMatrixAt(
-    index,
-    scratchMatrix.compose(scratchPosition, scratchQuaternion, scratchScale),
-  );
+  return target.compose(scratchPosition, scratchQuaternion, scratchScale);
 }
 
 /**
- * Compile one normalized DNA object into immutable shared GPU resources plus
- * an archetype-driven instance factory.
+ * Compile one normalized DNA object into the shared GPU resources a species
+ * batch needs: a small set of structural variants, one merged stem geometry
+ * per variant, and one geometry plus material per organ type.
  *
- * Geometry is species-level: one merged stem plus one geometry per organ
- * type. Per-plant variation lives in the instance matrices written in
- * `create`, so two plants of a species differ without either owning a buffer.
+ * Nothing here creates a mesh. Batching owns that (`batch.js`), because a
+ * plant is a row now rather than a group — see that module's header for why
+ * the touch pose moved into the vertex shader.
  *
  * @param {object} dna normalized FloraDNA (v2)
  * @param {Record<string, THREE.Color>} colors resolved palette slots
+ * @param {{variantCount?: number}} [options]
  */
-export function compileArchetype(dna, colors) {
+export function compileArchetype(dna, colors, { variantCount = 1 } = {}) {
   const archetype = ARCHETYPES[dna.archetype];
   if (!archetype) {
     throw new Error(`unsupported generated-flora archetype: ${dna.archetype}`);
@@ -350,58 +286,95 @@ export function compileArchetype(dna, colors) {
   const resources = makeResourceTracker();
   const shape = dna.shape;
   const speciesRng = createRng(dna.seed);
-
   const skeletonSpec = archetype.skeleton(shape);
-  const skeleton = skeletonSpec
-    ? compileSkeleton(skeletonSpec, speciesRng.fork("skeleton"))
-    : Object.freeze({
-        habit: archetype.habit,
-        nodes: Object.freeze([]),
-        terminals: Object.freeze([]),
-        extent: Object.freeze({ height: 0, radius: 0 }),
-      });
+  const variantTotal = Math.max(1, Math.round(variantCount));
 
-  const stem = skeleton.nodes.length > 0
-    ? {
-        geometry: resources.geometry(
-          buildStemGeometry(skeleton.nodes, {
-            radialSegments: dna.role === "hero" ? 9 : 6,
-            baseColor: colors.structure,
-            tipColor: colors.detail ?? colors.structure,
-            height: Math.max(skeleton.extent.height, 1e-4),
-          }),
-        ),
-        material: makeMaterial(resources, colors.structure, {
-          wind: dna.motion.wind * 0.5,
-          vertexColors: true,
-          roughness: 0.9,
-        }),
-      }
+  // Structural variants: a bounded set of skeletons compiled once and reused
+  // across the field, so plants of a species differ without any of them
+  // owning a buffer. Each variant is its own batch, so an unused variant
+  // costs nothing rather than a pool of zero-scaled rows.
+  const variants = [];
+  for (let index = 0; index < variantTotal; index++) {
+    const skeleton = skeletonSpec
+      ? compileSkeleton(skeletonSpec, speciesRng.fork(`skeleton/${index}`))
+      : EMPTY_SKELETON;
+    variants.push({
+      index,
+      skeleton,
+      stemGeometry: null,
+      organGeometries: new Map(),
+      strides: {},
+    });
+  }
+
+  const stemMaterial = skeletonSpec
+    ? makeMaterial(resources, colors.structure, {
+        wind: dna.motion.wind * 0.5,
+        vertexColors: true,
+        roughness: 0.9,
+      })
     : null;
+  for (const variant of variants) {
+    if (variant.skeleton.nodes.length === 0) continue;
+    variant.stemGeometry = resources.geometry(
+      buildStemGeometry(variant.skeleton.nodes, {
+        radialSegments: dna.role === "hero" ? 9 : 6,
+        baseColor: colors.structure,
+        tipColor: colors.detail ?? colors.structure,
+        height: Math.max(variant.skeleton.extent.height, 1e-4),
+      }),
+    );
+  }
 
   const organPlans = archetype.organs(shape).map((plan) => ({
-    ...plan,
-    geometry: resources.geometry(buildOrganGeometry(plan.type, plan.params)),
-    threeMaterial: makeMaterial(resources, colors[plan.material.colorSlot], {
+    key: plan.key,
+    type: plan.type,
+    reach: plan.reach ?? 0,
+    colorSlot: plan.material.colorSlot,
+    vertexColors: plan.material.vertexColors ?? false,
+    bloom: plan.material.bloom ?? false,
+    params: plan.params,
+    material: makeMaterial(resources, colors[plan.material.colorSlot], {
       wind: dna.motion.wind * (plan.material.wind ?? 1),
       vertexColors: plan.material.vertexColors ?? false,
       side: plan.material.doubleSide ? THREE.DoubleSide : THREE.FrontSide,
       roughness: plan.material.roughness ?? 0.88,
-      emissive: plan.material.emissiveSlot
-        ? colors[plan.material.emissiveSlot]
-        : 0x000000,
+      emissive: plan.material.emissiveSlot ? colors[plan.material.emissiveSlot] : 0x000000,
       emissiveIntensity: plan.material.emissiveIntensity ?? 0,
     }),
   }));
 
-  const organReach = organPlans.reduce(
-    (max, plan) => Math.max(max, plan.reach ?? 0),
-    0,
-  );
+  // Row strides. Organ counts follow from the shape and the variant's node
+  // count, never from the per-plant roll, so one sample layout per variant
+  // measures them exactly.
+  //
+  // The geometry is rebuilt per variant even though its parameters do not
+  // vary: each batch carries per-plant instanced attributes on its geometry,
+  // so two batches sharing one would overwrite each other's plant lookup.
+  for (const variant of variants) {
+    const sample = archetype.layout(
+      shape,
+      variant.skeleton,
+      createRng(`${dna.seed}/stride/${variant.index}`),
+    );
+    for (const plan of organPlans) {
+      const stride = (sample[plan.key] ?? []).length;
+      variant.strides[plan.key] = stride;
+      if (stride === 0) continue;
+      variant.organGeometries.set(
+        plan.key,
+        resources.geometry(buildOrganGeometry(plan.type, plan.params)),
+      );
+    }
+  }
+
+  const organReach = organPlans.reduce((max, plan) => Math.max(max, plan.reach), 0);
   const spread = archetype.spread ? archetype.spread(shape) : 0;
-  const totalHeight = skeleton.extent.height + organReach * ORGAN_JITTER_CEILING;
+  const extentHeight = Math.max(...variants.map((v) => v.skeleton.extent.height));
+  const extentRadius = Math.max(...variants.map((v) => v.skeleton.extent.radius));
+  const totalHeight = extentHeight + organReach * ORGAN_JITTER_CEILING;
   const staticFootprint = Math.max(
-    skeleton.extent.radius + organReach * ORGAN_JITTER_CEILING,
+    extentRadius + organReach * ORGAN_JITTER_CEILING,
     spread,
     0.05,
   );
@@ -414,80 +387,40 @@ export function compileArchetype(dna, colors) {
   });
   const bounds = freezeBounds({
     centerY: metrics.height * 0.5,
-    radius:
-      Math.hypot(staticFootprint, metrics.height * 0.5) + dynamicMargin,
+    radius: Math.hypot(staticFootprint, metrics.height * 0.5) + dynamicMargin,
     height: metrics.height,
     footprintRadius: staticFootprint + dynamicMargin,
     dynamicMargin,
   });
 
+  const layoutFor = (variantIndex, rng) =>
+    archetype.layout(shape, variants[variantIndex].skeleton, rng);
+
   // The schema is what the affordance registry and the relations panel read;
-  // it must match the types `create` actually emits.
-  const schemaSample = buildAffordances(
-    archetype.affordances,
-    metrics,
-    archetype.layout(shape, skeleton, createRng(dna.seed).fork("schema")),
-  );
+  // it must match the types the per-plant affordance list actually emits.
   const affordanceSchema = Object.freeze([
-    ...new Set(schemaSample.map((entry) => entry.type)),
+    ...new Set(
+      buildAffordances(
+        archetype.affordances,
+        metrics,
+        layoutFor(0, createRng(`${dna.seed}/schema`)),
+      ).map((entry) => entry.type),
+    ),
   ]);
 
   return {
     archetype: archetype.key,
+    role: dna.role,
     bounds,
+    metrics,
     affordanceSchema,
-    skeleton,
+    variants,
+    organPlans,
+    stemMaterial,
+    layoutFor,
+    affordancesFor: (layout) =>
+      buildAffordances(archetype.affordances, metrics, layout),
     resourceCounts: resources.counts(),
     dispose: () => resources.dispose(),
-    create(rng) {
-      const animated = createAnimatedRoot(dna, rng.fork("touch"), dna.role);
-      const content = animated.content;
-      const layout = archetype.layout(shape, skeleton, rng.fork("layout"));
-
-      if (stem) {
-        content.add(
-          setMeshPresentation(new THREE.Mesh(stem.geometry, stem.material), {
-            castShadow: dna.role !== "ground",
-          }),
-        );
-      }
-
-      const colorRng = rng.fork("organ-color");
-      for (const plan of organPlans) {
-        const placements = layout[plan.key] ?? [];
-        if (placements.length === 0) continue;
-        const mesh = setMeshPresentation(
-          new THREE.InstancedMesh(
-            plan.geometry,
-            plan.threeMaterial,
-            placements.length,
-          ),
-          { castShadow: dna.role === "hero" && plan.reach > 0.25 },
-        );
-        for (let index = 0; index < placements.length; index++) {
-          const placement = placements[index];
-          writePlacement(mesh, index, placement);
-          if (plan.material.vertexColors) {
-            mesh.setColorAt(
-              index,
-              varyColor(
-                colors[placement.color] ?? colors[plan.material.colorSlot],
-                colorRng.range(-1, 1),
-                0.06,
-              ),
-            );
-          }
-        }
-        mesh.instanceMatrix.needsUpdate = true;
-        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-        if (plan.material.bloom) mesh.layers.enable(BLOOM_LAYER);
-        content.add(mesh);
-      }
-
-      return {
-        ...animated,
-        affordances: buildAffordances(archetype.affordances, metrics, layout),
-      };
-    },
   };
 }

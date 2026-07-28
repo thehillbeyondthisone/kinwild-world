@@ -21,85 +21,59 @@ const biome = {
 };
 
 /**
- * The budget that makes island-wide density possible at all. One merged stem
- * plus one instanced mesh per organ type — not one mesh per organ.
+ * The batch budget. A species draws one batch per (structural variant × organ
+ * type) plus its stems — a number set by the roster, never by how many plants
+ * the field happens to hold. That invariant is the whole point of Stage 2.
  */
-const MAX_MESHES_PER_PLANT = 6;
+const MAX_BATCHES_PER_SPECIES = 14;
 
-function collectRenderables(group) {
-  const result = [];
-  group.traverse((object) => {
-    if (object.isMesh) result.push(object);
-  });
-  return result;
-}
-
-function collectResources(group) {
-  const geometries = new Set();
-  const materials = new Set();
-  for (const mesh of collectRenderables(group)) {
-    geometries.add(mesh.geometry);
-    const meshMaterials = Array.isArray(mesh.material)
-      ? mesh.material
-      : [mesh.material];
-    for (const material of meshMaterials) materials.add(material);
-  }
-  return { geometries, materials };
-}
-
-function snapshotScene(group) {
-  group.updateMatrixWorld(true);
-  const result = [];
-  group.traverse((object) => {
-    object.updateMatrix();
-    const entry = {
-      type: object.type,
-      matrix: object.matrix.toArray(),
-    };
-    if (object.isInstancedMesh) {
-      entry.count = object.count;
-      entry.instanceMatrix = Array.from(object.instanceMatrix.array);
-      entry.instanceColor = object.instanceColor
-        ? Array.from(object.instanceColor.array)
-        : null;
+function drawnRows(species) {
+  const rows = [];
+  species.batchRoot.updateMatrixWorld(true);
+  const matrix = new THREE.Matrix4();
+  for (const mesh of species.batchMeshes()) {
+    for (let row = 0; row < mesh.count; row++) {
+      mesh.getMatrixAt(row, matrix);
+      rows.push({ mesh, row, matrix: matrix.toArray() });
     }
-    result.push(entry);
-  });
-  return result;
+  }
+  return rows;
 }
 
-function assertGeometryInsideSphere(group, sphere, label) {
-  group.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(group, true);
-  assert.equal(box.isEmpty(), false, `${label} should have renderable bounds`);
-  group.traverse((object) => {
-    if (!object.isMesh) return;
-    const positions = object.geometry.getAttribute("position");
-    const instanceMatrix = new THREE.Matrix4();
-    const worldMatrix = new THREE.Matrix4();
-    const vertex = new THREE.Vector3();
-    const instanceCount = object.isInstancedMesh ? object.count : 1;
-    for (let instanceIndex = 0; instanceIndex < instanceCount; instanceIndex++) {
-      if (object.isInstancedMesh) {
-        object.getMatrixAt(instanceIndex, instanceMatrix);
-        worldMatrix.multiplyMatrices(object.matrixWorld, instanceMatrix);
-      } else {
-        worldMatrix.copy(object.matrixWorld);
-      }
-      for (let vertexIndex = 0; vertexIndex < positions.count; vertexIndex++) {
-        vertex.fromBufferAttribute(positions, vertexIndex).applyMatrix4(worldMatrix);
+function assertRowsInsideSphere(species, sphere, label) {
+  const rowMatrix = new THREE.Matrix4();
+  const worldMatrix = new THREE.Matrix4();
+  const vertex = new THREE.Vector3();
+  let vertexCount = 0;
+  species.batchRoot.updateMatrixWorld(true);
+  for (const mesh of species.batchMeshes()) {
+    const positions = mesh.geometry.getAttribute("position");
+    for (let row = 0; row < mesh.count; row++) {
+      mesh.getMatrixAt(row, rowMatrix);
+      // A cleared row is scaled to zero and never rendered.
+      if (rowMatrix.elements[0] === 0 && rowMatrix.elements[5] === 0) continue;
+      worldMatrix.multiplyMatrices(mesh.matrixWorld, rowMatrix);
+      for (let index = 0; index < positions.count; index++) {
+        vertex.fromBufferAttribute(positions, index).applyMatrix4(worldMatrix);
         assert(
           vertex.distanceTo(sphere.center) <= sphere.radius + 1e-4,
-          `${label} world sphere should contain every rendered vertex`
+          `${label} world sphere should contain every rendered vertex`,
         );
+        vertexCount++;
       }
     }
-  });
+  }
+  assert(vertexCount > 0, `${label} should render something`);
 }
 
-function instrumentDisposal(resources) {
+function instrumentDisposal(species) {
   const calls = new Map();
-  for (const resource of [...resources.geometries, ...resources.materials]) {
+  const resources = new Set();
+  for (const mesh of species.batchMeshes()) {
+    resources.add(mesh.geometry);
+    resources.add(mesh.material);
+  }
+  for (const resource of resources) {
     const original = resource.dispose.bind(resource);
     calls.set(resource, 0);
     resource.dispose = () => {
@@ -118,10 +92,8 @@ for (const archetype of FLORA_ARCHETYPES) {
     { biome },
   );
   assert.equal(species.archetype, archetype);
-  assert.equal(species.dna.archetype, archetype);
   assert.equal(species.role, ARCHETYPES[archetype].role);
   assert.equal(species.windUniforms, state.windUniforms);
-  assert.equal(species.disposed, false);
   assert.equal(species.instanceCount, 0);
   assert(species.bounds.radius > 0, `${archetype} bounds radius`);
   assert(species.bounds.height > 0, `${archetype} bounds height`);
@@ -132,18 +104,22 @@ for (const archetype of FLORA_ARCHETYPES) {
     [...ARCHETYPES[archetype].affordances].sort(),
     `${archetype} should advertise exactly the affordances it declares`,
   );
-  assert(species.resourceCounts.geometries > 0);
-  assert(species.resourceCounts.materials > 0);
   assert(Object.isFrozen(species));
   assert(Object.isFrozen(species.dna));
 
-  // A skeleton is a graph with path-derived ids, inside budget, or absent —
-  // `cover` is a patch rather than a structure and legitimately has none.
-  if (species.skeleton.nodes.length > 0) {
-    assert(species.skeleton.nodes.length <= 40, `${archetype} node budget`);
-    const ids = new Set(species.skeleton.nodes.map((node) => node.id));
-    assert.equal(ids.size, species.skeleton.nodes.length);
-    for (const node of species.skeleton.nodes) {
+  // An empty species draws nothing at all: batches exist but hold no rows.
+  assert.equal(
+    species.batchMeshes().reduce((sum, mesh) => sum + mesh.count, 0),
+    0,
+    `${archetype} should draw no rows before anything is planted`,
+  );
+
+  for (const skeleton of species.skeletons) {
+    if (skeleton.nodes.length === 0) continue;
+    assert(skeleton.nodes.length <= 40, `${archetype} node budget`);
+    const ids = new Set(skeleton.nodes.map((node) => node.id));
+    assert.equal(ids.size, skeleton.nodes.length);
+    for (const node of skeleton.nodes) {
       if (node.parent !== null) {
         assert(ids.has(node.parent), `${archetype}: ${node.id} lost its parent`);
       }
@@ -157,109 +133,125 @@ for (const archetype of FLORA_ARCHETYPES) {
     scale: 1.25,
   };
   const first = species.createInstance(placement);
-  const second = species.createInstance(placement);
-  assert.equal(species.instanceCount, 2);
-  assert.equal(first.instanceId, second.instanceId);
-  assert.deepEqual(
-    snapshotScene(first.group),
-    snapshotScene(second.group),
-    `${archetype}: the same placement must build the same plant`,
-  );
+  assert.equal(species.instanceCount, 1);
+  assert.equal(first.group.children.length, 0, "a plant is rows, not meshes");
   assert.equal(first.group.userData.generatedFlora.speciesId, species.id);
   assert.deepEqual(
     new Set(first.affordances.map(({ type }) => type)),
     new Set(species.affordanceSchema),
   );
 
-  const firstRenderables = collectRenderables(first.group);
-  const secondRenderables = collectRenderables(second.group);
-  assert.ok(firstRenderables.length > 0, `${archetype} should render something`);
-  assert.ok(
-    firstRenderables.length <= MAX_MESHES_PER_PLANT,
-    `${archetype} spends ${firstRenderables.length} meshes per plant`,
-  );
-  assert.equal(firstRenderables.length, secondRenderables.length);
-  for (let i = 0; i < firstRenderables.length; i++) {
-    assert.equal(
-      firstRenderables[i].geometry,
-      secondRenderables[i].geometry,
-      `${archetype} instances should share geometry`,
-    );
-    assert.equal(
-      firstRenderables[i].material,
-      secondRenderables[i].material,
-      `${archetype} instances should share material`,
-    );
+  const sphere = first.getWorldBounds();
+  assert(Math.abs(sphere.center.x - 10) < 1e-9);
+  assert(Math.abs(sphere.center.y - (2 + species.bounds.center[1] * 1.25)) < 1e-9);
+  assert(Math.abs(sphere.center.z + 4) < 1e-9);
+  assert(Math.abs(sphere.radius - species.bounds.radius * 1.25) < 1e-9);
+  assertRowsInsideSphere(species, sphere, archetype);
+
+  const box = new THREE.Box3();
+  const rowMatrix = new THREE.Matrix4();
+  for (const mesh of species.batchMeshes()) {
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+    for (let row = 0; row < mesh.count; row++) {
+      mesh.getMatrixAt(row, rowMatrix);
+      if (rowMatrix.elements[0] === 0 && rowMatrix.elements[5] === 0) continue;
+      box.union(mesh.geometry.boundingBox.clone().applyMatrix4(rowMatrix));
+    }
   }
+  silhouettes.set(archetype, {
+    height: box.max.y - box.min.y,
+    width: Math.max(box.max.x - box.min.x, box.max.z - box.min.z),
+  });
 
-  const resources = collectResources(first.group);
-  assert.equal(resources.geometries.size, species.resourceCounts.geometries);
-  assert.equal(resources.materials.size, species.resourceCounts.materials);
+  // Same placement, same plant — batching must not make a plant depend on
+  // when it happened to be created.
+  const twin = buildSpecies(
+    { archetype, name: `${archetype} proof`, seed: `${archetype}-proof` },
+    { biome },
+  );
+  const twinFirst = twin.createInstance(placement);
+  assert.equal(first.instanceId, twinFirst.instanceId);
+  assert.equal(first.variantIndex, twinFirst.variantIndex);
+  assert.deepEqual(
+    drawnRows(species).map((entry) => entry.matrix),
+    drawnRows(twin).map((entry) => entry.matrix),
+    `${archetype}: the same placement must build the same rows`,
+  );
+  twin.dispose();
 
-  const windMaterial = [...resources.materials].find(
+  // Wind is still shared, and the touch bend now rides in the same shader.
+  const materials = new Set(species.batchMeshes().map((mesh) => mesh.material));
+  const windMaterial = [...materials].find(
     (material) => material.userData.windStrength > 0,
   );
   assert(windMaterial, `${archetype} should opt into shared wind`);
   const shader = {
     uniforms: {},
-    vertexShader: "#include <common>\nvoid main() {\n#include <begin_vertex>\n}",
+    vertexShader:
+      "#include <common>\nvoid main() {\n#include <begin_vertex>\n#include <project_vertex>\n}",
   };
   windMaterial.onBeforeCompile(shader);
   assert.equal(shader.uniforms.uTime, state.windUniforms.uTime);
   assert.equal(shader.uniforms.uFoliageWind, state.windUniforms.uFoliageWind);
   assert.match(shader.vertexShader, /uniform float uFoliageWind/);
   assert.match(shader.vertexShader, /#ifdef USE_INSTANCING/);
+  assert.match(shader.vertexShader, /uFloraTouch/, "touch bend should be patched in");
+  assert.match(
+    shader.vertexShader,
+    /attribute float aPlantIndex/,
+    "rows must be able to find their plant's motion texel",
+  );
+  assert(
+    shader.vertexShader.indexOf("uFloraTouch, touchUv") >
+      shader.vertexShader.indexOf("instanceMatrix * mvPosition"),
+    "the bend must run after instanceMatrix, in the batch root's space",
+  );
 
-  const touchStartA = first.touch(1, { x: 3, z: 4 });
-  const touchStartB = second.touch(1, { x: 3, z: 4 });
-  assert.deepEqual(touchStartA, touchStartB);
-  const touchStepA = first.update(1 / 60);
-  assert.deepEqual(touchStepA, second.update(1 / 60));
-  assert.equal(touchStepA.active, true);
-  assert.notEqual(touchStepA.value, 0);
-  const touchPivot = first.group.children[0].children[0];
-  assert.notEqual(touchPivot.rotation.x, 0);
-  assert.notEqual(touchPivot.rotation.z, 0);
-  if (species.role === "ground") {
-    const restPivot = first.group.children[0];
-    assert.equal(Math.abs(restPivot.rotation.x), 0, "groundcover has no rest lean");
-    assert.equal(Math.abs(restPivot.rotation.z), 0);
+  // Draw calls are a property of the roster, not of the field's density.
+  const batchesWithOnePlant = species.batchMeshes().length;
+  const crowd = [];
+  for (let index = 0; index < 40; index++) {
+    crowd.push(species.createInstance({ id: `crowd-${index}`, position: [index, 0, 0] }));
   }
+  assert.equal(
+    species.batchMeshes().length,
+    batchesWithOnePlant,
+    `${archetype}: 41 plants must not cost more batches than one`,
+  );
+  assert(
+    batchesWithOnePlant <= MAX_BATCHES_PER_SPECIES,
+    `${archetype} spends ${batchesWithOnePlant} batches`,
+  );
+  assert(
+    species.batchMeshes().every((mesh) => mesh.count <= mesh.instanceMatrix.count),
+    "a batch must never draw past its allocated rows",
+  );
+
+  // Touch: the spring stays on the CPU and its snapshot is unchanged, which
+  // is what the observatory's resonance trace reads.
+  const started = first.touch(1, { x: 3, z: 4 });
+  assert(Math.abs(started.direction.x - 0.6) < 1e-9);
+  assert(Math.abs(started.direction.z - 0.8) < 1e-9);
+  const stepped = first.update(1 / 60);
+  assert.equal(stepped.active, true);
+  assert.notEqual(stepped.value, 0);
   first.resetTouch();
-  second.resetTouch();
   assert.equal(first.touchState().active, false);
 
-  const sphere = first.getWorldBounds();
-  assert(Math.abs(sphere.center.x - 10) < 1e-9);
-  assert(Math.abs(sphere.center.y - (2 + species.bounds.center[1] * 1.25)) < 1e-9);
-  assert(Math.abs(sphere.center.z + 4) < 1e-9);
-  assert(Math.abs(sphere.radius - species.bounds.radius * 1.25) < 1e-9);
-  assertGeometryInsideSphere(first.group, sphere, archetype);
-
-  const worldAffordances = first.getWorldAffordances();
-  assert.equal(worldAffordances.length, first.affordances.length);
-  assert(worldAffordances.every((entry) => entry.space === "world"));
-  assert(worldAffordances.every((entry) => entry.position.isVector3));
-
-  const box = new THREE.Box3().setFromObject(first.group, true);
-  silhouettes.set(archetype, {
-    height: box.max.y - box.min.y,
-    width: Math.max(box.max.x - box.min.x, box.max.z - box.min.z),
-  });
-
-  const disposalCalls = instrumentDisposal(resources);
-  first.dispose();
-  assert.equal(first.disposed, true);
-  assert.equal(species.instanceCount, 1);
+  // Disposal frees the plant's rows without touching species-owned resources.
+  const disposalCalls = instrumentDisposal(species);
+  const victim = crowd.pop();
+  victim.dispose();
+  assert.equal(victim.disposed, true);
   assert(
     [...disposalCalls.values()].every((count) => count === 0),
-    "instance disposal must preserve species-owned geometry and materials",
+    "plant disposal must preserve species-owned geometry and materials",
   );
-  first.dispose();
+  victim.dispose();
 
   species.dispose();
   assert.equal(species.disposed, true);
-  assert.equal(second.disposed, true);
+  assert.equal(first.disposed, true);
   assert.equal(species.instanceCount, 0);
   assert(
     [...disposalCalls.values()].every((count) => count === 1),
@@ -311,28 +303,20 @@ const veilcrown = buildSpecies(
   { biome },
 );
 const veilInstance = veilcrown.createInstance({ id: "veil-proof" });
-const veilInstanced = collectRenderables(veilInstance.group).filter(
-  (mesh) => mesh.isInstancedMesh,
+const veilBatches = veilcrown.batchMeshes();
+assert.ok(
+  veilBatches.some((mesh) => mesh.count === 7),
+  "the seven-lobe radial crown should survive batching",
 );
 assert.ok(
-  veilInstanced.some((mesh) => mesh.count === 7),
-  "the seven-lobe radial crown should survive the archetype rewrite",
-);
-assert.ok(
-  veilInstanced.filter((mesh) => mesh.count === 17).length >= 2,
+  veilBatches.filter((mesh) => mesh.count === 17).length >= 2,
   "pendant signals should still hang from their own filaments",
 );
 assert.ok(
-  veilInstanced.some(
-    (mesh) => mesh.count === 17 && mesh.layers.isEnabled(1),
-  ),
+  veilBatches.some((mesh) => mesh.count === 17 && mesh.layers.isEnabled(1)),
   "pendant signals should still enter selective bloom",
 );
-assertGeometryInsideSphere(
-  veilInstance.group,
-  veilInstance.getWorldBounds(),
-  "Shroudplume",
-);
+assertRowsInsideSphere(veilcrown, veilInstance.getWorldBounds(), "Shroudplume");
 veilcrown.dispose();
 
 // So does the Pulsebell's lathed hood and its hanging glow.
@@ -352,22 +336,18 @@ const pulsebells = buildSpecies(
   { biome },
 );
 const pulseInstance = pulsebells.createInstance({ id: "pulsebell-proof" });
-const pulseRenderables = collectRenderables(pulseInstance.group);
+const pulseBatches = pulsebells.batchMeshes().filter((mesh) => mesh.count > 0);
 assert.ok(
-  pulseRenderables.some((mesh) => mesh.geometry.type === "LatheGeometry"),
+  pulseBatches.some((mesh) => mesh.geometry.type === "LatheGeometry"),
   "the open lathed hood silhouette should survive",
 );
 assert.ok(
-  pulseRenderables.some(
+  pulseBatches.some(
     (mesh) => (mesh.material.emissiveIntensity ?? 0) >= 1 && mesh.layers.isEnabled(1),
   ),
   "the selectively blooming hanging pulse should survive",
 );
-assertGeometryInsideSphere(
-  pulseInstance.group,
-  pulseInstance.getWorldBounds(),
-  "Chimeveil",
-);
+assertRowsInsideSphere(pulsebells, pulseInstance.getWorldBounds(), "Chimeveil");
 pulsebells.dispose();
 
 console.log("generated flora renderer invariants passed");

@@ -4,11 +4,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  FLORA_ARCHETYPES,
   FLORA_DNA_VERSION,
   FLORA_ROLES,
   PALETTE_ROLES,
   normalizeFloraDNA,
 } from "../src/generated-flora/dna.js";
+import { ARCHETYPE_SHAPE_LIMITS } from "../src/generated-flora/archetypes.js";
 import {
   deriveBiomePalette,
   resolveSpeciesColors,
@@ -24,11 +26,20 @@ import { createTouchEnvelope } from "../src/generated-flora/touch.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const floraSource = path.resolve(here, "../src/generated-flora");
 
-assert.equal(FLORA_DNA_VERSION, 1);
-assert.deepEqual(FLORA_ROLES, [
-  "hero-mushroom",
-  "mid-flower-cluster",
-  "groundcover",
+assert.equal(FLORA_DNA_VERSION, 2);
+// The tier a plant occupies and the silhouette it wears are separate axes in
+// v2. Fusing them is what made every hero a mushroom.
+assert.deepEqual(FLORA_ROLES, ["hero", "mid", "ground"]);
+assert.deepEqual(FLORA_ARCHETYPES, [
+  "canopy",
+  "spire",
+  "cap",
+  "bell",
+  "frond",
+  "pad",
+  "reed",
+  "cover",
+  "coral",
 ]);
 assert.deepEqual(PALETTE_ROLES, [
   "stem",
@@ -49,7 +60,9 @@ const malformed = normalizeFloraDNA({
     capRadius: -8,
     capDepth: "not-a-number",
     spotCount: 4.6,
-    satelliteCount: -1,
+    pendantCount: -1,
+    // v1 field names are silently dropped: `shape` is keyed per archetype.
+    satelliteCount: 3,
   },
   motion: {
     wind: 90,
@@ -70,14 +83,16 @@ const malformed = normalizeFloraDNA({
   ignoredPromptField: "compiler must drop this",
 });
 
-assert.equal(malformed.dna.role, "hero-mushroom");
+assert.equal(malformed.dna.archetype, "cap");
+assert.equal(malformed.dna.role, "hero");
 assert.equal(malformed.dna.name.length, 64);
 assert.equal(malformed.dna.shape.height, 8.5);
 assert.equal(malformed.dna.shape.stemRadius, 0.3);
-assert.equal(malformed.dna.shape.capRadius, 0.8);
-assert.equal(malformed.dna.shape.capDepth, 0.9);
+assert.equal(malformed.dna.shape.capRadius, 0.6);
+assert.equal(malformed.dna.shape.capDepth, 0.82);
 assert.equal(malformed.dna.shape.spotCount, 5);
-assert.equal(malformed.dna.shape.satelliteCount, 0);
+assert.equal(malformed.dna.shape.pendantCount, 0);
+assert.equal("satelliteCount" in malformed.dna.shape, false);
 assert.equal(malformed.dna.motion.wind, 2);
 assert.equal(malformed.dna.motion.touchStrength, 0.1);
 assert.equal(malformed.dna.motion.touchDamping, 7.5);
@@ -95,12 +110,49 @@ assert(Object.isFrozen(malformed.dna.shape));
 assert(malformed.notes.length >= 8);
 
 const defaulted = normalizeFloraDNA("draw me flowers");
-assert.equal(defaulted.dna.role, "mid-flower-cluster");
-assert.equal(defaulted.dna.shape.flowerCount, 7);
+assert.equal(defaulted.dna.archetype, "bell");
+assert.equal(defaulted.dna.role, "mid");
 assert(defaulted.notes.some((note) => note.includes("not an object")));
 
+// The discriminated union is what stops a groundcover asking for a trunk.
+const groundcover = normalizeFloraDNA({
+  archetype: "cover",
+  shape: { patchRadius: 2, height: 40, branchCount: 9 },
+});
+assert.deepEqual(groundcover.notes, []);
+assert.equal("height" in groundcover.dna.shape, false);
+assert.equal("branchCount" in groundcover.dna.shape, false);
+assert.equal(groundcover.dna.shape.patchRadius, 2);
+
+// Every archetype defaults inside its own limits, so an empty DNA is valid.
+for (const archetype of FLORA_ARCHETYPES) {
+  const { dna, notes } = normalizeFloraDNA({ archetype });
+  assert.deepEqual(notes, [], `${archetype} defaults should need no repair`);
+  assert.equal(dna.archetype, archetype);
+  const limits = ARCHETYPE_SHAPE_LIMITS[archetype];
+  assert.deepEqual(
+    Object.keys(dna.shape).sort(),
+    Object.keys(limits).sort(),
+    `${archetype} shape keys must match its limits exactly`,
+  );
+  for (const [key, value] of Object.entries(dna.shape)) {
+    const [low, high] = limits[key];
+    assert.ok(
+      value >= low && value <= high,
+      `${archetype}.${key} default ${value} is outside [${low}, ${high}]`,
+    );
+  }
+}
+
+// v1 role strings still resolve, so a saved v1 plant keeps compiling.
+assert.equal(normalizeFloraDNA({ role: "hero-mushroom" }).dna.archetype, "cap");
+assert.equal(normalizeFloraDNA({ role: "hero-mushroom" }).dna.role, "hero");
+assert.equal(normalizeFloraDNA({ role: "mid-flower-cluster" }).dna.archetype, "bell");
+assert.equal(normalizeFloraDNA({ role: "groundcover" }).dna.archetype, "cover");
+assert.equal(normalizeFloraDNA({ role: "groundcover" }).dna.role, "ground");
+
 const sameA = normalizeFloraDNA({
-  role: "ground",
+  archetype: "cover",
   name: "Quiet Moss",
   seed: { prompt: "moss", revision: 4 },
 }).dna;

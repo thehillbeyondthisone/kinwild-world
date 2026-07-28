@@ -29,7 +29,11 @@ import {
 } from "./style.js";
 import { createFaunaRoster, createFloraRoster } from "./roster.js";
 
-export const LIVING_WORLD_OBSTACLE_KIND = "living:veilcrown";
+/**
+ * The hero plant blocks ground creatures whatever it is. It was named for the
+ * one hero the compiler could build; it now covers a tree or a spire too.
+ */
+export const LIVING_WORLD_OBSTACLE_KIND = "living:hero";
 
 const UP = new THREE.Vector3(0, 1, 0);
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));

@@ -1,13 +1,22 @@
 import { seedToUint32 } from "./rng.js";
+import {
+  ARCHETYPE_NAME_DEFAULTS,
+  ARCHETYPE_ROLES,
+  ARCHETYPE_SHAPE_DEFAULTS,
+  ARCHETYPE_SHAPE_LIMITS,
+  FLORA_ARCHETYPES,
+} from "./archetypes.js";
 
-export const FLORA_DNA_VERSION = 1;
+export const FLORA_DNA_VERSION = 2;
 
-/** The proof deliberately supports exactly these three compositional roles. */
-export const FLORA_ROLES = Object.freeze([
-  "hero-mushroom",
-  "mid-flower-cluster",
-  "groundcover",
-]);
+/**
+ * The compositional tier a plant occupies in a field. Deliberately separate
+ * from its silhouette: v1 fused the two, which is why the only hero the
+ * compiler could build was a mushroom.
+ */
+export const FLORA_ROLES = Object.freeze(["hero", "mid", "ground"]);
+
+export { FLORA_ARCHETYPES };
 
 export const PALETTE_ROLES = Object.freeze([
   "stem",
@@ -19,134 +28,58 @@ export const PALETTE_ROLES = Object.freeze([
 ]);
 
 const ROLE_ALIASES = Object.freeze({
-  hero: "hero-mushroom",
-  landmark: "hero-mushroom",
-  mushroom: "hero-mushroom",
-  flower: "mid-flower-cluster",
-  flowers: "mid-flower-cluster",
-  mid: "mid-flower-cluster",
-  ground: "groundcover",
-  grass: "groundcover",
+  landmark: "hero",
+  "hero-mushroom": "hero",
+  "mid-flower-cluster": "mid",
+  mid: "mid",
+  flower: "mid",
+  flowers: "mid",
+  groundcover: "ground",
+  ground: "ground",
+  grass: "ground",
 });
 
-const ROLE_DEFAULTS = Object.freeze({
-  "hero-mushroom": {
-    name: "Crowncap",
-    paletteRoles: {
-      structure: "stem",
-      body: "primary",
-      detail: "secondary",
-      signal: "accent",
-      highlight: "highlight",
-    },
-    shape: {
-      height: 4.8,
-      stemRadius: 0.58,
-      capRadius: 2.25,
-      capDepth: 0.9,
-      spotCount: 11,
-      satelliteCount: 3,
-    },
-    motion: {
-      wind: 0.16,
-      touchStrength: 1,
-      touchStiffness: 34,
-      touchDamping: 7.5,
-      maxLean: 0.16,
-    },
-    variation: {
-      scaleMin: 0.9,
-      scaleMax: 1.12,
-      lean: 0.035,
-    },
-  },
-  "mid-flower-cluster": {
-    name: "Bellstar Cluster",
-    paletteRoles: {
-      structure: "stem",
-      body: "accent",
-      detail: "secondary",
-      signal: "highlight",
-      highlight: "highlight",
-    },
-    shape: {
-      clusterRadius: 1.25,
-      flowerCount: 7,
-      stemHeight: 1.25,
-      bloomRadius: 0.2,
-      petalCount: 6,
-      leafPairs: 2,
-    },
-    motion: {
-      wind: 0.72,
-      touchStrength: 1,
-      touchStiffness: 42,
-      touchDamping: 8.2,
-      maxLean: 0.24,
-    },
-    variation: {
-      scaleMin: 0.82,
-      scaleMax: 1.18,
-      lean: 0.08,
-    },
-  },
-  groundcover: {
-    name: "Whispergrass",
-    paletteRoles: {
-      structure: "stem",
-      body: "primary",
-      detail: "secondary",
-      signal: "accent",
-      highlight: "highlight",
-    },
-    shape: {
-      patchRadius: 2.6,
-      count: 112,
-      bladeHeight: 0.48,
-      bladeWidth: 0.095,
-      clumpiness: 0.62,
-      heightVariance: 0.38,
-    },
-    motion: {
-      wind: 1.08,
-      touchStrength: 1,
-      touchStiffness: 54,
-      touchDamping: 9.5,
-      maxLean: 0.12,
-    },
-    variation: {
-      scaleMin: 0.82,
-      scaleMax: 1.16,
-      lean: 0.12,
-    },
-  },
+/**
+ * v1 DNA named a renderer where v2 names a silhouette. The three old role
+ * strings still resolve, so anything holding a saved v1 plant keeps compiling.
+ */
+const ARCHETYPE_ALIASES = Object.freeze({
+  "hero-mushroom": "cap",
+  mushroom: "cap",
+  hero: "cap",
+  "mid-flower-cluster": "bell",
+  flower: "bell",
+  flowers: "bell",
+  bloom: "bell",
+  groundcover: "cover",
+  grass: "cover",
+  ground: "cover",
+  turf: "cover",
+  tree: "canopy",
+  canopy: "canopy",
+  fern: "frond",
+  succulent: "pad",
+  reeds: "reed",
 });
 
-const SHAPE_LIMITS = Object.freeze({
-  "hero-mushroom": {
-    height: [2.2, 8.5],
-    stemRadius: [0.22, 1.35],
-    capRadius: [0.8, 4.6],
-    capDepth: [0.3, 1.8],
-    spotCount: [0, 28, true],
-    satelliteCount: [0, 6, true],
-  },
-  "mid-flower-cluster": {
-    clusterRadius: [0.45, 3.2],
-    flowerCount: [3, 18, true],
-    stemHeight: [0.45, 2.8],
-    bloomRadius: [0.08, 0.46],
-    petalCount: [4, 9, true],
-    leafPairs: [0, 3, true],
-  },
-  groundcover: {
-    patchRadius: [0.6, 5],
-    count: [12, 320, true],
-    bladeHeight: [0.12, 1.15],
-    bladeWidth: [0.025, 0.3],
-    clumpiness: [0, 1],
-    heightVariance: [0, 0.75],
-  },
+const DEFAULT_PALETTE_ROLES = Object.freeze({
+  structure: "stem",
+  body: "primary",
+  detail: "secondary",
+  signal: "accent",
+  highlight: "highlight",
+});
+
+const MOTION_DEFAULTS = Object.freeze({
+  hero: { wind: 0.16, touchStrength: 1, touchStiffness: 34, touchDamping: 7.5, maxLean: 0.16 },
+  mid: { wind: 0.72, touchStrength: 1, touchStiffness: 42, touchDamping: 8.2, maxLean: 0.24 },
+  ground: { wind: 1.08, touchStrength: 1, touchStiffness: 54, touchDamping: 9.5, maxLean: 0.12 },
+});
+
+const VARIATION_DEFAULTS = Object.freeze({
+  hero: { scaleMin: 0.9, scaleMax: 1.12, lean: 0.035 },
+  mid: { scaleMin: 0.82, scaleMax: 1.18, lean: 0.08 },
+  ground: { scaleMin: 0.82, scaleMax: 1.16, lean: 0.12 },
 });
 
 const MOTION_LIMITS = Object.freeze({
@@ -172,17 +105,47 @@ function deepFreeze(value) {
   return Object.freeze(value);
 }
 
-function normalizeRole(value, notes) {
-  const candidate = typeof value === "string" ? value.trim().toLowerCase() : "";
-  const role = ROLE_ALIASES[candidate] ?? candidate;
-  if (FLORA_ROLES.includes(role)) return role;
-  notes.push(`unknown flora role "${String(value)}" -> mid-flower-cluster`);
-  return "mid-flower-cluster";
+function token(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function resolveArchetype(candidate) {
+  if (FLORA_ARCHETYPES.includes(candidate)) return candidate;
+  return ARCHETYPE_ALIASES[candidate] ?? null;
+}
+
+function normalizeArchetype(input, notes) {
+  const explicit = token(input.archetype);
+  if (explicit) {
+    const resolved = resolveArchetype(explicit);
+    if (resolved) return resolved;
+    notes.push(`unknown flora archetype "${input.archetype}" -> bell`);
+    return "bell";
+  }
+  const roleToken = token(input.role);
+  if (!roleToken) return "bell";
+  const resolved = resolveArchetype(roleToken);
+  if (resolved) return resolved;
+  if (!ROLE_ALIASES[roleToken] && !FLORA_ROLES.includes(roleToken)) {
+    notes.push(`unknown flora role "${input.role}" -> bell`);
+  }
+  return "bell";
+}
+
+/**
+ * The tier is taken from an explicit role when one is given, and otherwise
+ * from the archetype. Unknown roles are reported by `normalizeArchetype`, so
+ * this stays silent rather than logging the same repair twice.
+ */
+function normalizeRole(input, archetype) {
+  const roleToken = token(input.role);
+  if (FLORA_ROLES.includes(roleToken)) return roleToken;
+  return ROLE_ALIASES[roleToken] ?? ARCHETYPE_ROLES[archetype];
 }
 
 function normalizeName(value, fallback, notes) {
   if (typeof value !== "string" || value.trim().length === 0) {
-    if (value !== undefined) notes.push("invalid name -> role default");
+    if (value !== undefined) notes.push("invalid name -> archetype default");
     return fallback;
   }
   const trimmed = value.trim().replace(/\s+/g, " ");
@@ -214,10 +177,10 @@ function normalizeNumericBlock(source, defaults, limits, notes, path) {
   return out;
 }
 
-function normalizePaletteRoles(source, defaults, notes) {
+function normalizePaletteRoles(source, notes) {
   const input = isRecord(source) ? source : {};
   const out = {};
-  for (const [slot, fallback] of Object.entries(defaults)) {
+  for (const [slot, fallback] of Object.entries(DEFAULT_PALETTE_ROLES)) {
     const value = input[slot];
     if (value === undefined) {
       out[slot] = fallback;
@@ -234,7 +197,8 @@ function normalizePaletteRoles(source, defaults, notes) {
 /**
  * Normalize permissive AI-authored FloraDNA into a compact immutable form.
  * Unknown fields are intentionally dropped: the compiler, not generated
- * input, owns the render/performance grammar.
+ * input, owns the render/performance grammar — and because `shape` is keyed
+ * per archetype, a groundcover physically cannot carry trunk fields through.
  *
  * @param {unknown} raw
  * @returns {{dna: Readonly<object>, notes: string[]}}
@@ -244,28 +208,28 @@ export function normalizeFloraDNA(raw) {
   const input = isRecord(raw) ? raw : {};
   if (!isRecord(raw)) notes.push("flora DNA was not an object -> defaults");
 
-  const role = normalizeRole(input.role, notes);
-  const defaults = ROLE_DEFAULTS[role];
+  const archetype = normalizeArchetype(input, notes);
+  const role = normalizeRole(input, archetype);
   const shape = normalizeNumericBlock(
     input.shape,
-    defaults.shape,
-    SHAPE_LIMITS[role],
+    ARCHETYPE_SHAPE_DEFAULTS[archetype],
+    ARCHETYPE_SHAPE_LIMITS[archetype],
     notes,
-    "shape"
+    "shape",
   );
   const motion = normalizeNumericBlock(
     input.motion,
-    defaults.motion,
+    MOTION_DEFAULTS[role],
     MOTION_LIMITS,
     notes,
-    "motion"
+    "motion",
   );
   const variation = normalizeNumericBlock(
     input.variation,
-    defaults.variation,
+    VARIATION_DEFAULTS[role],
     VARIATION_LIMITS,
     notes,
-    "variation"
+    "variation",
   );
 
   if (variation.scaleMin > variation.scaleMax) {
@@ -273,12 +237,14 @@ export function normalizeFloraDNA(raw) {
     [variation.scaleMin, variation.scaleMax] = [variation.scaleMax, variation.scaleMin];
   }
 
+  const name = normalizeName(input.name, ARCHETYPE_NAME_DEFAULTS[archetype], notes);
   const dna = {
     version: FLORA_DNA_VERSION,
-    name: normalizeName(input.name, defaults.name, notes),
+    name,
+    archetype,
     role,
-    seed: seedToUint32(input.seed ?? `${role}:${input.name ?? defaults.name}`),
-    paletteRoles: normalizePaletteRoles(input.paletteRoles, defaults.paletteRoles, notes),
+    seed: seedToUint32(input.seed ?? `${archetype}:${input.name ?? name}`),
+    paletteRoles: normalizePaletteRoles(input.paletteRoles, notes),
     shape,
     motion,
     variation,

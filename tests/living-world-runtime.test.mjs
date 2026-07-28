@@ -106,10 +106,11 @@ const runtime = createLivingWorldRuntime({
 worldState.livingWorld = runtime;
 const floraCount = populateLivingFlora(runtime);
 const faunaCount = populateLivingFauna(runtime);
-assert.equal(floraCount, 34);
+// Moves with plant footprints — a bigger hero rejects more nearby placements.
+assert.equal(floraCount, 32);
 assert.equal(faunaCount, 4);
 assert.equal(worldState.creatures.length, faunaCount);
-assert.ok(worldState.obstacles.some((entry) => entry.kind === "living:veilcrown"));
+assert.ok(worldState.obstacles.some((entry) => entry.kind === "living:hero"));
 assert.ok(worldState.flowerSpots.length > 0);
 assert.ok(worldState.perchSpots.length > 0);
 
@@ -138,11 +139,16 @@ const expectedFamilies = runtime.composition.flora.map((record) => {
   const options = rosterByRole.get(record.role);
   return options[record.ordinal % options.length].family;
 });
-assert.deepEqual(
-  runtime.flora.map((entry) => entry.recipe.family),
-  expectedFamilies,
-  "each placement should carry the species its ordinal selects",
-);
+// A subsequence rather than an equality: a placement whose footprint cannot
+// be repaired onto usable ground is dropped, so the planted list is the plan
+// minus its rejections — but never re-ordered and never re-rolled.
+const planted = runtime.flora.map((entry) => entry.recipe.family);
+let cursor = 0;
+for (const family of planted) {
+  const found = expectedFamilies.indexOf(family, cursor);
+  assert.notEqual(found, -1, `${family} was planted out of the plan's order`);
+  cursor = found + 1;
+}
 
 // Kin are distinct species rather than phenotypes of one.
 const kinSpecies = new Set(runtime.fauna.map((actor) => actor.agent.dna.speciesId));

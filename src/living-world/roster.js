@@ -34,66 +34,140 @@ import { deriveBiomePalette } from "../generated-flora/palette.js";
  * The eight families. Fixed set, stable keys — this is what the Field Guide
  * and the eight taxonomy slots are counting.
  *
- * `character` biases the roll inside the role's limits so families stay
- * recognisably distinct: a Lanterncap is always the tall thin one, a Veilcrown
- * always the broad one, however the dice land.
+ * Each family owns an archetype and a `shape` roll biased inside that
+ * archetype's limits, so families stay recognisably distinct however the dice
+ * land: a Lanternspire is always the tall thin one, a Boughcrown always the
+ * branching one. The hero tier is no longer three phenotypes of a mushroom —
+ * a field's centrepiece can now be a tree, a spire or a cap.
  */
 export const FLORA_FAMILIES = Object.freeze([
   Object.freeze({
-    key: "veilcrown",
+    key: "boughcrown",
     role: "hero",
-    dnaRole: "hero-mushroom",
-    stems: ["Veil", "Shroud", "Canopy", "Mantle"],
-    character: { height: [3.1, 4.6], cap: [1.7, 2.6], stem: [0.4, 0.62], spots: [10, 22] },
+    archetype: "canopy",
+    stems: ["Bough", "Canopy", "Arbor", "Mantle"],
+    shape: (rng) => ({
+      height: rng.range(5.5, 9),
+      stemCount: rng.int(1, 2),
+      stemRadius: rng.range(0.3, 0.55),
+      taper: rng.range(0.35, 0.6),
+      curve: rng.range(0.12, 0.35),
+      branchCount: rng.int(3, 4),
+      branchAngle: rng.range(0.55, 0.95),
+      branchDepth: rng.int(2, 3),
+      branchFalloff: rng.range(0.6, 0.78),
+      leafRadius: rng.range(0.8, 1.6),
+      leafThickness: rng.range(0.45, 0.75),
+    }),
   }),
   Object.freeze({
-    key: "lanterncap",
+    key: "lanternspire",
     role: "hero",
-    dnaRole: "hero-mushroom",
-    stems: ["Lantern", "Beacon", "Tower", "Spire"],
-    character: { height: [4.8, 7.2], cap: [0.95, 1.6], stem: [0.26, 0.42], spots: [0, 9] },
+    archetype: "spire",
+    stems: ["Lantern", "Beacon", "Tower", "Spindle"],
+    shape: (rng) => ({
+      height: rng.range(5, 9),
+      stemCount: rng.int(1, 3),
+      stemRadius: rng.range(0.14, 0.3),
+      taper: rng.range(0.1, 0.3),
+      curve: rng.range(0.05, 0.3),
+      budRadius: rng.range(0.12, 0.34),
+      ringCount: rng.int(2, 7),
+    }),
+  }),
+  Object.freeze({
+    key: "veilcrown",
+    role: "hero",
+    archetype: "cap",
+    stems: ["Veil", "Shroud", "Crown", "Hollow"],
+    shape: (rng) => {
+      const capRadius = rng.range(1.4, 2.8);
+      return {
+        height: rng.range(2.8, 5.5),
+        stemCount: rng.int(2, 5),
+        stemRadius: rng.range(0.38, 0.7),
+        taper: rng.range(0.6, 1),
+        curve: rng.range(0.08, 0.35),
+        capRadius,
+        capDepth: capRadius * rng.range(0.3, 0.44),
+        lobeCount: rng.int(0, 8),
+        spotCount: rng.int(4, 20),
+        pendantCount: rng.int(0, 14),
+      };
+    },
   }),
   Object.freeze({
     key: "pulsebell",
     role: "mid",
-    dnaRole: "mid-flower-cluster",
+    archetype: "bell",
     stems: ["Pulse", "Chime", "Peal", "Toll"],
-    character: { cluster: [0.62, 0.95], flowers: [4, 7], stem: [1.0, 1.5], bloom: [0.26, 0.38] },
+    shape: (rng) => ({
+      clusterRadius: rng.range(0.5, 1.4),
+      stemCount: rng.int(4, 12),
+      stemHeight: rng.range(0.8, 2),
+      stemRadius: rng.range(0.015, 0.05),
+      bloomRadius: rng.range(0.14, 0.36),
+      leafPairs: rng.int(0, 3),
+      curve: rng.range(0.1, 0.4),
+    }),
   }),
   Object.freeze({
-    key: "emberwort",
+    key: "tidefern",
     role: "mid",
-    dnaRole: "mid-flower-cluster",
-    stems: ["Ember", "Cinder", "Kindle", "Smoulder"],
-    character: { cluster: [0.9, 1.5], flowers: [8, 14], stem: [0.6, 1.0], bloom: [0.12, 0.22] },
+    archetype: "frond",
+    stems: ["Tide", "Curl", "Wisp", "Quill"],
+    shape: (rng) => ({
+      height: rng.range(0.7, 2.4),
+      stemCount: rng.int(3, 8),
+      stemRadius: rng.range(0.025, 0.1),
+      curve: rng.range(0.4, 0.9),
+      frondLength: rng.range(0.4, 1.4),
+      frondWidth: rng.range(0.12, 0.4),
+      pinnaCount: rng.int(4, 8),
+    }),
   }),
   Object.freeze({
-    key: "glasswort",
+    key: "glasspalm",
     role: "mid",
-    dnaRole: "mid-flower-cluster",
-    stems: ["Glass", "Prism", "Facet", "Clear"],
-    character: { cluster: [0.45, 0.7], flowers: [3, 5], stem: [1.6, 2.4], bloom: [0.3, 0.44] },
+    archetype: "pad",
+    stems: ["Glass", "Prism", "Facet", "Salve"],
+    shape: (rng) => ({
+      padCount: rng.int(4, 11),
+      padRadius: rng.range(0.25, 0.85),
+      padThickness: rng.range(0.14, 0.4),
+      stubLength: rng.range(0.1, 0.5),
+      spread: rng.range(0.35, 1),
+      spineCount: rng.int(0, 16),
+    }),
   }),
   Object.freeze({
-    key: "threadgrass",
+    key: "sedgereed",
     role: "ground",
-    dnaRole: "groundcover",
-    stems: ["Thread", "Filament", "Strand", "Sedge"],
-    character: { patch: [1.4, 2.1], count: [60, 120], blade: [0.55, 0.85], width: [0.05, 0.08] },
+    archetype: "reed",
+    stems: ["Sedge", "Rush", "Strand", "Quiet"],
+    shape: (rng) => ({
+      height: rng.range(0.8, 2.6),
+      stemCount: rng.int(8, 20),
+      clumpRadius: rng.range(0.35, 1.2),
+      stemRadius: rng.range(0.02, 0.08),
+      curve: rng.range(0.05, 0.3),
+      bladeWidth: rng.range(0.05, 0.18),
+      plumeRadius: rng.range(0, 0.22),
+    }),
   }),
   Object.freeze({
     key: "mossvelvet",
     role: "ground",
-    dnaRole: "groundcover",
-    stems: ["Velvet", "Nap", "Down", "Plush"],
-    character: { patch: [2.2, 3.6], count: [150, 280], blade: [0.14, 0.3], width: [0.09, 0.16] },
-  }),
-  Object.freeze({
-    key: "tidefern",
-    role: "ground",
-    dnaRole: "groundcover",
-    stems: ["Tide", "Frond", "Curl", "Wisp"],
-    character: { patch: [0.9, 1.6], count: [22, 55], blade: [0.85, 1.1], width: [0.14, 0.26] },
+    archetype: "cover",
+    stems: ["Velvet", "Nap", "Down", "Thread"],
+    shape: (rng) => ({
+      patchRadius: rng.range(1.2, 3.4),
+      count: rng.int(60, 240),
+      bladeHeight: rng.range(0.18, 0.75),
+      bladeWidth: rng.range(0.05, 0.16),
+      clumpiness: rng.range(0.35, 0.95),
+      heightVariance: rng.range(0.2, 0.62),
+    }),
   }),
 ]);
 
@@ -126,10 +200,6 @@ export const FAUNA_FAMILIES = Object.freeze([
     legs: { count: 6, length: [0.58, 0.72], thickness: [0.052, 0.068] },
   }),
 ]);
-
-function rangeInt(rng, [low, high]) {
-  return rng.int(low, high);
-}
 
 /**
  * A species name in the field-guide register, built the same way island names
@@ -207,40 +277,6 @@ function paletteFor(biome, rng, index, role) {
   });
 }
 
-function heroShape(rng, character) {
-  const capRadius = rng.range(...character.cap);
-  return {
-    height: rng.range(...character.height),
-    stemRadius: rng.range(...character.stem),
-    capRadius,
-    capDepth: capRadius * rng.range(0.3, 0.44),
-    spotCount: rangeInt(rng, character.spots),
-    satelliteCount: rangeInt(rng, [0, 4]),
-  };
-}
-
-function flowerShape(rng, character) {
-  return {
-    clusterRadius: rng.range(...character.cluster),
-    flowerCount: rangeInt(rng, character.flowers),
-    stemHeight: rng.range(...character.stem),
-    bloomRadius: rng.range(...character.bloom),
-    petalCount: rangeInt(rng, [4, 8]),
-    leafPairs: rangeInt(rng, [0, 3]),
-  };
-}
-
-function groundShape(rng, character) {
-  return {
-    patchRadius: rng.range(...character.patch),
-    count: rangeInt(rng, character.count),
-    bladeHeight: rng.range(...character.blade),
-    bladeWidth: rng.range(...character.width),
-    clumpiness: rng.range(0.35, 0.95),
-    heightVariance: rng.range(0.2, 0.62),
-  };
-}
-
 function motionFor(rng, role) {
   // Groundcover whips, heroes barely move. Kept inside MOTION_LIMITS so the
   // normalizer never has to repair a roll — a roster that needs repairing is a
@@ -280,12 +316,7 @@ export function createFloraRoster(biome, seed) {
     chosen.forEach((family, index) => {
       const rng = createRng(hashSeed("kinwild/species", family.key, seed));
       const name = speciesName(family, seed);
-      const shape =
-        role === "hero"
-          ? heroShape(rng, family.character)
-          : role === "mid"
-            ? flowerShape(rng, family.character)
-            : groundShape(rng, family.character);
+      const shape = family.shape(rng);
       recipes.push(
         Object.freeze({
           key: family.key,
@@ -295,8 +326,10 @@ export function createFloraRoster(biome, seed) {
           family: family.key,
           label: name,
           role,
+          archetype: family.archetype,
           dna: Object.freeze({
-            role: family.dnaRole,
+            archetype: family.archetype,
+            role,
             name,
             seed: hashSeed("kinwild/flora", family.key, seed),
             shape: Object.freeze(shape),

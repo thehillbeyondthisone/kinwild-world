@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { state } from "../state.js";
 import {
+  FLORA_ARCHETYPES,
   FLORA_DNA_VERSION,
   FLORA_ROLES,
   PALETTE_ROLES,
@@ -18,7 +19,7 @@ import {
   stableStringify,
 } from "./rng.js";
 import { createTouchEnvelope } from "./touch.js";
-import { compileRoleRenderer } from "./renderers.js";
+import { compileArchetype } from "./renderers.js";
 
 const isRecord = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -213,11 +214,11 @@ export function buildSpecies(rawDNA, options = {}) {
   const { dna, notes } = normalizeFloraDNA(normalizedInput);
   const palette = deriveBiomePalette(options.biome, options.palette);
   const colors = resolveSpeciesColors(dna, palette);
-  const renderer = compileRoleRenderer(dna, colors);
+  const renderer = compileArchetype(dna, colors);
   const digest = hashSeed("generated-flora", dna, palette)
     .toString(16)
     .padStart(8, "0");
-  const id = `flora:${dna.role}:${digest}`;
+  const id = `flora:${dna.archetype}:${digest}`;
   const instances = new Set();
   let nextOrdinal = 0;
   let disposed = false;
@@ -226,6 +227,8 @@ export function buildSpecies(rawDNA, options = {}) {
     id,
     name: dna.name,
     role: dna.role,
+    archetype: dna.archetype,
+    skeleton: renderer.skeleton,
     dna,
     notes: Object.freeze([...notes]),
     palette,
@@ -289,6 +292,7 @@ export function buildSpecies(rawDNA, options = {}) {
 }
 
 export {
+  FLORA_ARCHETYPES,
   FLORA_DNA_VERSION,
   FLORA_ROLES,
   PALETTE_ROLES,

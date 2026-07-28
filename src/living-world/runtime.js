@@ -24,11 +24,10 @@ import { LOWFX } from "../lowfx.js";
 import {
   LIVING_WORLD_PALETTE,
   LIVING_WORLD_STYLE_ID,
-  createLivingFaunaDNA,
-  createLivingFloraRecipes,
   createLivingWorldBiome,
   resolveLivingWorldFlags,
 } from "./style.js";
+import { createFaunaRoster, createFloraRoster } from "./roster.js";
 
 export const LIVING_WORLD_OBSTACLE_KIND = "living:veilcrown";
 
@@ -570,11 +569,11 @@ function installLivingFieldLights(runtime) {
 
 export function populateLivingFlora(runtime) {
   if (!runtime?.flags.generatedFlora || runtime.disposed) return 0;
-  const recipes = createLivingFloraRecipes(runtime.seed);
-  const recipeByRole = new Map(recipes.map((recipe) => [recipe.role, recipe]));
-  const speciesByRole = new Map();
-  const providerByRole = new Map();
-
+  // A roster rather than one recipe per role: each role now carries several
+  // species drawn from the stable family set, so a field is a small community
+  // instead of three plants repeated.
+  const recipes = createFloraRoster(runtime.biome, runtime.seed);
+  const byRole = new Map();
   for (const recipe of recipes) {
     const species = buildSpecies(recipe.dna, {
       biome: runtime.biome,
@@ -584,11 +583,11 @@ export function populateLivingFlora(runtime) {
     const provider = makeFloraProvider(species, recipe);
     runtime.species.push(species);
     runtime.floraProviders.push(provider);
-    speciesByRole.set(recipe.role, species);
-    providerByRole.set(recipe.role, provider);
+    if (!byRole.has(recipe.role)) byRole.set(recipe.role, []);
+    byRole.get(recipe.role).push({ recipe, species, provider });
   }
 
-  const heroSpecies = speciesByRole.get("hero");
+  const heroSpecies = byRole.get("hero")?.[0]?.species;
   if (!runtime.composition) {
     const anchor = selectLivingWorldAnchor(
       runtime.worldState,
@@ -599,11 +598,12 @@ export function populateLivingFlora(runtime) {
   }
 
   for (const record of runtime.composition.flora) {
-    const recipe = recipeByRole.get(record.role);
-    const species = speciesByRole.get(record.role);
-    const provider = providerByRole.get(record.role);
-    if (!recipe || !species || !provider) continue;
-    addLivingFlora(runtime, recipe, species, provider, record);
+    const options = byRole.get(record.role);
+    if (!options?.length) continue;
+    // Keyed on the placement ordinal, not a fresh roll: the same seed must
+    // plant the same species in the same spot on every regeneration.
+    const choice = options[record.ordinal % options.length];
+    addLivingFlora(runtime, choice.recipe, choice.species, choice.provider, record);
   }
   installLivingFieldLights(runtime);
   return runtime.flora.length;
@@ -712,6 +712,25 @@ function faunaPathTangent(record, phase, out) {
   );
 }
 
+/**
+ * One individual's DNA, drawn from its species. The species owns the body
+ * plan and palette; the individual gets its own seed so per-actor jitter still
+ * varies within the family.
+ */
+function faunaDnaFor(species, seed, ordinal) {
+  return {
+    schemaVersion: 1,
+    speciesId: species.family,
+    name: species.name,
+    seed: hashSeed("kinwild/fauna-individual", species.family, seed, ordinal),
+    palette: { ...species.palette },
+    body: { ...species.body },
+    head: { ...species.head, offset: [...species.head.offset] },
+    legs: { ...species.legs },
+    motion: { ...species.motion },
+  };
+}
+
 export function populateLivingFauna(runtime) {
   if (!runtime?.flags.generatedFauna || runtime.disposed) return 0;
   if (!runtime.composition) {
@@ -720,9 +739,13 @@ export function populateLivingFauna(runtime) {
   }
   const provider = runtime.creatureProvider ?? makeCreatureProvider();
   runtime.creatureProvider = provider;
+  // Two kin species per field, each a distinct body plan, rather than three
+  // phenotypes of one. Drawn by ordinal so a regeneration puts the same
+  // species on the same orbit.
+  const roster = createFaunaRoster(runtime.biome, runtime.seed);
   for (const record of runtime.composition.fauna) {
-    const dna = createLivingFaunaDNA(runtime.seed, record.ordinal);
-    addLivingFaunaActor(runtime, provider, dna, record);
+    const species = roster[record.ordinal % roster.length];
+    addLivingFaunaActor(runtime, provider, faunaDnaFor(species, runtime.seed, record.ordinal), record);
   }
   return runtime.fauna.length;
 }

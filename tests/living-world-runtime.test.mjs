@@ -14,6 +14,7 @@ const {
   stepLivingWorld,
 } = await import("../src/living-world/runtime.js");
 const { createLivingWorldBiome } = await import("../src/living-world/style.js");
+const { createFloraRoster } = await import("../src/living-world/roster.js");
 
 const originalRandom = Math.random;
 Math.random = () => {
@@ -111,6 +112,41 @@ assert.equal(worldState.creatures.length, faunaCount);
 assert.ok(worldState.obstacles.some((entry) => entry.kind === "living:veilcrown"));
 assert.ok(worldState.flowerSpots.length > 0);
 assert.ok(worldState.perchSpots.length > 0);
+
+// A field is a community now, not one plant per role repeated. Roles carry
+// several species and each placement keeps the species its ordinal chose.
+const plantedFamilies = new Set(runtime.flora.map((entry) => entry.recipe.family));
+assert.ok(
+  plantedFamilies.size >= 5,
+  `a field should plant several species, planted ${plantedFamilies.size}`,
+);
+const midFamilies = new Set(
+  runtime.flora
+    .filter((entry) => entry.recipe.role === "mid")
+    .map((entry) => entry.recipe.family),
+);
+assert.ok(midFamilies.size > 1, "a single role should carry more than one species");
+// Placement is keyed on the composition ordinal, so the field is reproducible:
+// the species planted at each spot follows the plan, not a fresh roll.
+const roster = createFloraRoster(biome, 0x1e);
+const rosterByRole = new Map();
+for (const recipe of roster) {
+  if (!rosterByRole.has(recipe.role)) rosterByRole.set(recipe.role, []);
+  rosterByRole.get(recipe.role).push(recipe);
+}
+const expectedFamilies = runtime.composition.flora.map((record) => {
+  const options = rosterByRole.get(record.role);
+  return options[record.ordinal % options.length].family;
+});
+assert.deepEqual(
+  runtime.flora.map((entry) => entry.recipe.family),
+  expectedFamilies,
+  "each placement should carry the species its ordinal selects",
+);
+
+// Kin are distinct species rather than phenotypes of one.
+const kinSpecies = new Set(runtime.fauna.map((actor) => actor.agent.dna.speciesId));
+assert.ok(kinSpecies.size >= 2, "a field should carry more than one kin species");
 
 // The legacy world consumes nectar and perch; the plants advertise five more
 // kinds that used to be computed and thrown away inside the same loop.

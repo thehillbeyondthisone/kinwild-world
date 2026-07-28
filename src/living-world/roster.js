@@ -255,6 +255,73 @@ function rotate(hex, turns, saturationScale = 1, lightnessShift = 0) {
  * Each species then rotates the hue a little further round, so two plants
  * sharing a role never read as the same plant twice.
  */
+/**
+ * Relative luminance, sRGB decoded to linear with Rec.709 weights. Used to
+ * measure a plant against the ground it will stand on.
+ */
+function luminance(hex) {
+  const color = new THREE.Color(hex);
+  const channel = (v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b);
+}
+
+function contrastRatio(a, b) {
+  const high = Math.max(luminance(a), luminance(b));
+  const low = Math.min(luminance(a), luminance(b));
+  return (high + 0.05) / (low + 0.05);
+}
+
+/**
+ * The floor a plant has to clear against its terrain to keep a silhouette.
+ * Low by text standards on purpose — these are lit, shaded, outlined forms,
+ * not glyphs, and the palette is painterly. It is the 1.0:1 cases this exists
+ * to catch, where a plant and the ground behind it are the same brightness.
+ */
+const MIN_TERRAIN_CONTRAST = 1.8;
+
+/**
+ * Push a species colour away from the terrain's brightness until it reads.
+ *
+ * `paletteFor` claims to build warm living forms that stand against dark
+ * mineral terrain, but it takes whatever the biome's accent happens to be. On
+ * the biomes whose accent is violet — cloud, frozen, desert — that produced
+ * plants at 1.00:1 against their own ground: correct hue, invisible shape.
+ *
+ * Hue and saturation are held; only lightness moves, and only far enough.
+ * Where a species already reads, this returns it untouched.
+ */
+function separateFromTerrain(hex, terrain) {
+  const worst = () => terrain.reduce((low, t) => Math.min(low, contrastRatio(hex, t)), Infinity);
+  if (worst() >= MIN_TERRAIN_CONTRAST) return hex;
+
+  const hsl = { h: 0, s: 0, l: 0 };
+  new THREE.Color(hex).getHSL(hsl, THREE.SRGBColorSpace);
+  // Move away from the terrain rather than always brightening: on a pale
+  // biome the readable direction is down.
+  const terrainLuminance =
+    terrain.reduce((sum, t) => sum + luminance(t), 0) / Math.max(terrain.length, 1);
+  const direction = terrainLuminance > 0.28 ? -1 : 1;
+
+  let best = hex;
+  let bestRatio = worst();
+  for (let step = 1; step <= 24; step++) {
+    const lightness = Math.min(0.94, Math.max(0.06, hsl.l + direction * step * 0.025));
+    const candidate = hexOf(
+      new THREE.Color().setHSL(hsl.h, hsl.s, lightness, THREE.SRGBColorSpace),
+    );
+    const ratio = terrain.reduce(
+      (low, t) => Math.min(low, contrastRatio(candidate, t)),
+      Infinity,
+    );
+    if (ratio > bestRatio) {
+      best = candidate;
+      bestRatio = ratio;
+    }
+    if (ratio >= MIN_TERRAIN_CONTRAST) return candidate;
+  }
+  return best;
+}
+
 function paletteFor(biome, rng, index, role) {
   const genome = biome?.styleGenome;
   const fallback = deriveBiomePalette(biome);
@@ -268,7 +335,11 @@ function paletteFor(biome, rng, index, role) {
   // same family of light. A wider spread walked an orange accent round into
   // yellow-green, which put the flora back into the terrain's hue.
   const spread = rng.range(0.03, 0.09) * (index % 2 === 0 ? 1 : -1);
-  const primary = rotate(warm, spread, 1, role === "ground" ? -0.08 : 0);
+  const terrain = genome?.terrain ?? (Array.isArray(biome?.ground) ? biome.ground : [ground]);
+  const primary = separateFromTerrain(
+    rotate(warm, spread, 1, role === "ground" ? -0.08 : 0),
+    terrain,
+  );
 
   return Object.freeze({
     // Stems belong to the ground they grow out of.

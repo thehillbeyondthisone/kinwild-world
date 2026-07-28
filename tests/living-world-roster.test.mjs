@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import * as THREE from "three";
 
 globalThis.__APP_VERSION__ = "test";
 
@@ -66,6 +67,38 @@ for (const biome of biomes) {
       for (const hex of Object.values(recipe.palette)) {
         assert.match(hex, /^#[0-9a-f]{6}$/i, `${label}: palette entry ${hex} is not a colour`);
       }
+    }
+  }
+}
+
+// A plant has to be distinguishable from the ground it stands on.
+//
+// `paletteFor` builds species colour from the biome's accent, on the stated
+// premise that it is warm and the terrain is dark mineral. Several biomes'
+// accents are violet, and on those the premise failed silently: cloud, frozen
+// and desert grew plants at 1.00:1 luminance against their own terrain —
+// right hue, no silhouette. `separateFromTerrain` now holds a floor.
+const luminance = (hex) => {
+  const color = new THREE.Color(hex);
+  const channel = (v) => (v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b);
+};
+const contrastRatio = (a, b) => {
+  const high = Math.max(luminance(a), luminance(b));
+  const low = Math.min(luminance(a), luminance(b));
+  return (high + 0.05) / (low + 0.05);
+};
+for (const biome of biomes) {
+  const terrain = biome.styleGenome?.terrain ?? biome.ground;
+  for (const seed of SEEDS) {
+    for (const recipe of createFloraRoster(biome, seed)) {
+      const worst = Math.min(
+        ...terrain.map((tone) => contrastRatio(recipe.palette.primary, tone)),
+      );
+      assert.ok(
+        worst >= 1.75,
+        `${biome.id}/0x${seed.toString(16)}: ${recipe.family} sits at ${worst.toFixed(2)}:1 against its terrain`,
+      );
     }
   }
 }

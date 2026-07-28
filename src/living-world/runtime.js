@@ -276,6 +276,13 @@ export function planLivingComposition(seed, anchor, { worldState, lowfx = LOWFX 
   if (!worldState?.heightFn || !worldState.currentLayout) {
     throw new TypeError("planLivingComposition requires a world to compose onto");
   }
+  // Measured on 0x0007: LOWFX plants 66 of a planned 69, reaching 0.81 of the
+  // island radius — the same reach as full quality at roughly half the
+  // density, across fewer batches because the variant count halves too. That
+  // is the degradation this wants: coverage preserved, density reduced. The
+  // ratio predates batching but survives it on merit, since draw calls went
+  // flat while triangle and vertex work did not, and LOWFX hardware is
+  // genuinely weak by definition (`dpr < 1.5 && shortSide < 768`).
   const density = lowfx ? LOWFX_DENSITY : 1;
   const faunaCount = lowfx ? 2 : 5;
   const baseRng = createRng(hashSeed(seed, LIVING_WORLD_STYLE_ID, "composition/layout"));

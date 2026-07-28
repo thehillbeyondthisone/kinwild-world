@@ -3,8 +3,25 @@
  * plumbing without borrowing its visible identity. "Kinwild" is a compact art
  * lock for the proof: dark mineral terrain, warm living forms, bold ink, close
  * framing, and one buoyant motion language shared by plants and creatures.
+ *
+ * The art lock is a set of *bands*, not a set of constants — see
+ * `style-genome.js`. Each rolled biome supplies the hue and character; kinwild
+ * supplies the range those are allowed to occupy.
  */
+import { deriveStyleGenome } from "./style-genome.js";
+
 export const LIVING_WORLD_STYLE_ID = "kinwild-v1";
+
+/**
+ * Bumped whenever generation changes what a given seed grows. Nothing is
+ * published, so an existing seed rendering differently is accepted rather than
+ * versioned around — but the break stays explicit and greppable, and share
+ * links can carry it later.
+ *
+ * 2: the style genome derives the field's look from the rolled biome instead
+ *    of pinning it to one frozen palette.
+ */
+export const LIVING_WORLD_GENERATOR_VERSION = 2;
 
 export const LIVING_WORLD_PALETTE = Object.freeze({
   ink: "#11152a",
@@ -57,26 +74,40 @@ export function createLivingWorldBiome(sourceBiome) {
     throw new TypeError("createLivingWorldBiome requires a source biome");
   }
   const p = LIVING_WORLD_PALETTE;
+  // The look is derived from the rolled biome rather than pinned to constants:
+  // twelve biomes used to render one identical field, which made the biome
+  // roll invisible in this mode. The genome clamps every borrowed colour into
+  // kinwild's own bands, so the field takes the biome's character without
+  // taking its identity.
+  const genome = deriveStyleGenome(sourceBiome);
   return {
     ...sourceBiome,
     styleId: LIVING_WORLD_STYLE_ID,
+    generatorVersion: LIVING_WORLD_GENERATOR_VERSION,
+    // The source is kept for anything downstream that needs to derive from it
+    // (species rosters, palettes) without re-rolling the biome.
+    sourceStyle: sourceBiome,
+    styleGenome: genome,
     name: "kinwild",
-    sub: "everything here shares a pulse.",
-    ground: [p.terrainDeep, p.terrainMid, p.terrainLift],
-    cliff: p.ink,
-    underside: "#080b17",
-    sky: p.sky,
-    fog: p.fog,
-    fogDensity: 0.022,
-    terrainAmplitude: 1.45,
+    // Kinwild's sentence, with the biome's character in front of it — this is
+    // the one place a field is allowed to say how it feels, and it reaches the
+    // field card through the existing `sub` binding with no UI change.
+    sub: genome.mood,
+    ground: [...genome.terrain],
+    cliff: genome.cliff,
+    underside: genome.underside,
+    sky: genome.sky,
+    fog: genome.fog,
+    fogDensity: genome.fogDensity,
+    terrainAmplitude: genome.terrainAmplitude,
     // `id` intentionally remains the source biome ID for URL/catalog
     // compatibility, so every source-only visual switch must be neutralized
     // explicitly. In particular, `cloudlike` changes terrain colouring and
     // its PBR response in addition to enabling cloud-specific sky treatment.
     cloudlike: false,
     cloudSwirl: false,
-    accent: p.amber,
-    sun: p.cream,
+    accent: genome.accent,
+    sun: genome.sun,
     flora: [],
     floraCount: 0,
     particle: "pollen",
@@ -96,18 +127,11 @@ export function createLivingWorldBiome(sourceBiome) {
       microFloraShadows: false,
       staticCasterRadiusFrac: 0.42,
     },
-    dusk: {
-      sky: "#a86f91",
-      fog: "#3a5068",
-      sun: "#ffc681",
-      ground: "#162c3b",
-    },
-    night: {
-      sky: "#10152d",
-      fog: "#111b31",
-      sun: "#9f8de0",
-      ground: "#09111d",
-    },
+    // Both derived, not fixed. `presentation.fixedDayFactor` is 0.74, and
+    // blendPalette at that value renders roughly half dusk — constants here
+    // would have left half of every field identical whatever biome rolled.
+    dusk: { ...genome.dusk },
+    night: { ...genome.night },
     presentation: {
       mode: "living-world",
       hideMountains: true,

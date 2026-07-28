@@ -2605,6 +2605,28 @@ body.living-world-mode {
   stroke-linejoin: round;
 }
 
+/*
+  The studio opener is an action on a rail of toggles, so it reads as lit
+  rather than as a lens that happens to be off, and a hairline separates it
+  from the six lenses above it. Its own `::before` dot would read as a lens
+  state indicator, so it is suppressed.
+*/
+.obs-rail-action {
+  margin-top: 5px;
+  padding-top: 6px;
+  border-top: 1px solid var(--obs-gold-dim);
+  color: var(--obs-coral);
+}
+
+.obs-rail-action::before {
+  display: none;
+}
+
+.obs-rail-action:hover,
+.obs-rail-action:focus-visible {
+  color: var(--obs-gold);
+}
+
 .obs-rail-count {
   margin-top: 3px;
   font-size: 9px;

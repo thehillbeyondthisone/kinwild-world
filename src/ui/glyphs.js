@@ -21,6 +21,10 @@ export const GLYPHS = Object.freeze({
     relations: "kw-rail-relations",
     catalog: "kw-rail-catalog",
     controls: "kw-rail-controls",
+    // On the rail, but an action rather than a lens: it opens the Form Studio
+    // instead of toggling a panel. Grouped here because the group is "glyphs
+    // the rail draws", and nothing reads these keys as the lens list.
+    studio: "kw-rail-studio",
   }),
   specimenRow: Object.freeze({
     strain: "kw-row-strain",

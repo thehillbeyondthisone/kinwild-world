@@ -1226,11 +1226,14 @@ export function initObservatory() {
     railHint.classList.add("is-visible");
   };
   const hideRailHint = () => railHint?.classList.remove("is-visible");
-  document.querySelectorAll("[data-obs-lens]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const lens = button.dataset.obsLens;
-      if (PANEL_LENSES.includes(lens)) togglePanelLens(lens);
-    });
+  // Hints are bound to every rail button, lens or not; only the ones carrying
+  // a known lens toggle a panel. The studio opener rides the rail without
+  // being a lens (see the note beside it in index.html).
+  document.querySelectorAll(".obs-rail-button").forEach((button) => {
+    const lens = button.dataset.obsLens;
+    if (PANEL_LENSES.includes(lens)) {
+      button.addEventListener("click", () => togglePanelLens(lens));
+    }
     button.addEventListener("pointerenter", () => showRailHint(button));
     button.addEventListener("focus", () => showRailHint(button));
     button.addEventListener("pointerleave", hideRailHint);
@@ -1416,7 +1419,13 @@ export function initObservatory() {
     }
   }
 
-  element("obs-create-form").addEventListener("click", () => setStudioOpen(true));
+  // Two openers, deliberately. The field card's tool row is where the studio
+  // sits alongside the rest of the field's controls, but that card is a
+  // lensed panel — the rail button is the one that survives every lens state,
+  // including the collapsed default on a narrow viewport.
+  for (const id of ["obs-create-form", "obs-rail-studio"]) {
+    element(id).addEventListener("click", () => setStudioOpen(true));
+  }
   element("form-studio-close").addEventListener("click", () => setStudioOpen(false));
   element("form-studio-scrim").addEventListener("click", () => setStudioOpen(false));
   generateButton.addEventListener("click", () => void generateCandidates());

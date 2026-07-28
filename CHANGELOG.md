@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.10.1 - 2026-07-28
+
+### Fixed
+
+- The Form Studio could become unreachable. Its only opener lived in the field
+  card's tool row, and the field card is a lensed panel — the density toggle
+  could hide it, and that state persisted, so the studio stayed gone across
+  reloads with nothing to get it back but rediscovering the toggle. Narrow
+  viewports start with the panels collapsed, so that was the default there.
+  The instrument rail carries a second opener now; the rail sits outside every
+  `data-obs-panel`, so no lens state can reach it.
+
 ## 1.10.0 - 2026-07-28
 
 ### Added

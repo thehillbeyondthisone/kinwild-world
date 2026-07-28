@@ -47,6 +47,7 @@
     <symbol id="kw-rail-relations" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="12" cy="18" r="2"/><path d="m8 8 3 8m5-8-3 8M8 7h8"/></symbol>
     <symbol id="kw-rail-catalog" viewBox="0 0 24 24"><path d="M5 5h5c1.1 0 2 .9 2 2v12c0-1.1-.9-2-2-2H5V5Zm14 0h-5c-1.1 0-2 .9-2 2v12c0-1.1.9-2 2-2h5V5Z"/></symbol>
     <symbol id="kw-rail-controls" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1"/></symbol>
+    <symbol id="kw-rail-studio" viewBox="0 0 24 24"><path d="M10 3v6l-4.3 8.4A2 2 0 0 0 7.5 20h9a2 2 0 0 0 1.8-2.6L14 9V3M9 3h6M12 17v-3.4M12 13.6q-2.4 0-2.4-2.2 2.4 0 2.4 2.2Zm0 0q2.4 0 2.4-2.2-2.4 0-2.4 2.2Z"/></symbol>
 
     <!-- specimen rows -->
     <symbol id="kw-row-strain" viewBox="0 0 24 24"><path d="M5 19c0-7 3-11 7-11s7 4 7 11M8 12q4-3 8 0M6 16q6-3 12 0"/></symbol>
@@ -157,6 +158,18 @@
       </button>
       <button class="obs-rail-button" type="button" data-obs-lens="controls" aria-label="field controls" aria-pressed="false">
         <svg class="kw-glyph" aria-hidden="true"><use href="#kw-rail-controls"/></svg>
+      </button>
+      <!--
+        The Form Studio's opener lives on the rail rather than only in the
+        field card's tool row. The card is a lensed panel, so the density
+        toggle could hide the studio's only entry point — and that state
+        persists, leaving no way back to it but rediscovering the toggle. The
+        rail is outside every `data-obs-panel`, so this survives any lens
+        state. It is an action, not a lens: no `data-obs-lens`, no
+        `aria-pressed`.
+      -->
+      <button class="obs-rail-button obs-rail-action" type="button" id="obs-rail-studio" aria-label="creature form studio">
+        <svg class="kw-glyph" aria-hidden="true"><use href="#kw-rail-studio"/></svg>
       </button>
       <span class="obs-rail-count" id="obs-rail-count">04</span>
       <!--

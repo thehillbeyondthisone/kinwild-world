@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.12.0 - 2026-07-28
+
+### Added
+
+- Plant authoring in the Form Studio. `normalizeFloraDNA` was written to repair
+  "permissive AI-authored FloraDNA" and nothing produced any — the studio only
+  ever authored creatures. It authors both now, through the same
+  three-studies flow, with a Kin / Plant mode switch.
+- The plant schema is generated from the archetype limits table rather than
+  written out, so a new archetype or a retuned bound cannot leave the model
+  working from a stale prompt. There is no colour field: a plant takes the
+  palette of the field it grows in, so an authored plant belongs to whatever
+  world it lands in.
+- `introduceLivingFlora` plants an authored species near the arrival clearing,
+  walking outward until the ground accepts it. Saved plants return on load the
+  way saved kin do.
+
+### Changed
+
+- Authoring's shared half — coaxing JSON out of a local model's reply, the
+  LM Studio transport, and the saved-forms shelf — moved to
+  `src/authoring-shared.js`. The recovery logic was hardened against real model
+  output (quoted numbers, trailing commas, truncated replies) and plants get
+  that hardening for free rather than a second copy of it.
+
+### Fixed
+
+- Hero collision was sized from the crown. A canopy hero registered a
+  3.92-unit exclusion circle, so kin were held nearly seven units from a trunk
+  and nothing could walk beneath a tree. It comes from the structure at
+  walking height now: canopy 3.92 -> 0.61, cap 4.85 -> 1.04, spire 2.07 -> 1.11.
+
+### Verified
+
+- 103 tests, lint, production build, and an explicit `determinism-seed` run.
+- In the browser: the mode switch reskins the studio, the grammar grows three
+  plant studies with zero repairs, the chosen one is planted near the clearing
+  and registers its affordances, and a one-entry shelf returns exactly one
+  plant across a reload.
+
 ## 1.11.0 - 2026-07-28
 
 ### Added

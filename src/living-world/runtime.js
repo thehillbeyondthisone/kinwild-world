@@ -1013,6 +1013,102 @@ function addLivingFaunaActor(runtime, provider, dna, record, flight = null) {
  * The generated-fauna provider remains the authority for normalization,
  * budgets, geometry, animation, and terrain contact.
  */
+/**
+ * Plant an authored species into the living field.
+ *
+ * The mirror of `introduceLivingFauna`, and simpler: a plant does not choose
+ * its own colour. The species is compiled against the field's own biome
+ * palette, so an authored plant belongs to the world it lands in rather than
+ * arriving with a palette of its own — which is also why the authoring schema
+ * has no colour fields to get wrong.
+ *
+ * It is planted near the arrival clearing so the author can see what they
+ * made, on ground the composition would have accepted anyway.
+ */
+export function introduceLivingFlora(runtime, dna, authoring = {}) {
+  if (!runtime?.flags.generatedFlora || runtime.disposed) {
+    throw new Error("A living field must be active before introducing a plant.");
+  }
+  if (!runtime.composition) {
+    const anchor = selectLivingWorldAnchor(runtime.worldState, runtime.seed);
+    runtime.composition = planLivingComposition(runtime.seed, anchor, {
+      worldState: runtime.worldState,
+    });
+  }
+
+  const species = buildSpecies(dna, {
+    biome: runtime.biome,
+    seed: dna?.seed,
+  });
+  const recipe = Object.freeze({
+    key: `authored:${species.archetype}:${species.id.slice(-8)}`,
+    variant: `authored-${species.archetype}`,
+    family: `authored-${species.archetype}`,
+    label: species.name,
+    role: species.role,
+    archetype: species.archetype,
+    authored: true,
+  });
+  const provider = makeFloraProvider(species, recipe);
+  runtime.worldState.world.add(species.batchRoot);
+  runtime.species.push(species);
+  runtime.floraProviders.push(provider);
+
+  // A ring just outside the clearing's negative space: visible from the
+  // arrival camera without displacing the hero that holds the centre. The
+  // field is already full of the plants it composed for itself, so one spot
+  // is not enough — walk outward until the ground accepts it, the same way
+  // the composition does for its own placements.
+  const anchor = runtime.composition.anchor;
+  const authoredSeed = Number(dna?.seed) >>> 0;
+  const index = runtime.flora.filter((entry) => entry.recipe.authored).length;
+  const baseAngle =
+    seededUnit(authoredSeed, "authored/plant-angle") * Math.PI * 2 + index * 1.1;
+
+  let flora = null;
+  for (let attempt = 0; attempt < 24 && !flora; attempt++) {
+    const ring = Math.floor(attempt / 6);
+    const angle = baseAngle + (attempt % 6) * (Math.PI / 3) + ring * 0.4;
+    const radius = CLEARING_RADIUS + 1.4 + ring * 2.6;
+    flora = addLivingFlora(
+      runtime,
+      recipe,
+      species,
+      provider,
+      Object.freeze({
+        role: species.role,
+        ordinal: 900 + index,
+        x: anchor.x + Math.cos(angle) * radius,
+        z: anchor.z + Math.sin(angle) * radius,
+        scale: 1,
+        patch: -1,
+        habitat: Object.freeze({ elevation: 0.5, slope: 0, edge: 0.5 }),
+        authored: true,
+      }),
+    );
+  }
+  if (!flora) {
+    throw new Error("There is no room near the clearing for another plant.");
+  }
+  const authoringRecord = Object.freeze({
+    prompt:
+      typeof authoring.prompt === "string"
+        ? authoring.prompt.trim().slice(0, 500)
+        : "",
+    repairs: Object.freeze(
+      Array.isArray(authoring.repairs)
+        ? authoring.repairs.map((repair) => String(repair))
+        : [],
+    ),
+    // Carried so a caller can tell whether a saved plant is already standing
+    // in the field before it introduces it again.
+    genomeHash: typeof authoring.genomeHash === "string" ? authoring.genomeHash : "",
+  });
+  flora.authoring = authoringRecord;
+  flora.instance.root.userData.authoring = authoringRecord;
+  return flora;
+}
+
 export function introduceLivingFauna(runtime, dna, authoring = {}) {
   if (!runtime?.flags.generatedFauna || runtime.disposed) {
     throw new Error("A living field must be active before introducing a form.");

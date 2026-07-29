@@ -10,7 +10,7 @@ import {
   renderGlyphRun,
   traitGlyphs,
 } from "./glyphs.js";
-import { introduceLivingFauna } from "../living-world/index.js";
+import { introduceLivingFauna, introduceLivingFlora } from "../living-world/index.js";
 import {
   createProceduralStudies,
   listAuthoringModels,
@@ -18,6 +18,12 @@ import {
   requestCreatureCandidates,
   saveAuthoredForm,
 } from "../creature-authoring.js";
+import {
+  createProceduralFloraStudies,
+  loadAuthoredFlora,
+  requestFloraCandidates,
+  saveAuthoredFlora,
+} from "../flora-authoring.js";
 import {
   leaderPoints,
   placeCallout,
@@ -382,20 +388,33 @@ function candidateCard(candidate, index) {
   button.type = "button";
   button.className = "form-candidate";
   button.dataset.index = String(index);
-  button.innerHTML = blueprintMarkup(candidate.dna);
+  if (typeof candidate.dna.archetype !== "string") {
+    button.innerHTML = blueprintMarkup(candidate.dna);
+  }
   const title = document.createElement("h3");
   title.textContent = candidate.dna.name;
   const id = document.createElement("div");
   id.className = "form-candidate-id";
-  id.textContent = `${candidate.source} · ${candidate.dna.speciesId} · ${candidate.genomeHash}`;
+  const plant = typeof candidate.dna.archetype === "string";
+  id.textContent = plant
+    ? `${candidate.source} · ${candidate.dna.archetype} · ${candidate.genomeHash}`
+    : `${candidate.source} · ${candidate.dna.speciesId} · ${candidate.genomeHash}`;
   const stats = document.createElement("div");
   stats.className = "form-candidate-stats";
-  for (const [label, value] of [
-    ["legs", `${candidate.dna.legs.count}`],
-    ["primitives", `${candidate.primitiveCount}/16`],
-    ["gait", `${Math.round(1 / candidate.dna.motion.stepDuration * 10) / 10} hz`],
-    ["repairs", `${candidate.repairs.length}`],
-  ]) {
+  const rows = plant
+    ? [
+        ["archetype", candidate.dna.archetype],
+        ["tier", candidate.dna.role],
+        ["sway", `${Math.round(candidate.dna.motion.wind * 100) / 100}`],
+        ["repairs", `${candidate.repairs.length}`],
+      ]
+    : [
+        ["legs", `${candidate.dna.legs.count}`],
+        ["primitives", `${candidate.primitiveCount}/16`],
+        ["gait", `${Math.round(1 / candidate.dna.motion.stepDuration * 10) / 10} hz`],
+        ["repairs", `${candidate.repairs.length}`],
+      ];
+  for (const [label, value] of rows) {
     const key = document.createElement("span");
     key.textContent = label;
     const item = document.createElement("span");
@@ -1136,6 +1155,28 @@ export function initObservatory() {
       });
       hashes.add(facade.genomeHash);
     }
+    // Saved plants come back the same way saved kin do. Checked before
+    // planting, not after — the shelf survives a reload, so re-introducing
+    // one that is already standing would grow the field a copy every time.
+    const plantedFlora = new Set(
+      runtime.flora
+        .map((entry) => entry.authoring?.genomeHash)
+        .filter(Boolean),
+    );
+    for (const record of loadAuthoredFlora().slice(0, MAX_RETURNING_FORMS)) {
+      if (plantedFlora.has(record.genomeHash)) continue;
+      try {
+        introduceLivingFlora(runtime, record.dna, {
+          prompt: record.prompt,
+          repairs: record.repairs,
+          genomeHash: record.genomeHash,
+        });
+        plantedFlora.add(record.genomeHash);
+      } catch {
+        // No room left near the clearing; the rest of the shelf waits.
+        break;
+      }
+    }
     updateTaxonomy(runtime);
     updateRelations(runtime);
     update();
@@ -1248,6 +1289,27 @@ export function initObservatory() {
   const status = element("form-status");
   const candidateList = element("form-candidates");
   const introduceButton = element("form-introduce");
+  // Kin and plants share the three-studies flow; only the schema, the grammar
+  // fallback and the introduce path differ.
+  let studioKind = "creature";
+  const KIND_COPY = {
+    creature: {
+      kicker: "Creature Authoring",
+      label: "Describe the creature",
+      blurb:
+        "Describe a creature in a sentence. Three studies are grown from it; you introduce the one you like. Anatomy, motion, and cost stay inside the field's bounds whatever the description asks for.",
+      placeholder:
+        "A gentle dusk grazer with six delicate legs, a low lantern-shaped body, and curious bright eyes.",
+    },
+    flora: {
+      kicker: "Plant Authoring",
+      label: "Describe the plant",
+      blurb:
+        "Describe a plant in a sentence. Three studies are grown from it; you plant the one you like near the clearing. Shape and movement stay inside the field's bounds — colour is not yours to choose, since a plant takes the palette of the field it grows in.",
+      placeholder:
+        "A tall lantern spire with a few heavy glowing buds and almost no sway.",
+    },
+  };
   const generateButton = element("form-generate");
   const proceduralButton = element("form-procedural");
   const progress = element("form-progress");
@@ -1369,7 +1431,12 @@ export function initObservatory() {
 
   function growFromGrammar(statusOverride) {
     startProgress(STUDIO_STAGES.grammar);
-    renderCandidates(createProceduralStudies(description.value), "The field grammar");
+    renderCandidates(
+      studioKind === "flora"
+        ? createProceduralFloraStudies(description.value)
+        : createProceduralStudies(description.value),
+      "The field grammar",
+    );
     finishProgress(STUDIO_STAGES.settling);
     if (statusOverride) status.textContent = statusOverride;
   }
@@ -1380,7 +1447,7 @@ export function initObservatory() {
     generateButton.disabled = true;
     proceduralButton.disabled = true;
     introduceButton.disabled = true;
-    status.textContent = "Asking the authoring model for three distinct studies…";
+    status.textContent = `Asking the authoring model for three distinct ${studioKind === "flora" ? "plants" : "studies"}…`;
     startProgress(STUDIO_STAGES.reaching);
     try {
       // The client resolves the model list before it prompts, and that leg is
@@ -1390,7 +1457,9 @@ export function initObservatory() {
         () => setProgressStage(STUDIO_STAGES.authoring),
         700,
       );
-      const candidates = await requestCreatureCandidates(description.value, {
+      const request =
+        studioKind === "flora" ? requestFloraCandidates : requestCreatureCandidates;
+      const candidates = await request(description.value, {
         model: modelSelect.value,
         signal: requestController.signal,
       });
@@ -1426,6 +1495,33 @@ export function initObservatory() {
   for (const id of ["obs-create-form", "obs-rail-studio"]) {
     element(id).addEventListener("click", () => setStudioOpen(true));
   }
+  const kindButtons = {
+    creature: element("form-kind-creature"),
+    flora: element("form-kind-flora"),
+  };
+  function setStudioKind(kind) {
+    if (!KIND_COPY[kind] || kind === studioKind) return;
+    studioKind = kind;
+    const copy = KIND_COPY[kind];
+    element("form-studio-kicker").textContent = copy.kicker;
+    element("form-studio-blurb").textContent = copy.blurb;
+    element("form-description-label").textContent = copy.label;
+    description.placeholder = copy.placeholder;
+    for (const [key, button] of Object.entries(kindButtons)) {
+      button.classList.toggle("active", key === kind);
+      button.setAttribute("aria-checked", String(key === kind));
+    }
+    // The studies on screen belong to the other schema — clear rather than
+    // leave a kin card that the introduce button would plant as a shrub.
+    currentCandidates = [];
+    candidateList.replaceChildren();
+    introduceButton.disabled = true;
+    status.textContent = `Ready for a description of a ${kind === "flora" ? "plant" : "creature"}.`;
+  }
+  for (const [kind, button] of Object.entries(kindButtons)) {
+    button.addEventListener("click", () => setStudioKind(kind));
+  }
+
   element("form-studio-close").addEventListener("click", () => setStudioOpen(false));
   element("form-studio-scrim").addEventListener("click", () => setStudioOpen(false));
   generateButton.addEventListener("click", () => void generateCandidates());
@@ -1436,6 +1532,24 @@ export function initObservatory() {
     const runtime = state.livingWorld;
     if (!runtime || runtime.disposed) {
       status.textContent = "The field is still growing. Try again when it is ready.";
+      return;
+    }
+    if (studioKind === "flora") {
+      saveAuthoredFlora(candidate, description.value);
+      try {
+        introduceLivingFlora(runtime, candidate.dna, {
+          prompt: description.value,
+          repairs: candidate.repairs,
+          genomeHash: candidate.genomeHash,
+        });
+      } catch (error) {
+        status.textContent = error.message;
+        return;
+      }
+      updateTaxonomy(runtime);
+      updateRelations(runtime);
+      update();
+      setStudioOpen(false);
       return;
     }
     saveAuthoredForm(candidate, description.value);

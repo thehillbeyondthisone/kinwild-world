@@ -380,14 +380,24 @@
     <div class="form-studio-sheet" role="dialog" aria-modal="true" aria-labelledby="form-studio-title">
       <header class="form-studio-head">
         <div>
-          <div class="obs-card-kicker">Creature Authoring</div>
+          <div class="obs-card-kicker" id="form-studio-kicker">Creature Authoring</div>
           <h2 id="form-studio-title">Form Studio</h2>
-          <p>Describe a creature in a sentence. Three studies are grown from it; you introduce the one you like. Anatomy, motion, and cost stay inside the field's bounds whatever the description asks for.</p>
+          <p id="form-studio-blurb">Describe a creature in a sentence. Three studies are grown from it; you introduce the one you like. Anatomy, motion, and cost stay inside the field's bounds whatever the description asks for.</p>
         </div>
         <button class="form-studio-close" id="form-studio-close" type="button" aria-label="close">×</button>
       </header>
       <div class="form-studio-controls">
-        <label for="form-description">Describe the creature</label>
+        <!--
+          Kin and plants are authored through the same three-studies flow. The
+          schema, the grammar fallback and the introduce path all differ, but
+          the shape of the interaction does not, so this is a mode rather than
+          a second panel.
+        -->
+        <div class="form-kind" id="form-kind" role="radiogroup" aria-label="what to author">
+          <button type="button" id="form-kind-creature" role="radio" aria-checked="true" class="active">Kin</button>
+          <button type="button" id="form-kind-flora" role="radio" aria-checked="false">Plant</button>
+        </div>
+        <label for="form-description" id="form-description-label">Describe the creature</label>
         <textarea id="form-description" rows="3" placeholder="A gentle dusk grazer with six delicate legs, a low lantern-shaped body, and curious bright eyes.">A gentle dusk grazer with six delicate legs, a low lantern-shaped body, and curious bright eyes.</textarea>
         <div class="form-studio-options">
           <label>Authoring model

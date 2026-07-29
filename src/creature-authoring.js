@@ -2,6 +2,19 @@ import {
   normalizeWalkerDNA,
   seededUnit,
 } from "./generated-fauna/dna.js";
+import {
+  candidateFragments,
+  findJsonPayload,
+  hashText,
+  isRecord,
+  listAuthoringModels,
+  loadAuthoredEntries,
+  requestAuthoringReply,
+  saveAuthoredEntry,
+  slugify,
+} from "./authoring-shared.js";
+
+export { listAuthoringModels };
 
 export const CREATURE_AUTHORING_STORAGE_KEY = "living-field:authored-forms:v1";
 export const CREATURE_AUTHORING_LIMIT = 8;
@@ -55,96 +68,12 @@ Design rules:
 - Do not include prose, markdown, comments, or fields outside the schema.
 `.trim();
 
-function isRecord(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function hashText(value) {
-  let hash = 0x811c9dc5;
-  for (const character of String(value)) {
-    hash ^= character.charCodeAt(0);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
-function slugify(value, fallback = "new-form") {
-  const slug = String(value ?? "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 42);
-  return slug || fallback;
-}
-
-function findJsonPayload(text) {
-  const fenced = String(text).match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const source = fenced ? fenced[1] : String(text);
-  const objectStart = source.indexOf("{");
-  const arrayStart = source.indexOf("[");
-  let start = -1;
-  let end = -1;
-  if (objectStart >= 0 && (arrayStart < 0 || objectStart < arrayStart)) {
-    start = objectStart;
-    end = source.lastIndexOf("}");
-  } else if (arrayStart >= 0) {
-    start = arrayStart;
-    end = source.lastIndexOf("]");
-  }
-  if (start < 0 || end <= start) throw new Error("No creature DNA found in the reply.");
-  const raw = source.slice(start, end + 1);
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return JSON.parse(raw.replace(/,(?=\s*[}\]])/g, ""));
-  }
-}
-
-function candidateFragments(text) {
-  const source = String(text);
-  const starts = [];
-  const candidates = [];
-  let quoted = false;
-  let escaped = false;
-  for (let index = 0; index < source.length; index++) {
-    const character = source[index];
-    if (quoted) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (character === '"') {
-        quoted = false;
-      }
-      continue;
-    }
-    if (character === '"') {
-      quoted = true;
-      continue;
-    }
-    if (character === "{") {
-      starts.push(index);
-      continue;
-    }
-    if (character !== "}" || starts.length === 0) continue;
-    const start = starts.pop();
-    try {
-      const parsed = JSON.parse(
-        source.slice(start, index + 1).replace(/,(?=\s*[}\]])/g, ""),
-      );
-      if (
-        isRecord(parsed) &&
-        typeof parsed.name === "string" &&
-        isRecord(parsed.body) &&
-        isRecord(parsed.legs)
-      ) {
-        candidates.push(parsed);
-      }
-    } catch {
-      // Nested fragments are best-effort recovery for truncated model replies.
-    }
-  }
-  return candidates;
+function looksLikeCreature(parsed) {
+  return (
+    typeof parsed.name === "string" &&
+    isRecord(parsed.body) &&
+    isRecord(parsed.legs)
+  );
 }
 
 function normalizeCandidate(raw, index, description, origin = "model") {
@@ -173,14 +102,14 @@ function normalizeCandidate(raw, index, description, origin = "model") {
 export function extractCreatureCandidates(text, description = "") {
   let rawCandidates;
   try {
-    const parsed = findJsonPayload(text);
+    const parsed = findJsonPayload(text, "creature DNA");
     rawCandidates = Array.isArray(parsed)
       ? parsed
       : Array.isArray(parsed?.candidates)
         ? parsed.candidates
         : [parsed];
   } catch (error) {
-    rawCandidates = candidateFragments(text);
+    rawCandidates = candidateFragments(text, looksLikeCreature);
     if (rawCandidates.length === 0) throw error;
   }
   if (rawCandidates.length === 0) throw new Error("The model returned no creature candidates.");
@@ -191,69 +120,12 @@ export function extractCreatureCandidates(text, description = "") {
     );
 }
 
-export async function listAuthoringModels(endpoint = "/llm/v1/models") {
-  const response = await fetch(endpoint);
-  if (!response.ok) throw new Error(`Model list returned ${response.status}.`);
-  const body = await response.json();
-  return (body?.data ?? [])
-    .map((model) => model?.id)
-    .filter((id) => typeof id === "string" && id && !/embed/i.test(id));
-}
-
-export async function requestCreatureCandidates(
-  description,
-  {
-    endpoint = "/llm/v1/chat/completions",
-    model = "",
-    signal,
-  } = {},
-) {
-  const prompt = String(description ?? "").trim();
-  if (prompt.length < 3) throw new Error("Describe the creature in a little more detail.");
-  let resolvedModel = model;
-  if (!resolvedModel) {
-    const available = await listAuthoringModels();
-    resolvedModel = available[0] ?? "";
-  }
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal,
-    body: JSON.stringify({
-      model: resolvedModel,
-      temperature: 0.92,
-      max_tokens: 1100,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: prompt },
-      ],
-    }),
+export async function requestCreatureCandidates(description, options = {}) {
+  const { text, prompt } = await requestAuthoringReply(description, {
+    ...options,
+    systemPrompt: SYSTEM_PROMPT,
+    tooShort: "Describe the creature in a little more detail.",
   });
-  if (response.status >= 500) {
-    throw new Error("The local authoring model is not reachable.");
-  }
-  if (!response.ok) {
-    let detail;
-    try {
-      const rawError = await response.text();
-      try {
-        const errorBody = JSON.parse(rawError);
-        detail = String(errorBody?.error?.message ?? errorBody?.message ?? rawError);
-      } catch {
-        detail = rawError;
-      }
-    } catch {
-      detail = "";
-    }
-    throw new Error(
-      detail
-        ? `The authoring model returned ${response.status}: ${detail.slice(0, 140)}`
-        : `The authoring model returned ${response.status}.`,
-    );
-  }
-  const body = await response.json();
-  const text = body?.choices?.[0]?.message?.content;
-  if (!text) throw new Error("The authoring model returned an empty reply.");
   return fillCandidateSet(extractCreatureCandidates(text, prompt), prompt);
 }
 
@@ -360,65 +232,17 @@ function fillCandidateSet(candidates, description) {
   return candidates;
 }
 
+const SHELF = {
+  storageKey: CREATURE_AUTHORING_STORAGE_KEY,
+  limit: CREATURE_AUTHORING_LIMIT,
+  normalize: normalizeCandidate,
+  extraFields: (entry) => ({ primitiveCount: entry.primitiveCount }),
+};
+
 export function loadAuthoredForms(storage = globalThis.localStorage) {
-  if (!storage?.getItem) return [];
-  try {
-    const parsed = JSON.parse(storage.getItem(CREATURE_AUTHORING_STORAGE_KEY) ?? "[]");
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .slice(0, CREATURE_AUTHORING_LIMIT)
-      .map((entry, index) => {
-        const normalized = normalizeCandidate(
-          entry?.dna,
-          index,
-          entry?.prompt ?? "",
-          "saved",
-        );
-        return {
-          prompt: String(entry?.prompt ?? ""),
-          createdAt: Number(entry?.createdAt) || 0,
-          ...normalized,
-          repairs: Object.freeze(
-            Array.isArray(entry?.repairs)
-              ? entry.repairs.map(String)
-              : [...normalized.repairs],
-          ),
-        };
-      });
-  } catch {
-    return [];
-  }
+  return loadAuthoredEntries(SHELF, storage);
 }
 
-export function saveAuthoredForm(
-  candidate,
-  prompt,
-  storage = globalThis.localStorage,
-) {
-  if (!storage?.setItem) return [];
-  const current = loadAuthoredForms(storage);
-  const deduped = current.filter(
-    (entry) => entry.genomeHash !== candidate.genomeHash,
-  );
-  deduped.unshift({
-    dna: candidate.dna,
-    prompt: String(prompt ?? "").trim().slice(0, 500),
-    createdAt: Date.now(),
-    repairs: candidate.repairs,
-    primitiveCount: candidate.primitiveCount,
-    genomeHash: candidate.genomeHash,
-  });
-  const limited = deduped.slice(0, CREATURE_AUTHORING_LIMIT);
-  storage.setItem(
-    CREATURE_AUTHORING_STORAGE_KEY,
-    JSON.stringify(
-      limited.map((entry) => ({
-        dna: entry.dna,
-        prompt: entry.prompt,
-        createdAt: entry.createdAt,
-        repairs: entry.repairs,
-      })),
-    ),
-  );
-  return limited;
+export function saveAuthoredForm(candidate, prompt, storage = globalThis.localStorage) {
+  return saveAuthoredEntry(SHELF, candidate, prompt, storage);
 }

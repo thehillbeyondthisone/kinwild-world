@@ -2627,6 +2627,38 @@ body.living-world-mode {
   color: var(--obs-gold);
 }
 
+.form-kind {
+  display: flex;
+  gap: 0;
+  align-self: start;
+  margin-bottom: 10px;
+  border: 1px solid var(--obs-gold-dim);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.form-kind button {
+  padding: 6px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--obs-gold-dim);
+  font-family: "DM Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.form-kind button + button {
+  border-left: 1px solid var(--obs-gold-dim);
+}
+
+.form-kind button.active {
+  background: var(--obs-gold-dim);
+  color: var(--obs-ink, #08131f);
+}
+
 .obs-rail-count {
   margin-top: 3px;
   font-size: 9px;
@@ -4177,7 +4209,39 @@ body.photo-mode .form-studio {
     height: 16px;
   }
 
-  .obs-rail-count {
+  .form-kind {
+  display: flex;
+  gap: 0;
+  align-self: start;
+  margin-bottom: 10px;
+  border: 1px solid var(--obs-gold-dim);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.form-kind button {
+  padding: 6px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--obs-gold-dim);
+  font-family: "DM Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.form-kind button + button {
+  border-left: 1px solid var(--obs-gold-dim);
+}
+
+.form-kind button.active {
+  background: var(--obs-gold-dim);
+  color: var(--obs-ink, #08131f);
+}
+
+.obs-rail-count {
     grid-column: 1 / -1;
   }
 
@@ -4490,7 +4554,39 @@ body.photo-mode .form-studio {
     transform: translate3d(0, 0, 0);
   }
 
-  .obs-rail-count {
+  .form-kind {
+  display: flex;
+  gap: 0;
+  align-self: start;
+  margin-bottom: 10px;
+  border: 1px solid var(--obs-gold-dim);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.form-kind button {
+  padding: 6px 16px;
+  border: 0;
+  background: transparent;
+  color: var(--obs-gold-dim);
+  font-family: "DM Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.form-kind button + button {
+  border-left: 1px solid var(--obs-gold-dim);
+}
+
+.form-kind button.active {
+  background: var(--obs-gold-dim);
+  color: var(--obs-ink, #08131f);
+}
+
+.obs-rail-count {
     font-size: 7px;
   }
 

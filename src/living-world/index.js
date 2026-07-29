@@ -13,6 +13,7 @@ export {
   disposeLivingWorld,
   isLivingWorldCreature,
   introduceLivingFauna,
+  introduceLivingFlora,
   livingWorldFloraCount,
   planLivingComposition,
   populateLivingFauna,

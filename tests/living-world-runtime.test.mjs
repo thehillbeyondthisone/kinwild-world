@@ -118,6 +118,24 @@ assert.ok(
 assert.equal(faunaCount, 5);
 assert.equal(worldState.creatures.length, faunaCount);
 assert.ok(worldState.obstacles.some((entry) => entry.kind === "living:hero"));
+// Hero collision is sized from the trunk, not the crown. Sizing it from the
+// bounds radius put a ~5.8-unit exclusion circle around a canopy hero: kin
+// could never walk under a tree, and every affordance the plant advertised
+// sat inside a circle they were pushed out of every frame.
+for (const obstacle of worldState.obstacles) {
+  if (obstacle.kind !== "living:hero") continue;
+  const species = obstacle.source.species;
+  assert.ok(
+    obstacle.r < species.bounds.footprintRadius * 0.5,
+    `hero collision ${obstacle.r.toFixed(2)} should be far under its ` +
+      `${species.bounds.footprintRadius.toFixed(2)} footprint`,
+  );
+  assert.ok(obstacle.r >= 0.5, "a trunk still blocks");
+  assert.ok(
+    obstacle.top > obstacle.r,
+    "the canopy height stays the full plant, for the air-passing filter",
+  );
+}
 assert.ok(worldState.flowerSpots.length > 0);
 assert.ok(worldState.perchSpots.length > 0);
 

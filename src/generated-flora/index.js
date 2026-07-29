@@ -470,6 +470,8 @@ export function buildSpecies(rawDNA, options = {}) {
     notes: Object.freeze([...notes]),
     palette,
     bounds: compiled.bounds,
+    /** Collision-sized radius: the structure at walking height, not the crown. */
+    trunkRadius: compiled.metrics.trunkRadius,
     affordanceSchema: compiled.affordanceSchema,
     resourceCounts: compiled.resourceCounts,
     windUniforms: state.windUniforms,

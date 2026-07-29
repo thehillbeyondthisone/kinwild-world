@@ -684,7 +684,12 @@ function addLivingFlora(runtime, recipe, species, provider, record) {
       kind: LIVING_WORLD_OBSTACLE_KIND,
       x: pose.x,
       z: pose.z,
-      r: Math.max(0.65, footprint * 0.72),
+      // Sized from the trunk rather than the crown. Using the bounds radius
+      // put a 5.77-unit exclusion circle around a canopy hero, so kin were
+      // held nearly seven units out and could never walk beneath a tree — and
+      // any affordance the plant advertised sat inside a circle they were
+      // pushed out of every frame.
+      r: Math.max(0.5, species.trunkRadius * record.scale * 1.45),
       top: pose.y + species.bounds.height * record.scale,
       source: flora,
     };

@@ -278,6 +278,30 @@ export function composePlacement(target, placement) {
  * @param {Record<string, THREE.Color>} colors resolved palette slots
  * @param {{variantCount?: number}} [options]
  */
+/**
+ * How wide the plant actually is at the height something walks into it.
+ *
+ * Collision was sized from the bounds radius, which includes the crown — a
+ * canopy hero got 5.77, so kin were held nearly seven units from a trunk and
+ * could never walk under a tree. The structure below knee height is the part
+ * you can actually bump into.
+ */
+const TRUNK_PROBE_HEIGHT = 1.3;
+
+function trunkRadiusOf(skeleton) {
+  let radius = 0;
+  for (const node of skeleton.nodes) {
+    for (const point of [node.origin, node.tip]) {
+      if (point[1] > TRUNK_PROBE_HEIGHT) continue;
+      radius = Math.max(
+        radius,
+        Math.hypot(point[0], point[2]) + Math.max(node.radiusStart, node.radiusEnd),
+      );
+    }
+  }
+  return radius;
+}
+
 export function compileArchetype(dna, colors, { variantCount = 1 } = {}) {
   const archetype = ARCHETYPES[dna.archetype];
   if (!archetype) {
@@ -389,6 +413,11 @@ export function compileArchetype(dna, colors, { variantCount = 1 } = {}) {
     height: Math.max(totalHeight, 0.02),
     radius: staticFootprint,
     organReach,
+    // What a creature can walk into, as opposed to what the plant occupies.
+    trunkRadius: Math.max(
+      ...variants.map((variant) => trunkRadiusOf(variant.skeleton)),
+      0,
+    ),
   });
   const bounds = freezeBounds({
     centerY: metrics.height * 0.5,

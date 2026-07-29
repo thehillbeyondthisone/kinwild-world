@@ -3071,6 +3071,33 @@ body.living-world-mode {
   color: #31373a;
 }
 
+/* The one action the paper readout carries. It sits in the header rather than
+   as a ninth table row, so the specimen's own rhythm is untouched. */
+.obs-paper-action {
+  align-self: center;
+  margin-left: auto;
+  padding: 6px 11px;
+  border: 1px solid rgba(41, 49, 56, 0.32);
+  background: rgba(255, 255, 255, 0.14);
+  color: #2b333a;
+  font-family: "DM Mono", monospace;
+  font-size: 7px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.obs-paper-action:hover {
+  background: rgba(255, 255, 255, 0.32);
+  border-color: rgba(41, 49, 56, 0.6);
+}
+
+.obs-paper-action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .obs-paper-caption {
   margin-top: 2px;
   font-family: "Cormorant Infant", Georgia, serif;
@@ -4122,9 +4149,666 @@ body.form-studio-open .observatory-shell {
 }
 
 body.photo-mode .observatory-shell,
-body.photo-mode .form-studio {
+body.photo-mode .form-studio,
+body.photo-mode .genome-card {
   opacity: 0 !important;
   pointer-events: none !important;
+}
+
+/* ── Genome card ─────────────────────────────────────────────────────────
+   A leaf lifted out of the field notebook, so it is paper — the same stock
+   as the specimen dock, not a panel and emphatically not a code editor.
+   Every rule in here is chosen against one failure: a JSON editor in a cute
+   frame. Hence no monospace body text, no syntax colouring, no red, and a
+   real turn between the two faces rather than a pair of tabs. */
+
+.genome-card {
+  position: fixed;
+  inset: 0;
+  /* Above the form studio: the card can be opened from a form the studio
+     grew, and it is the thing being looked at when it is up. */
+  z-index: 95;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  box-sizing: border-box;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.32s ease;
+}
+
+.genome-card.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.genome-card-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(30, 45, 62, 0.28), transparent 46%),
+    rgba(2, 8, 15, 0.74);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+  cursor: default;
+}
+
+/* Perspective lives on the holder so the turn has depth. Without it the card
+   reads as a width animation, which is a tab transition wearing a costume. */
+.genome-leaf {
+  position: relative;
+  width: min(760px, calc(100vw - 40px));
+  height: min(840px, calc(100vh - 40px));
+  perspective: 2000px;
+}
+
+.genome-leaf-faces {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.genome-leaf-faces.flipped {
+  transform: rotateY(-180deg);
+}
+
+.genome-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  box-sizing: border-box;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  color: var(--obs-paper-ink);
+  text-shadow: none;
+  /* The specimen dock's stock, mixed a shade fresher: that page has been in
+     the drawer a while, this one is being written on now. */
+  background:
+    radial-gradient(circle at 12% 20%, rgba(70, 59, 42, 0.06) 0 1px, transparent 1.5px),
+    linear-gradient(103deg, #cdbc9b, #e3d5b8 48%, #cbb790);
+  background-size: 11px 11px, auto;
+  border: 1px solid rgba(59, 53, 43, 0.42);
+  border-radius: 30px 6px 30px 6px / 22px 6px 22px 6px;
+  box-shadow:
+    0 34px 110px rgba(0, 0, 0, 0.6),
+    inset 0 1px rgba(255, 255, 255, 0.45);
+}
+
+.genome-face-writing {
+  transform: rotateY(180deg);
+}
+
+.genome-face-head {
+  padding: 20px 26px 13px 30px;
+  border-bottom: 1px solid var(--obs-paper-line);
+}
+
+.genome-card-name {
+  margin: 6px 0 0;
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 34px;
+  font-style: italic;
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: 0.045em;
+  color: #262d33;
+}
+
+.genome-card-caption {
+  margin: 8px 0 0;
+  max-width: 52ch;
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 12.5px;
+  font-style: italic;
+  letter-spacing: 0.05em;
+  line-height: 1.4;
+  opacity: 0.66;
+}
+
+.genome-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 26px 16px 30px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(41, 49, 56, 0.34) transparent;
+}
+
+.genome-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.genome-scroll::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: rgba(41, 49, 56, 0.28);
+}
+
+.genome-section {
+  margin-top: 15px;
+}
+
+.genome-section-title {
+  margin: 0 0 3px;
+  font-family: "DM Mono", monospace;
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(41, 49, 56, 0.54);
+}
+
+/* The row is the specimen table's grammar — a small-caps term against a ruled
+   figures column — carried onto a page you can write on. */
+.genome-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 13px;
+  border-bottom: 1px solid var(--obs-paper-line);
+}
+
+.genome-row-label {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  padding: 6px 8px 5px 0;
+  border-right: 1px solid var(--obs-paper-line);
+  font-family: "DM Mono", monospace;
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
+  color: rgba(41, 49, 56, 0.74);
+}
+
+/* A pencil dot in the gutter beside anything the reader has moved. */
+.genome-row.touched .genome-row-label::after {
+  content: "·";
+  margin-left: auto;
+  padding-left: 6px;
+  font-size: 12px;
+  color: rgba(41, 49, 56, 0.5);
+}
+
+.genome-row-body {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  padding: 4px 0;
+}
+
+/* --- the measuring rule --- */
+
+.genome-rule {
+  position: relative;
+  flex: 1;
+  min-width: 96px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+}
+
+/* End ticks are the track's own left and right edges, which is what makes it
+   read as a rule laid on the page rather than a slider groove. */
+.genome-rule-track {
+  position: relative;
+  width: 100%;
+  height: 9px;
+  border-left: 1px solid rgba(41, 49, 56, 0.42);
+  border-right: 1px solid rgba(41, 49, 56, 0.42);
+  pointer-events: none;
+}
+
+.genome-rule-track::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(41, 49, 56, 0.28);
+}
+
+.genome-rule-fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  background: rgba(41, 49, 56, 0.6);
+}
+
+/* The stretch of the rule this genome cannot currently reach. Hatched, not
+   greyed: hatching reads as a surveyor marking ground off, greying reads as a
+   disabled input — and the difference is the entire lesson, because the rule
+   is not switched off, it is *this creature's* rule. */
+.genome-rule-beyond {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  opacity: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(41, 49, 56, 0.26) 0 1px,
+    transparent 1px 4px
+  );
+  transition: opacity 0.25s ease, left 0.18s ease, width 0.18s ease;
+}
+
+.genome-row.bounded .genome-rule-beyond {
+  opacity: 1;
+}
+
+.genome-rule-nib {
+  position: absolute;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  background: #2b333a;
+  transform: rotate(45deg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.34);
+  transition: left 0.09s linear;
+}
+
+/* A real range input, invisible, lying over its own drawing. Everything the
+   native control is good at — keyboard, touch, assistive technology — without
+   any of it being seen. */
+.genome-dial {
+  position: absolute;
+  left: 0;
+  top: -6px;
+  width: 100%;
+  height: calc(100% + 12px);
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: ew-resize;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.genome-dial::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+}
+
+.genome-dial::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border: 0;
+}
+
+.genome-row:has(.genome-dial:focus-visible) .genome-rule-track,
+.genome-row:has(.genome-dial:focus-visible) .genome-rule-track::before {
+  border-color: rgba(41, 49, 56, 0.8);
+  background-color: rgba(41, 49, 56, 0.5);
+}
+
+.genome-row:has(.genome-dial:focus-visible) .genome-rule-nib {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.34),
+    0 0 0 3px rgba(216, 170, 98, 0.5);
+}
+
+.genome-row-value {
+  min-width: 48px;
+  text-align: right;
+  font-family: "DM Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  /* The figures must not shuffle sideways while a rule is being dragged. */
+  font-variant-numeric: tabular-nums;
+  color: #2b333a;
+}
+
+.genome-row-static {
+  font-family: "DM Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: rgba(41, 49, 56, 0.7);
+}
+
+/* --- marginalia --- */
+
+.genome-row-note {
+  grid-column: 2;
+  margin: 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 11.5px;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  color: rgba(41, 49, 56, 0.66);
+  transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+}
+
+.genome-row.has-note .genome-row-note {
+  max-height: 52px;
+  padding: 0 0 7px;
+  opacity: 1;
+}
+
+.genome-row.has-note .genome-row-note::before {
+  content: "— ";
+  opacity: 0.5;
+}
+
+.genome-card-notes {
+  margin: 16px 0 0;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 12px;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  line-height: 1.45;
+  color: rgba(41, 49, 56, 0.7);
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.genome-card-notes.visible {
+  max-height: 96px;
+  opacity: 1;
+}
+
+/* A field that moved without being touched — a relational bound doing its
+   work. Warm ink, never a warning colour: nothing went wrong. */
+@keyframes genome-row-moved {
+  0% { background: rgba(197, 150, 74, 0); }
+  26% { background: rgba(197, 150, 74, 0.26); }
+  100% { background: rgba(197, 150, 74, 0); }
+}
+
+.genome-row.moved .genome-row-value {
+  border-radius: 3px;
+  animation: genome-row-moved 1.5s ease;
+}
+
+.genome-row.revealed {
+  animation: genome-row-moved 1.7s ease;
+}
+
+/* --- discrete controls --- */
+
+.genome-choice {
+  display: inline-flex;
+  border: 1px solid rgba(41, 49, 56, 0.28);
+}
+
+.genome-choice-option {
+  min-width: 34px;
+  padding: 4px 10px;
+  border: 0;
+  border-right: 1px solid rgba(41, 49, 56, 0.18);
+  background: transparent;
+  font-family: "DM Mono", monospace;
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(41, 49, 56, 0.62);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.genome-choice-option:last-child {
+  border-right: 0;
+}
+
+.genome-choice-option:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.genome-choice-option.active {
+  background: rgba(41, 49, 56, 0.13);
+  color: #23292e;
+}
+
+.genome-select {
+  padding: 3px 8px;
+  border: 1px solid rgba(41, 49, 56, 0.28);
+  background: rgba(255, 255, 255, 0.18);
+  color: #2b333a;
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+}
+
+.genome-text {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(41, 49, 56, 0.3);
+  background: transparent;
+  color: #23292e;
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 15px;
+  font-style: italic;
+  letter-spacing: 0.04em;
+}
+
+.genome-text:focus {
+  outline: none;
+  border-bottom-color: rgba(41, 49, 56, 0.72);
+}
+
+.genome-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.genome-swatch-dot {
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(32, 34, 32, 0.45);
+  border-radius: 50%;
+}
+
+.genome-swatch-hex {
+  font-family: "DM Mono", monospace;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  color: rgba(41, 49, 56, 0.68);
+}
+
+/* --- footer, flip, and the stamp --- */
+
+.genome-face-foot {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 11px 26px 12px 30px;
+  border-top: 1px solid var(--obs-paper-line);
+}
+
+.genome-flip {
+  padding: 8px 15px;
+  border: 1px solid rgba(41, 49, 56, 0.34);
+  background: rgba(255, 255, 255, 0.14);
+  color: #2b333a;
+  font-family: "DM Mono", monospace;
+  font-size: 7.5px;
+  letter-spacing: 0.19em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.genome-flip:hover {
+  background: rgba(255, 255, 255, 0.32);
+  border-color: rgba(41, 49, 56, 0.62);
+}
+
+.genome-lines-caption {
+  margin: 0;
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 13.5px;
+  font-style: italic;
+  letter-spacing: 0.06em;
+  color: rgba(41, 49, 56, 0.74);
+}
+
+/* The hash, as the seal the specimen card already ends on. Watching it
+   re-settle while a rule is dragged is the cheapest possible proof that the
+   hash is a function of the content and not a label attached to the thing. */
+.genome-stamp {
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  width: 56px;
+  height: 56px;
+  border: 1px solid rgba(52, 55, 50, 0.34);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 4px rgba(52, 55, 50, 0.06);
+  transform: rotate(-5deg);
+}
+
+.genome-stamp-hash {
+  font-family: "DM Mono", monospace;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: rgba(44, 52, 59, 0.66);
+}
+
+@keyframes genome-stamp-settle {
+  0% { transform: rotate(-5deg) scale(1); opacity: 0.45; }
+  24% { transform: rotate(-3.2deg) scale(1.08); opacity: 1; }
+  100% { transform: rotate(-5deg) scale(1); opacity: 1; }
+}
+
+.genome-stamp.settling {
+  animation: genome-stamp-settle 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* --- the writing face --- */
+
+.genome-writing {
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 13px;
+  letter-spacing: 0.035em;
+  line-height: 1.42;
+  color: #2b3238;
+}
+
+.genome-line {
+  padding-left: calc(var(--indent, 0) * 17px);
+  white-space: pre-wrap;
+}
+
+/* Punctuation is scaffolding. It stays — this has to be real JSON — but it
+   steps back so the eye reads the writing instead of the syntax. */
+.genome-line-brace {
+  opacity: 0.34;
+}
+
+.genome-line-link {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dotted rgba(41, 49, 56, 0.26);
+  background: transparent;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.genome-line-link:hover,
+.genome-line-link:focus-visible {
+  border-bottom-color: rgba(41, 49, 56, 0.75);
+  background: rgba(197, 150, 74, 0.2);
+  outline: none;
+}
+
+body.genome-card-open .observatory-shell {
+  filter: saturate(0.72);
+}
+
+.genome-card.read-only .genome-dial,
+.genome-card.read-only .genome-choice-option,
+.genome-card.read-only .genome-select,
+.genome-card.read-only .genome-text {
+  cursor: default;
+}
+
+@media (max-width: 760px) {
+  .genome-card {
+    padding: 10px;
+  }
+
+  .genome-leaf {
+    width: calc(100vw - 20px);
+    height: calc(100vh - 20px);
+  }
+
+  .genome-face-head {
+    padding: 15px 17px 11px 19px;
+  }
+
+  .genome-card-name {
+    font-size: 26px;
+  }
+
+  .genome-scroll {
+    padding: 2px 17px 14px 19px;
+  }
+
+  .genome-row {
+    grid-template-columns: 74px minmax(0, 1fr);
+    column-gap: 9px;
+  }
+
+  .genome-rule {
+    min-width: 60px;
+  }
+
+  .genome-face-foot {
+    gap: 10px;
+    padding: 9px 17px 10px 19px;
+  }
+
+  .genome-stamp {
+    width: 46px;
+    height: 46px;
+  }
+
+  .genome-writing {
+    font-size: 12px;
+  }
+
+  .genome-line {
+    padding-left: calc(var(--indent, 0) * 13px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .genome-leaf-faces {
+    transition-duration: 0.001s;
+  }
+
+  .genome-stamp.settling,
+  .genome-row.moved .genome-row-value,
+  .genome-row.revealed {
+    animation: none;
+  }
+
+  .genome-rule-nib {
+    transition: none;
+  }
 }
 
 @media (max-width: 1120px), (max-height: 650px) {

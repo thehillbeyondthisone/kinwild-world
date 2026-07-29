@@ -257,6 +257,8 @@
             <div class="obs-paper-title">Specimen Readout</div>
             <div class="obs-paper-caption" id="obs-selection-caption">focused living form</div>
           </div>
+          <!-- The readout summarises; this turns to the page it was read off. -->
+          <button class="obs-paper-action" id="obs-read-genome" type="button">Read the genome</button>
         </header>
         <!--
           The row icon lives inside its <dt> rather than in a third grid
@@ -434,6 +436,58 @@
         <span>Model proposes semantics · engine validates every genome</span>
         <button class="form-introduce" id="form-introduce" type="button" disabled>Introduce selected form</button>
       </footer>
+    </div>
+  </section>
+
+  <!--
+    The genome card. A leaf lifted out of the field notebook: one face of
+    pressed-page controls, one face of the writing they were generated from.
+    Only the shell lives here — every row on the page face is built from the
+    genome's own schema by src/ui/genome-card.js, because a control written
+    here by hand would be a control the schema does not know about.
+  -->
+  <section class="genome-card" id="genome-card" aria-hidden="true" inert>
+    <button class="genome-card-scrim" id="genome-card-scrim" type="button" aria-label="put the genome card down"></button>
+    <div class="genome-leaf" role="dialog" aria-modal="true" aria-labelledby="genome-card-name">
+      <div class="genome-leaf-faces" id="genome-leaf-faces">
+
+        <article class="genome-face genome-face-page" id="genome-face-page">
+          <header class="genome-face-head">
+            <div class="obs-paper-title" id="genome-card-kicker">Specimen genome</div>
+            <h2 class="genome-card-name" id="genome-card-name">—</h2>
+            <p class="genome-card-caption" id="genome-card-caption"></p>
+          </header>
+          <div class="genome-scroll">
+            <div class="genome-sections" id="genome-sections"></div>
+            <p class="genome-card-notes" id="genome-card-notes" aria-live="polite"></p>
+          </div>
+          <footer class="genome-face-foot">
+            <button class="genome-flip" id="genome-flip-to-writing" type="button">Read the writing</button>
+            <div class="genome-stamp" id="genome-stamp-page" aria-label="genome hash">
+              <span class="genome-stamp-hash">········</span>
+            </div>
+          </footer>
+        </article>
+
+        <article class="genome-face genome-face-writing" id="genome-face-writing" inert>
+          <header class="genome-face-head">
+            <div class="obs-paper-title">The writing</div>
+            <h2 class="genome-card-name" id="genome-writing-name">—</h2>
+            <p class="genome-card-caption">Every creature in this field is a page like this one.</p>
+          </header>
+          <div class="genome-scroll">
+            <div class="genome-writing" id="genome-writing"></div>
+          </div>
+          <footer class="genome-face-foot">
+            <button class="genome-flip" id="genome-flip-to-page" type="button">Back to the page</button>
+            <p class="genome-lines-caption" id="genome-lines-caption"></p>
+            <div class="genome-stamp" id="genome-stamp-writing" aria-label="genome hash">
+              <span class="genome-stamp-hash">········</span>
+            </div>
+          </footer>
+        </article>
+
+      </div>
     </div>
   </section>
 

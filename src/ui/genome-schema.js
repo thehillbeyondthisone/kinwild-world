@@ -15,10 +15,7 @@
  * consumed by the editor, by the mutation operator, and by tests.
  */
 
-import {
-  ARCHETYPE_SHAPE_DEFAULTS,
-  ARCHETYPE_SHAPE_LIMITS,
-} from "../generated-flora/archetypes.js";
+import { ARCHETYPE_SHAPE_LIMITS } from "../generated-flora/archetypes.js";
 import {
   FLORA_ARCHETYPES,
   FLORA_ROLES,

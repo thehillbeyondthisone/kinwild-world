@@ -10,7 +10,12 @@ import {
   renderGlyphRun,
   traitGlyphs,
 } from "./glyphs.js";
-import { introduceLivingFauna, introduceLivingFlora } from "../living-world/index.js";
+import {
+  introduceLivingFauna,
+  introduceLivingFlora,
+  removeLivingFlora,
+} from "../living-world/index.js";
+import { createGenomeCard } from "./genome-card.js";
 import {
   createProceduralStudies,
   listAuthoringModels,
@@ -743,11 +748,17 @@ export function initObservatory() {
             const flora = runtime.flora.find(
               (entry) => (entry.species?.id ?? entry.recipe?.key) === record.key,
             );
-            if (flora && ctx.controls) {
+            if (!flora) return;
+            if (ctx.controls) {
               flora.instance.root.getWorldPosition(vector);
               ctx.controls.target.copy(vector);
               ctx.controls.update();
             }
+            // A plant has no specimen readout of its own to hang the verb off,
+            // so its medallion does both: the camera comes to rest on it, and
+            // its page opens over the top. Closing the card leaves you looking
+            // at the thing you were just reading about.
+            openPlantGenome(flora);
           }
         });
         return button;
@@ -1281,6 +1292,102 @@ export function initObservatory() {
     button.addEventListener("blur", hideRailHint);
   });
   renderPanelVisibility();
+
+  // ── The genome card ─────────────────────────────────────────────────────
+  //
+  // What the card is looking at. A rebuild replaces the thing in the field
+  // with a new one, so the subject is re-pointed rather than assumed to
+  // survive — the card itself only ever holds a genome.
+  let cardSubject = null;
+
+  /**
+   * Grow an edited kin in place of the one standing there.
+   *
+   * The pose is carried across so the rebuild reads as *this animal changing*
+   * rather than one vanishing and another arriving, and the follow camera is
+   * handed to the replacement before the original is let go.
+   */
+  function rebuildKin(facade, dna) {
+    const runtime = state.livingWorld;
+    if (!runtime || runtime.disposed) return null;
+    const actor = runtime.fauna.find((entry) => entry.facade === facade);
+    if (!actor) return null;
+    const position = actor.position.clone();
+    const heading = facade.heading ?? 0;
+    const followed = ctx.followTarget === facade;
+    const prompt = facade.generatedAgent?.root?.userData?.authoring?.prompt ?? "";
+    facade.dispose();
+    const next = introduceLivingFauna(runtime, dna, { prompt, repairs: [] });
+    next.place(position, heading);
+    selectedFacade = next;
+    if (followed) ctx.setFollowTarget(next);
+    return next;
+  }
+
+  /** Regrow an edited plant on the spot it already occupies. */
+  function rebuildPlant(flora, dna) {
+    const runtime = state.livingWorld;
+    if (!runtime || runtime.disposed) return null;
+    const root = flora.instance?.root;
+    if (!root) return null;
+    const at = { x: root.position.x, z: root.position.z };
+    const prompt = flora.authoring?.prompt ?? "";
+    removeLivingFlora(runtime, flora);
+    try {
+      return introduceLivingFlora(runtime, dna, { prompt, repairs: [], at });
+    } catch {
+      // Growing a plant can outgrow the spot it was standing in — a taller
+      // hero needs more room than the one it replaces. Rather than let the
+      // plant vanish out of a slider drag, walk it to the nearest ground that
+      // will take it. Moving is a far better failure than disappearing.
+      try {
+        return introduceLivingFlora(runtime, dna, { prompt, repairs: [] });
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  const genomeCard = createGenomeCard({
+    onCommit(dna) {
+      const runtime = state.livingWorld;
+      if (!runtime || runtime.disposed || !cardSubject) return;
+      if (cardSubject.kind === "kin") {
+        const next = rebuildKin(cardSubject.facade, dna);
+        if (next) cardSubject = { kind: "kin", facade: next };
+      } else {
+        const next = rebuildPlant(cardSubject.flora, dna);
+        // The old plant is gone either way. Without a replacement to point at,
+        // the card has nothing left to edit and would fail on the next commit.
+        if (next) cardSubject = { kind: "plant", flora: next };
+        else genomeCard.close();
+      }
+      updateTaxonomy(runtime);
+      updateRelations(runtime);
+      update();
+    },
+    onClose() {
+      cardSubject = null;
+    },
+  });
+
+  function openKinGenome() {
+    const runtime = state.livingWorld;
+    const selected = currentSelection(runtime);
+    const dna = selected?.generatedAgent?.dna;
+    if (!genomeCard || !dna) return;
+    cardSubject = { kind: "kin", facade: selected };
+    genomeCard.show(dna, { kicker: "Specimen genome · kin" });
+  }
+
+  function openPlantGenome(flora) {
+    const dna = flora?.species?.dna;
+    if (!genomeCard || !dna) return;
+    cardSubject = { kind: "plant", flora };
+    genomeCard.show(dna, { kicker: "Specimen genome · plant" });
+  }
+
+  element("obs-read-genome")?.addEventListener("click", openKinGenome);
 
   const studio = element("form-studio");
   const description = element("form-description");

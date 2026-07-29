@@ -1,6 +1,7 @@
 # Kinwild — the tutorial that teaches the machine
 
-Status: foundation landed (1.13.0); layers not yet built.
+Status: foundation landed (1.13.0); the genome card landed (1.14.0); the
+layers themselves not yet built.
 
 ## The premise
 
@@ -57,23 +58,34 @@ access. An experienced player outruns the track.
 The affordance lens draws its motes from each archetype's own `affordances`
 array (`generated-flora/archetypes.js`). Toggle it on a spire and the overlay
 is literally rendering three strings out of a genome. The card is the same data
-with the veil off — and it works because it is *short*. Twenty lines on one
-page with no scrolling is the whole argument.
+with the veil off — and it works because it is *short*.
 
-### The Genome Card, two faces
+**How short, measured rather than guessed:** 34 lines for a groundcover, 42 for
+a flier. An earlier draft of this doc claimed "about twenty" and used it to
+argue the page must never scroll; that number was invented and the argument
+built on it was wrong. The caption spells out whatever the real count is, and
+on a short viewport the page scrolls a little. "Forty-two lines" is still a
+remarkable thing to say about an animal that walks and beats its wings.
 
-- **Pressed-page face** (default): generated controls as notebook rows —
-  `label · value · range bar`. The bar carries the teaching: you can see that
-  `shape.height` sits near the top of what a spire is allowed to be.
-- **Writing face**: the real formatted JSON, notebook serif, paper tone, with
-  the line count as a caption — *"nineteen lines"* — visible every time.
+### The Genome Card, two faces — built in 1.14.0
 
-The genomeHash is an ink stamp that re-settles on every edit. Watching it
-change as you drag is the cheapest possible proof that the hash is a function
-of the content.
+- **Pressed-page face** (default): generated controls as notebook rows — a term
+  in small caps against a measuring rule. The rule carries the teaching: end
+  ticks, an ink fill, a nib at the value, and hatching over whatever a
+  relational bound currently puts out of reach.
+- **Writing face**: the real formatted JSON — `JSON.parse` of what is on screen
+  returns the genome — set in the notebook serif on the same paper, with the
+  line count as a caption. Keys stay in the normalizer's own order rather than
+  sorted: a genome that opens with its name reads as a description, and one
+  that opens with `archetype, motion, name` reads as a data structure.
+
+The genomeHash is an ink stamp. Its characters change on every sample of a
+drag; the ink pulse waits for the previous one to finish, because a half-second
+animation retriggered at 60Hz is a jitter and never once a stamp coming down.
 
 Vibe guard, non-negotiable: no monospace-devtools styling, no syntax-highlight
-rainbow, no brace gutters, no red error text anywhere.
+rainbow, no brace gutters, no red error text anywhere. This is enforced by
+`genome-card-static.test.mjs` rather than left to good intentions.
 
 ## What landed in 1.13.0
 
@@ -87,6 +99,19 @@ The substrate, all of it DOM-free and tested:
 | `src/ui/genome-voice.js` | `phraseRepair` — repair notes in the naturalist's voice |
 | `living-world/runtime.js` | `removeLivingFlora`; `introduceLivingFlora({at})`; affordance ordinals made monotonic |
 
+## What landed in 1.14.0
+
+| | |
+|---|---|
+| `src/ui/genome-draft.js` | the editing session, DOM-free: apply a change, let the normalizer answer, file the answer in the right margin. Also the writing-face document model |
+| `src/ui/genome-card.js` | the two-faced card. A view over a draft — it imports neither three.js, nor the runtime, nor a normalizer |
+| `observatory.js` | rebuild in place: a plant on its own spot, a kin with its pose and follow camera carried across |
+
+The card leans on one property, which is why the test asserts it before
+anything else: **a canonical genome renormalizes silently.** That is what lets
+a repair note sit beside a field without lying about why it appeared — every
+note on the board was caused by the edit just made.
+
 The ordinal fix was a latent bug, not a refactor: `ordinal` is an identity that
 kin hold as claims, but it was assigned from array length — safe only while
 nothing ever removed an affordance.
@@ -96,11 +121,15 @@ nothing ever removed an affordance.
 Dependency-ordered. Items marked ⚑ are design-heavy enough to want a dedicated
 pass rather than being folded into a larger session.
 
-1. ⚑ **The genome editor** (`src/ui/genome-editor.js`) — the two-faced card,
-   the range-bar visual, marginalia placement, debounced live rebuild. The
-   risk is not volume, it is *feel*: a JSON editor that reads as devtools in a
-   cute frame is worse than not shipping.
-2. Genome Card read-only mode, wired into the observatory selection path.
+1. ~~The genome editor~~ — **landed in 1.14.0** as `src/ui/genome-card.js`
+   over `src/ui/genome-draft.js`. Read-only mode exists (`show(dna, {editable:
+   false})`) but nothing calls it yet.
+2. Wider entry points. Today the card opens from the specimen readout (kin)
+   and the flora medallion (plants). The studio's candidate cards should offer
+   it too — reading what the model actually proposed, and editing it before
+   introducing it, is the clearest possible statement of "model proposes,
+   engine validates". Palette editing is also still absent: swatches are shown
+   but not offered, because a colour picker is an OS panel and this is a page.
 3. ⚑ **The affordance lens + prediction scoring** (Layer 3). Independently
    valuable — it is also the debugging view the ecology has never had, and the
    one that would have made the simulation-only bugs visible.

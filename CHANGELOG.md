@@ -1,5 +1,71 @@
 # Changelog
 
+## 1.14.0 - 2026-07-29
+
+The genome card. The thing 1.13.0 was substrate for: every creature and plant
+in the field is a short written document, and now you can read it, turn it
+over, and change it while it stands there.
+
+### Added
+
+- **The genome card**, a leaf out of the field notebook with two faces. The
+  page face is one row per field, generated from the schema — a term in small
+  caps against a measuring rule with a nib on it. The writing face is the real
+  JSON, set in the notebook serif on the same paper, captioned with its own
+  length in words ("forty-two lines"). Turning between them is a turn, not a
+  tab, because the tutorial's rule is that every layer ends on a sight.
+- **Relational bounds are drawn before they are enforced.** A leg may be no
+  thicker than a quarter of its length, so on a short-legged creature the part
+  of the thickness rule it cannot reach is hatched off. Hatched rather than
+  greyed: greying says "this control is switched off", hatching says "this
+  creature cannot reach here", and only the second one is true.
+- **Live rebuild in place.** Moving a rule regrows the thing in the field on a
+  120ms debounce — a plant on the spot it already occupies, a kin with its pose
+  and its follow camera carried across, so the rebuild reads as the same animal
+  changing rather than one vanishing and another arriving.
+- **Marginalia.** When an edit trips a bound, the normalizer's repair note
+  appears beside the field that caused it, phrased as a field note. Attribution
+  is resolved against the schema rather than by reading the leading token, so
+  "unknown flora archetype…" does not get filed under a field called "unknown".
+- A field that moved *without being touched* is marked. Shorten a creature's
+  legs and its thickness follows on its own, which is the whole lesson about
+  relational bounds delivered by watching instead of by being told.
+- `src/ui/genome-draft.js`: the editing session, DOM-free — apply a change,
+  hand the result to the normalizer, and work out which margin the answer
+  belongs in. Also the writing-face document model, which is real JSON:
+  `JSON.parse` of what is on screen returns the genome.
+- Entry points: "Read the genome" on the specimen readout for the selected
+  kin, and the flora medallion in Field Taxonomy for a plant.
+
+### Changed
+
+- The specimen readout's header carries one action. It sits there rather than
+  as a ninth table row so the card's own rhythm is untouched.
+
+### Fixed
+
+- The hash stamp re-settles when the genome changes, but is no longer
+  restarted per pointer sample — a half-second animation retriggered at 60Hz
+  renders as a jitter and never once as a stamp coming down. The characters
+  still change continuously; only the ink pulse waits its turn.
+- An edited plant that outgrows the spot it was standing in now walks to the
+  nearest ground that will take it instead of disappearing.
+
+### Verified
+
+- 108 tests, lint, and production build green; `determinism-seed` unaffected —
+  nothing here runs inside the seeded window.
+- `genome-draft.test.mjs` asserts the property the marginalia depends on: a
+  canonical genome renormalizes silently across all nine archetypes and both
+  locomotions, so every note on the board was caused by the edit just made.
+  It also checks the computed relational ceiling against what the normalizer
+  actually enforces, at the ceiling and one step past it.
+- `genome-card-static.test.mjs` guards the tone as an executable constraint:
+  the writing face may not use a monospace face, nothing on the card may be
+  red, the unreachable track must be hatched and not filtered, the native
+  range widget must stay invisible, and the card may not import three.js, the
+  runtime, or a normalizer.
+
 ## 1.13.0 - 2026-07-29
 
 Foundation for a tutorial that teaches the game by teaching its genomes.

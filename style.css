@@ -4746,6 +4746,14 @@ body.genome-card-open .observatory-shell {
 }
 
 @media (max-width: 760px) {
+  /* The specimen becomes a bottom sheet on a phone and its header has much
+     less room, so the action drops to its verb. */
+  .obs-paper-action {
+    padding: 6px 8px;
+    font-size: 6.5px;
+    letter-spacing: 0.12em;
+  }
+
   .genome-card {
     padding: 10px;
   }

@@ -1,5 +1,60 @@
 # Changelog
 
+## 1.13.0 - 2026-07-29
+
+Foundation for a tutorial that teaches the game by teaching its genomes.
+Nothing here is player-visible yet: it is the substrate the genome editor,
+the mutate verb and the Field Guide's provenance all stand on. Design lives
+in `TUTORIAL_PLAN.md`.
+
+### Added
+
+- `describeGenome` turns a genome into the controls an editor should draw,
+  generated from the schema's own limits tables rather than written against
+  them. A field added to either schema becomes editable, and heritable, with
+  no UI change. `shape` controls come from the archetype's own key set, so a
+  spire is never offered a cap radius — the discriminated union is visible in
+  the UI because it is visible in the data.
+- `phraseRepair` restates a normalizer's repair notes in the field guide's
+  voice. The notes were always the right thing to show a player — each one is
+  a rule of the world, stated at the moment it applied to something they made
+  — but shown raw they read as validation errors.
+- `removeLivingFlora` takes a plant back out of the field, withdrawing every
+  affordance, flower spot, perch and obstacle it registered, releasing any kin
+  walking toward it, and disposing its species once the last plant of it is
+  gone. `introduceLivingFlora` takes an optional `at` so a rebuild lands where
+  the plant stood instead of walking the placement ring.
+
+### Changed
+
+- The walker schema's bounds are a table (`WALKER_CLAMPS`,
+  `WALKER_WING_CLAMPS`, `WALKER_RELATIONS`) rather than inline arguments to
+  `clamped(...)`. The flora side already worked this way; a bound that only
+  the normalizer knows about cannot be offered to an editor or a mutation
+  operator, and one that is written down twice drifts silently.
+- `MOTION_LIMITS` and `VARIATION_LIMITS` are exported alongside the archetype
+  tables they sit beside.
+
+### Fixed
+
+- Affordance ordinals were array indices. `ordinal` is used as an identity —
+  kin count capacity claims by it and exclude their last one by it — but was
+  assigned from `affordances.length`, which was safe only while nothing ever
+  removed an affordance. It is a monotonic counter now, so a plant removed and
+  replaced cannot hand a live kin's claim to an unrelated affordance.
+
+### Verified
+
+- 106 tests, lint and build green; `determinism-seed` unaffected.
+- `genome-clamp-table` asserts the extracted tables *are* the enforced bounds
+  by driving the normalizer at each field's boundaries.
+- `genome-schema` asserts control coverage across all nine archetypes and both
+  locomotions; `genome-voice` fails when a normalizer grows a note template
+  that has no phrasing.
+- `living-world-runtime` drives twenty edit-rebuild passes and asserts the
+  affordance registry, flower and perch spots, obstacles and species list all
+  return to exactly where they started, with ordinals still unique.
+
 ## 1.12.0 - 2026-07-28
 
 ### Added

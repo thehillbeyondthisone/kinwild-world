@@ -7,9 +7,11 @@ const {
   createLivingWorldRuntime,
   disposeLivingWorld,
   introduceLivingFauna,
+  introduceLivingFlora,
   planLivingComposition,
   populateLivingFauna,
   populateLivingFlora,
+  removeLivingFlora,
   selectLivingWorldAnchor,
   stepLivingWorld,
 } = await import("../src/living-world/runtime.js");
@@ -320,6 +322,139 @@ assert.equal(
   false,
 );
 stepLivingWorld(runtime, 1 / 60, 1);
+
+// --- taking a plant back out ------------------------------------------
+//
+// Rebuilding an edited plant is a removal followed by an introduction at the
+// same spot, so removal has to give back everything `addLivingFlora` took:
+// the entry, its affordances, its flower and perch records, and a hero's
+// obstacle. The failure this guards is a slow one — an edit loop that leaves
+// affordances behind fills the registry with points nothing can be reached
+// at, and kin spend the session walking to plants that are not there.
+
+const before = {
+  flora: runtime.flora.length,
+  affordances: runtime.registrations.affordances.length,
+  flowerSpots: worldState.flowerSpots.length,
+  perchSpots: worldState.perchSpots.length,
+  obstacles: worldState.obstacles.length,
+  species: runtime.species.length,
+};
+
+const planted = introduceLivingFlora(
+  runtime,
+  { archetype: "bell", name: "Test Bell", seed: 0xb311 },
+  { prompt: "a test bell", genomeHash: "deadbeef" },
+);
+assert.ok(planted, "the field should accept an authored plant");
+assert.equal(runtime.flora.length, before.flora + 1);
+assert.ok(
+  runtime.registrations.affordances.length > before.affordances,
+  "a bell advertises nectar and pollen, so it should register affordances",
+);
+
+assert.equal(removeLivingFlora(runtime, planted), true);
+assert.equal(removeLivingFlora(runtime, planted), false, "removal is idempotent");
+assert.equal(runtime.flora.length, before.flora, "the entry should be gone");
+assert.equal(
+  runtime.registrations.affordances.length,
+  before.affordances,
+  "every affordance the plant advertised should be withdrawn",
+);
+assert.equal(worldState.flowerSpots.length, before.flowerSpots);
+assert.equal(worldState.perchSpots.length, before.perchSpots);
+assert.equal(worldState.obstacles.length, before.obstacles);
+assert.equal(
+  runtime.species.length,
+  before.species,
+  "the last plant of a species should release the species with it",
+);
+assert.equal(planted.instance.root.parent, null, "the plant should leave the scene graph");
+assert.equal(planted.species.disposed, true);
+
+// Removing a hero hands the title to another one rather than leaving a
+// dangling reference to a disposed plant.
+const heroBefore = runtime.hero;
+assert.ok(heroBefore, "a populated field has a hero");
+assert.equal(removeLivingFlora(runtime, heroBefore), true);
+assert.notEqual(runtime.hero, heroBefore, "the hero should be reassigned");
+assert.equal(
+  worldState.obstacles.includes(heroBefore.registered.obstacles[0]),
+  false,
+  "a removed hero's exclusion circle should go with it",
+);
+
+// --- the edit-rebuild loop ---------------------------------------------
+//
+// Twenty rebuilds is the shape of a player dragging one slider. Anything that
+// is registered but not withdrawn shows up here as a count that climbs.
+const loopStart = {
+  flora: runtime.flora.length,
+  affordances: runtime.registrations.affordances.length,
+  perchSpots: worldState.perchSpots.length,
+  flowerSpots: worldState.flowerSpots.length,
+  species: runtime.species.length,
+};
+
+let standing = null;
+for (let pass = 0; pass < 20; pass++) {
+  const at = standing
+    ? { x: standing.instance.root.position.x, z: standing.instance.root.position.z }
+    : undefined;
+  if (standing) assert.equal(removeLivingFlora(runtime, standing), true);
+  standing = introduceLivingFlora(
+    runtime,
+    // A changing height is the edit; everything else holds still.
+    { archetype: "cap", name: "Test Cap", seed: 0xca9, shape: { height: 2 + pass * 0.1 } },
+    { prompt: "an edited cap", at },
+  );
+  assert.equal(
+    runtime.flora.length,
+    loopStart.flora + 1,
+    `pass ${pass}: exactly one edited plant should be standing`,
+  );
+}
+
+// The plant stayed where it was put rather than walking the ring each rebuild.
+const settled = { x: standing.instance.root.position.x, z: standing.instance.root.position.z };
+assert.equal(removeLivingFlora(runtime, standing), true);
+const replanted = introduceLivingFlora(
+  runtime,
+  { archetype: "cap", name: "Test Cap", seed: 0xca9 },
+  { at: settled },
+);
+assert.ok(
+  Math.abs(replanted.instance.root.position.x - settled.x) < 1e-6 &&
+    Math.abs(replanted.instance.root.position.z - settled.z) < 1e-6,
+  "a rebuild given a position should land on it, not walk the ring",
+);
+assert.equal(removeLivingFlora(runtime, replanted), true);
+
+assert.equal(runtime.flora.length, loopStart.flora, "the loop should leave nothing standing");
+assert.equal(
+  runtime.registrations.affordances.length,
+  loopStart.affordances,
+  "twenty rebuilds should leave the affordance registry exactly as it was",
+);
+assert.equal(worldState.perchSpots.length, loopStart.perchSpots);
+assert.equal(worldState.flowerSpots.length, loopStart.flowerSpots);
+assert.equal(
+  runtime.species.length,
+  loopStart.species,
+  "twenty rebuilds should not accumulate compiled species",
+);
+
+// Ordinals are identities and must never be reused, or a kin's claim on one
+// affordance would silently transfer to a different plant's.
+const ordinals = runtime.registrations.affordances.map((entry) => entry.ordinal);
+assert.equal(
+  new Set(ordinals).size,
+  ordinals.length,
+  "affordance ordinals must stay unique across removals",
+);
+
+// The field still works after all that churn.
+stepLivingWorld(runtime, 1 / 60, 2);
 
 assert.equal(disposeLivingWorld(worldState), true);
 assert.equal(worldState.livingWorld, null);

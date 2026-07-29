@@ -18,6 +18,7 @@ export {
   planLivingComposition,
   populateLivingFauna,
   populateLivingFlora,
+  removeLivingFlora,
   resolveLivingWorldPresentation,
   selectLivingWorldAnchor,
   stepLivingWorld,

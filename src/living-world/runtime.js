@@ -588,7 +588,7 @@ function registerFloraAffordances(runtime, flora) {
       z: affordance.position.z,
       source: flora,
     };
-    runtime.registrations.affordances.push({
+    const entry = {
       type: affordance.type,
       x: record.x,
       y: record.y,
@@ -598,11 +598,19 @@ function registerFloraAffordances(runtime, flora) {
       floraKey: flora.recipe.key,
       role: flora.recipe.role,
       speciesId: flora.species.id,
-      ordinal: runtime.registrations.affordances.length,
-    });
+      // An identity, not an index. It used to be the array length, which was
+      // safe only because nothing ever removed an affordance: once a plant
+      // can be taken out mid-session, the next one planted would mint an
+      // ordinal a live kin might still be holding as its goal or its
+      // `lastOrdinal`, and two different affordances would share a claim.
+      ordinal: runtime.nextAffordanceOrdinal++,
+    };
+    runtime.registrations.affordances.push(entry);
+    flora.registered.affordances.push(entry);
     if (affordance.type === "nectar") {
       runtime.worldState.flowerSpots.push(record);
       runtime.registrations.flowerSpots.push(record);
+      flora.registered.flowerSpots.push(record);
     } else if (affordance.type === "perch") {
       const perch = {
         ...record,
@@ -612,6 +620,7 @@ function registerFloraAffordances(runtime, flora) {
       };
       runtime.worldState.perchSpots.push(perch);
       runtime.registrations.perches.push(perch);
+      flora.registered.perches.push(perch);
     }
   }
 }
@@ -672,9 +681,15 @@ function addLivingFlora(runtime, recipe, species, provider, record) {
   const flora = {
     recipe,
     species,
+    provider,
     instance,
     footprint,
     lastReactionAt: -Infinity,
+    // What this one plant put into the shared arrays. Removing a plant means
+    // taking back exactly these entries, so they are collected as they are
+    // made rather than searched for afterwards — an affordance carries no
+    // back-reference, and `floraKey` names a species, not an individual.
+    registered: { affordances: [], flowerSpots: [], perches: [], obstacles: [] },
   };
   runtime.flora.push(flora);
   registerFloraAffordances(runtime, flora);
@@ -695,6 +710,7 @@ function addLivingFlora(runtime, recipe, species, provider, record) {
     };
     runtime.worldState.obstacles.push(obstacle);
     runtime.registrations.obstacles.push(obstacle);
+    flora.registered.obstacles.push(obstacle);
     if (!runtime.hero) runtime.hero = flora;
   }
   return flora;
@@ -847,6 +863,73 @@ function makeFaunaFacade(runtime, agent, dna, scale, ordinal) {
   }
   if (ordinal === 0) facade.lookTimer = 7;
   return facade;
+}
+
+/**
+ * Take one plant back out of the living field.
+ *
+ * The mirror of `disposeLivingFaunaFacade`, and the thing that makes a plant
+ * editable: rebuilding a plant from changed DNA is a removal followed by an
+ * introduction at the same spot. Everything `addLivingFlora` put into a
+ * shared array has to come back out, or a field that is edited repeatedly
+ * accumulates affordances nothing can be reached at and obstacles around
+ * plants that are no longer there.
+ *
+ * @param {object} runtime the living-world runtime
+ * @param {object} flora   an entry from `runtime.flora`
+ * @returns {boolean} whether the plant was found and removed
+ */
+export function removeLivingFlora(runtime, flora) {
+  if (!runtime || runtime.disposed || !flora) return false;
+  const index = runtime.flora.indexOf(flora);
+  if (index < 0) return false;
+  runtime.flora.splice(index, 1);
+
+  const registered = flora.registered ?? {
+    affordances: [],
+    flowerSpots: [],
+    perches: [],
+    obstacles: [],
+  };
+
+  // Let go of anything walking here before the affordance stops existing.
+  // A goal is held by ordinal, so a kin pursuing a removed plant would
+  // otherwise keep its claim and keep walking to a point in empty air until
+  // its dwell expired.
+  if (registered.affordances.length > 0) {
+    const ordinals = new Set(registered.affordances.map((entry) => entry.ordinal));
+    for (const actor of runtime.fauna) {
+      if (ordinals.has(actor.needs?.goal?.ordinal)) releaseKinGoal(actor);
+    }
+  }
+
+  removeRegistered(runtime.worldState.flowerSpots, registered.flowerSpots);
+  removeRegistered(runtime.worldState.perchSpots, registered.perches);
+  removeRegistered(runtime.worldState.obstacles, registered.obstacles);
+  removeRegistered(runtime.registrations.flowerSpots, registered.flowerSpots);
+  removeRegistered(runtime.registrations.perches, registered.perches);
+  removeRegistered(runtime.registrations.obstacles, registered.obstacles);
+  removeRegistered(runtime.registrations.affordances, registered.affordances);
+
+  if (runtime.hero === flora) {
+    runtime.hero = runtime.flora.find((entry) => entry.recipe.role === "hero") ?? null;
+  }
+
+  flora.instance.dispose();
+
+  // The species owns the geometry, materials and batches every plant of it
+  // draws from, so it outlives any one plant — but only while one is still
+  // standing. Without this an edit loop compiles a fresh species per keystroke
+  // and never releases the last one's GPU resources.
+  const species = flora.species;
+  if (species && species.instanceCount === 0 && !species.disposed) {
+    const speciesIndex = runtime.species.indexOf(species);
+    if (speciesIndex >= 0) runtime.species.splice(speciesIndex, 1);
+    const providerIndex = runtime.floraProviders.indexOf(flora.provider);
+    if (providerIndex >= 0) runtime.floraProviders.splice(providerIndex, 1);
+    species.dispose();
+  }
+  return true;
 }
 
 function disposeLivingFaunaFacade(runtime, facade) {
@@ -1065,11 +1148,26 @@ export function introduceLivingFlora(runtime, dna, authoring = {}) {
   const baseAngle =
     seededUnit(authoredSeed, "authored/plant-angle") * Math.PI * 2 + index * 1.1;
 
+  // A caller rebuilding an edited plant already knows where it stood, and
+  // walking the ring again would move it — the plant would appear to hop
+  // across the clearing on every change instead of reshaping where it is.
+  const at = authoring.at;
+  const placements =
+    at && Number.isFinite(at.x) && Number.isFinite(at.z)
+      ? [{ x: at.x, z: at.z }]
+      : Array.from({ length: 24 }, (_, attempt) => {
+          const ring = Math.floor(attempt / 6);
+          const angle = baseAngle + (attempt % 6) * (Math.PI / 3) + ring * 0.4;
+          const radius = CLEARING_RADIUS + 1.4 + ring * 2.6;
+          return {
+            x: anchor.x + Math.cos(angle) * radius,
+            z: anchor.z + Math.sin(angle) * radius,
+          };
+        });
+
   let flora = null;
-  for (let attempt = 0; attempt < 24 && !flora; attempt++) {
-    const ring = Math.floor(attempt / 6);
-    const angle = baseAngle + (attempt % 6) * (Math.PI / 3) + ring * 0.4;
-    const radius = CLEARING_RADIUS + 1.4 + ring * 2.6;
+  for (const placement of placements) {
+    if (flora) break;
     flora = addLivingFlora(
       runtime,
       recipe,
@@ -1078,8 +1176,8 @@ export function introduceLivingFlora(runtime, dna, authoring = {}) {
       Object.freeze({
         role: species.role,
         ordinal: 900 + index,
-        x: anchor.x + Math.cos(angle) * radius,
-        z: anchor.z + Math.sin(angle) * radius,
+        x: placement.x,
+        z: placement.z,
         scale: 1,
         patch: -1,
         habitat: Object.freeze({ elevation: 0.5, slope: 0, edge: 0.5 }),
@@ -1586,6 +1684,8 @@ export function createLivingWorldRuntime({
     fauna: [],
     lights: [],
     unsubscribers: [],
+    // Monotonic, never reused. See `registerFloraAffordances`.
+    nextAffordanceOrdinal: 0,
     registrations: {
       obstacles: [],
       perches: [],

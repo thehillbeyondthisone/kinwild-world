@@ -6,7 +6,9 @@ import {
   FLORA_ARCHETYPES,
   FLORA_DNA_VERSION,
   FLORA_ROLES,
+  MOTION_LIMITS,
   PALETTE_ROLES,
+  VARIATION_LIMITS,
   normalizeFloraDNA,
 } from "./dna.js";
 import {
@@ -541,7 +543,9 @@ export {
   FLORA_DNA_VERSION,
   FLORA_ROLES,
   FLORA_VIEWER,
+  MOTION_LIMITS,
   PALETTE_ROLES,
+  VARIATION_LIMITS,
   createRng,
   createTouchEnvelope,
   deriveBiomePalette,

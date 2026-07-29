@@ -82,7 +82,13 @@ const VARIATION_DEFAULTS = Object.freeze({
   ground: { scaleMin: 0.82, scaleMax: 1.16, lean: 0.12 },
 });
 
-const MOTION_LIMITS = Object.freeze({
+/**
+ * Exported for the same reason `ARCHETYPE_SHAPE_LIMITS` is: a genome editor
+ * generates one control per field from these, and the mutation operator sizes
+ * a field's drift by its range. A bound only the normalizer knows about
+ * cannot be offered to either.
+ */
+export const MOTION_LIMITS = Object.freeze({
   wind: [0, 2],
   touchStrength: [0.1, 2],
   touchStiffness: [8, 80],
@@ -90,7 +96,7 @@ const MOTION_LIMITS = Object.freeze({
   maxLean: [0.03, 0.45],
 });
 
-const VARIATION_LIMITS = Object.freeze({
+export const VARIATION_LIMITS = Object.freeze({
   scaleMin: [0.65, 1.1],
   scaleMax: [0.9, 1.5],
   lean: [0, 0.2],

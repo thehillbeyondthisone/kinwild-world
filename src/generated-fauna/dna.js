@@ -1,6 +1,6 @@
 const COLOR_RE = /^#[0-9a-f]{6}$/i;
-const LEG_COUNTS = [2, 4, 6];
-const LOCOMOTIONS = ["walker", "flier"];
+export const LEG_COUNTS = Object.freeze([2, 4, 6]);
+export const LOCOMOTIONS = Object.freeze(["walker", "flier"]);
 
 const CURATED_WINGS = deepFreeze({
   span: 0.44,
@@ -49,6 +49,96 @@ export const CURATED_WALKER_DNA = deepFreeze({
     bob: 0.018,
   },
 });
+
+/**
+ * Every scalar bound the walker schema enforces, as `[lo, hi]` per field.
+ *
+ * These were inline arguments to `clamped(...)` inside the normalizer. They
+ * are a table because two other things need to read the same numbers: a
+ * genome editor generating one control per field, and the mutation operator
+ * choosing how far a field may drift. A bound that lives in only one of the
+ * three drifts out of agreement with the other two, and the failure is
+ * silent — a slider that lets you ask for something the normalizer then
+ * quietly takes back.
+ *
+ * The flora side already works this way (`ARCHETYPE_SHAPE_LIMITS`).
+ */
+export const WALKER_CLAMPS = deepFreeze({
+  body: {
+    radius: [0.16, 0.46],
+    halfLength: [0.08, 0.42],
+  },
+  head: {
+    radius: [0.1, 0.34],
+    eyeRadius: [0.022, 0.09],
+  },
+  legs: {
+    length: [0.24, 0.78],
+    thickness: [0.035, 0.13],
+    stance: [0.1, 0.38],
+    spread: [0.08, 0.42],
+  },
+  motion: {
+    stepDuration: [0.14, 0.5],
+    stepTrigger: [0.07, 0.28],
+    lift: [0.025, 0.18],
+    bob: [0, 0.05],
+  },
+});
+
+/** Per-axis bounds for `head.offset`, in the same `[lo, hi]` shape. */
+export const WALKER_HEAD_OFFSET_CLAMPS = deepFreeze([
+  [-0.35, 0.35],
+  [-0.1, 0.55],
+  [-0.1, 0.7],
+]);
+
+/** Wing bounds. Only present on fliers, so kept out of `WALKER_CLAMPS`. */
+export const WALKER_WING_CLAMPS = deepFreeze({
+  span: [0.22, 0.95],
+  chord: [0.05, 0.34],
+  beat: [3, 16],
+  dihedral: [0, 0.6],
+});
+
+/**
+ * Bounds a field against another field rather than against an absolute.
+ *
+ * Relational constraints matter more than independently valid scalars: legs
+ * each inside their own range still read wrong if they are thicker than they
+ * are long. Applied in order, so a rule may depend on an earlier rule's
+ * result — `wings.chord` is held against the span *after* the span itself
+ * has been held against the body.
+ */
+export const WALKER_RELATIONS = deepFreeze([
+  {
+    field: "legs.thickness",
+    boundedBy: "legs.length",
+    factor: 0.24,
+    note: "legs.thickness: reduced to fit leg length",
+  },
+  {
+    field: "head.eyeRadius",
+    boundedBy: "head.radius",
+    factor: 0.34,
+    note: "head.eyeRadius: reduced to fit head",
+  },
+  {
+    field: "wings.span",
+    boundedBy: "body.radius",
+    factor: 2.6,
+    flierOnly: true,
+    // A wing wider than the body reads as a glider, not a kinling.
+    note: "wings.span: reduced to fit the body",
+  },
+  {
+    field: "wings.chord",
+    boundedBy: "wings.span",
+    factor: 0.42,
+    flierOnly: true,
+    note: "wings.chord: reduced to fit the span",
+  },
+]);
 
 /**
  * Convert untrusted semantic walker input into a small, bounded genome.
@@ -110,6 +200,14 @@ export function normalizeWalkerDNA(raw, options = {}) {
     repairs.push(`legs.count: repaired to ${legCount}`);
   }
 
+  // One field, bounded by the table and defaulted from the curated genome.
+  // The path is the single source for both lookups and for the repair note,
+  // so a field cannot be clamped against one name and reported under another.
+  const bounded = (value, path) => {
+    const [lo, hi] = readPath(WALKER_CLAMPS, path);
+    return clamped(value, lo, hi, readPath(CURATED_WALKER_DNA, path), path, repairs);
+  };
+
   const dna = {
     schemaVersion: GENERATED_FAUNA_SCHEMA_VERSION,
     locomotion,
@@ -149,162 +247,56 @@ export function normalizeWalkerDNA(raw, options = {}) {
       ),
     },
     body: {
-      radius: clamped(
-        bodySource.radius,
-        0.16,
-        0.46,
-        CURATED_WALKER_DNA.body.radius,
-        "body.radius",
-        repairs,
-      ),
-      halfLength: clamped(
-        bodySource.halfLength,
-        0.08,
-        0.42,
-        CURATED_WALKER_DNA.body.halfLength,
-        "body.halfLength",
-        repairs,
-      ),
+      radius: bounded(bodySource.radius, "body.radius"),
+      halfLength: bounded(bodySource.halfLength, "body.halfLength"),
     },
     head: {
-      radius: clamped(
-        headSource.radius,
-        0.1,
-        0.34,
-        CURATED_WALKER_DNA.head.radius,
-        "head.radius",
-        repairs,
-      ),
+      radius: bounded(headSource.radius, "head.radius"),
       offset: safeVec3(
         headSource.offset,
         CURATED_WALKER_DNA.head.offset,
-        [-0.35, -0.1, -0.1],
-        [0.35, 0.55, 0.7],
+        WALKER_HEAD_OFFSET_CLAMPS,
         "head.offset",
         repairs,
       ),
-      eyeRadius: clamped(
-        headSource.eyeRadius,
-        0.022,
-        0.09,
-        CURATED_WALKER_DNA.head.eyeRadius,
-        "head.eyeRadius",
-        repairs,
-      ),
+      eyeRadius: bounded(headSource.eyeRadius, "head.eyeRadius"),
     },
     legs: {
       count: legCount,
-      length: clamped(
-        legsSource.length,
-        0.24,
-        0.78,
-        CURATED_WALKER_DNA.legs.length,
-        "legs.length",
-        repairs,
-      ),
-      thickness: clamped(
-        legsSource.thickness,
-        0.035,
-        0.13,
-        CURATED_WALKER_DNA.legs.thickness,
-        "legs.thickness",
-        repairs,
-      ),
-      stance: clamped(
-        legsSource.stance,
-        0.1,
-        0.38,
-        CURATED_WALKER_DNA.legs.stance,
-        "legs.stance",
-        repairs,
-      ),
-      spread: clamped(
-        legsSource.spread,
-        0.08,
-        0.42,
-        CURATED_WALKER_DNA.legs.spread,
-        "legs.spread",
-        repairs,
-      ),
+      length: bounded(legsSource.length, "legs.length"),
+      thickness: bounded(legsSource.thickness, "legs.thickness"),
+      stance: bounded(legsSource.stance, "legs.stance"),
+      spread: bounded(legsSource.spread, "legs.spread"),
     },
     motion: {
-      stepDuration: clamped(
-        motionSource.stepDuration,
-        0.14,
-        0.5,
-        CURATED_WALKER_DNA.motion.stepDuration,
-        "motion.stepDuration",
-        repairs,
-      ),
-      stepTrigger: clamped(
-        motionSource.stepTrigger,
-        0.07,
-        0.28,
-        CURATED_WALKER_DNA.motion.stepTrigger,
-        "motion.stepTrigger",
-        repairs,
-      ),
-      lift: clamped(
-        motionSource.lift,
-        0.025,
-        0.18,
-        CURATED_WALKER_DNA.motion.lift,
-        "motion.lift",
-        repairs,
-      ),
-      bob: clamped(
-        motionSource.bob,
-        0,
-        0.05,
-        CURATED_WALKER_DNA.motion.bob,
-        "motion.bob",
-        repairs,
-      ),
+      stepDuration: bounded(motionSource.stepDuration, "motion.stepDuration"),
+      stepTrigger: bounded(motionSource.stepTrigger, "motion.stepTrigger"),
+      lift: bounded(motionSource.lift, "motion.lift"),
+      bob: bounded(motionSource.bob, "motion.bob"),
     },
   };
 
   if (flier) {
-    dna.wings = {
-      span: clamped(
-        wingsSource.span, 0.22, 0.95, CURATED_WINGS.span, "wings.span", repairs,
-      ),
-      chord: clamped(
-        wingsSource.chord, 0.05, 0.34, CURATED_WINGS.chord, "wings.chord", repairs,
-      ),
-      beat: clamped(
-        wingsSource.beat, 3, 16, CURATED_WINGS.beat, "wings.beat", repairs,
-      ),
-      dihedral: clamped(
-        wingsSource.dihedral, 0, 0.6, CURATED_WINGS.dihedral, "wings.dihedral",
+    dna.wings = {};
+    for (const field of Object.keys(WALKER_WING_CLAMPS)) {
+      const [lo, hi] = WALKER_WING_CLAMPS[field];
+      dna.wings[field] = clamped(
+        wingsSource[field],
+        lo,
+        hi,
+        CURATED_WINGS[field],
+        `wings.${field}`,
         repairs,
-      ),
-    };
-  }
-
-  // Relational constraints matter more than independently valid scalars.
-  const maxThickness = dna.legs.length * 0.24;
-  if (dna.legs.thickness > maxThickness) {
-    dna.legs.thickness = maxThickness;
-    repairs.push("legs.thickness: reduced to fit leg length");
-  }
-  const maxEye = dna.head.radius * 0.34;
-  if (dna.head.eyeRadius > maxEye) {
-    dna.head.eyeRadius = maxEye;
-    repairs.push("head.eyeRadius: reduced to fit head");
-  }
-
-  if (flier) {
-    // A wing wider than the body reads as a glider, not a kinling. Hold the
-    // span against the body it hangs off rather than against an absolute.
-    const maxSpan = dna.body.radius * 2.6;
-    if (dna.wings.span > maxSpan) {
-      dna.wings.span = maxSpan;
-      repairs.push("wings.span: reduced to fit the body");
+      );
     }
-    const maxChord = dna.wings.span * 0.42;
-    if (dna.wings.chord > maxChord) {
-      dna.wings.chord = maxChord;
-      repairs.push("wings.chord: reduced to fit the span");
+  }
+
+  for (const relation of WALKER_RELATIONS) {
+    if (relation.flierOnly && !flier) continue;
+    const ceiling = readPath(dna, relation.boundedBy) * relation.factor;
+    if (readPath(dna, relation.field) > ceiling) {
+      writePath(dna, relation.field, ceiling);
+      repairs.push(relation.note);
     }
   }
 
@@ -406,14 +398,37 @@ function clamped(value, lo, hi, fallback, path, repairs) {
   return result;
 }
 
-function safeVec3(value, fallback, lo, hi, path, repairs) {
+function safeVec3(value, fallback, ranges, path, repairs) {
   if (!Array.isArray(value) || value.length < 3) {
     if (value !== undefined) repairs.push(`${path}: expected [x, y, z]`);
     return [...fallback];
   }
   return [0, 1, 2].map((index) =>
-    clamped(value[index], lo[index], hi[index], fallback[index], `${path}[${index}]`, repairs),
+    clamped(
+      value[index],
+      ranges[index][0],
+      ranges[index][1],
+      fallback[index],
+      `${path}[${index}]`,
+      repairs,
+    ),
   );
+}
+
+/** Read a dotted path ("legs.thickness") out of a nested object. */
+function readPath(target, path) {
+  let cursor = target;
+  for (const key of path.split(".")) cursor = cursor[key];
+  return cursor;
+}
+
+/** Write a dotted path. Only ever called on the not-yet-frozen draft. */
+function writePath(target, path, value) {
+  const keys = path.split(".");
+  const last = keys.pop();
+  let cursor = target;
+  for (const key of keys) cursor = cursor[key];
+  cursor[last] = value;
 }
 
 function safeColor(value, fallback, path, repairs) {

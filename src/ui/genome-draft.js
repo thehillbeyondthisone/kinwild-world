@@ -122,13 +122,21 @@ function pathIndex(sections) {
  * we know) is a note on the card itself. Every note is phrased before it is
  * filed — a raw note never reaches this module's callers.
  */
-export function attributeRepairs(notes, sections) {
+export function attributeRepairs(notes, sections, editedPath = null) {
   const index = pathIndex(sections);
   const byPath = new Map();
   const general = [];
   for (const note of notes ?? []) {
     const phrase = phraseRepair(note);
-    const path = repairTarget(note, index);
+    let path = repairTarget(note, index);
+    // A note can name a whole section ("variation scale range reordered"),
+    // but no row answers to a section path — syncRow looks fields up. File it
+    // beside the field that caused it when that field lives in the section,
+    // else beside the section's first field. Only a fieldless section falls
+    // through to the card's own notes.
+    if (path && index.sections.has(path) && !index.fields.has(path)) {
+      path = fieldInSection(path, editedPath, sections, index);
+    }
     if (!path) {
       if (!general.includes(phrase)) general.push(phrase);
       continue;
@@ -138,6 +146,20 @@ export function attributeRepairs(notes, sections) {
     else if (!existing.includes(phrase)) existing.push(phrase);
   }
   return { byPath, general };
+}
+
+/**
+ * The row a section-level note should sit beside: the field the player just
+ * moved when it belongs to the section (that is the row they are looking at,
+ * and it is the field that caused the repair), otherwise the section's first
+ * field. Returns null when the section has no rows at all.
+ */
+function fieldInSection(sectionPath, editedPath, sections, index) {
+  if (editedPath && editedPath.startsWith(`${sectionPath}.`) && index.fields.has(editedPath)) {
+    return editedPath;
+  }
+  const section = sections.find((entry) => entry.path === sectionPath);
+  return section && section.fields.length ? section.fields[0].path : null;
 }
 
 /**
@@ -199,7 +221,7 @@ function movedFields(before, after, sections, editedPath) {
 
 function buildDraft(kind, normalized, { edited, editedPath = null, previousDna = null }) {
   const described = describeGenome(normalized.dna);
-  const { byPath, general } = attributeRepairs(normalized.repairs, described.sections);
+  const { byPath, general } = attributeRepairs(normalized.repairs, described.sections, editedPath);
   return Object.freeze({
     kind,
     label: described.label,

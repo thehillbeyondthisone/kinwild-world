@@ -159,7 +159,9 @@ const cases = [
   ["shape.height clamped to 8.5", floraSections, "shape.height"],
   ["motion.wind invalid -> 0.16", floraSections, "motion.wind"],
   ["paletteRoles.structure invalid -> stem", floraSections, "paletteRoles.structure"],
-  ["variation scale range reordered", floraSections, "variation"],
+  // A note that names a whole section is filed beside the section's first
+  // field — rows only exist for fields, and the note must be *visible*.
+  ["variation scale range reordered", floraSections, "variation.scaleMin"],
   // Notes about the genome as a whole have no field to sit beside. These are
   // the ones a naive "first token is the path" rule would file under fields
   // called "unknown", "invalid" and "flora".
@@ -178,6 +180,29 @@ for (const [note, sections, expected] of cases) {
     assert.deepEqual([...byPath.keys()], [expected], `"${note}" should be filed under ${expected}`);
     assert.equal(general.length, 0, `"${note}" should not also be a card note`);
   }
+}
+
+// A section-level note lands beside the field the player just moved when that
+// field lives in the section — dragging scaleMin past scaleMax explains itself
+// on the row under the pointer, not on a row they are not looking at.
+{
+  const { byPath } = attributeRepairs(
+    ["variation scale range reordered"],
+    floraSections,
+    "variation.scaleMax",
+  );
+  assert.deepEqual([...byPath.keys()], ["variation.scaleMax"]);
+}
+// The live repro end to end: edit scaleMin past scaleMax and the swap note is
+// visible in the settled draft's marginalia, filed under a row that exists.
+{
+  const base = normalizeFloraDNA({ archetype: "spire" }).dna;
+  const draft = createGenomeDraft({
+    ...base,
+    variation: { ...base.variation, scaleMin: base.variation.scaleMax + 0.1 },
+  });
+  const paths = [...draft.marginalia.keys()];
+  assert(paths.includes("variation.scaleMin"), `swap note should sit beside a variation row, got: ${paths}`);
 }
 
 // Duplicates collapse — a resized genome repairs the same thing repeatedly and

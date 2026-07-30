@@ -8,7 +8,7 @@
 > **nothing pushed**. The parent repo is a separate project (Creature Creator,
 > port 5173) and is not touched by this work.
 >
-> Version **1.14.0**. Gate per commit: `npm run check` (**108 tests** + lint +
+> Version **1.15.0**. Gate per commit: `npm run check` (**110 tests** + lint +
 > build) **plus** `node tests/determinism-seed.test.mjs` explicitly.
 >
 > Dev server: **`npm run dev`** → :2001. Do *not* use the `make` targets —
@@ -17,9 +17,67 @@
 > here. Restart the server after a version bump (`APP_VERSION` is injected by
 > Vite at server start).
 >
-> **The living world needs `?livingWorld=1` in the URL.** Without it you get
-> the untouched donor world and `state.livingWorld` is null — a seed sweep that
-> forgets the flag reports "no living world" on every seed and looks broken.
+> **`?livingWorld=1` is auto-injected now** — the observatory *is* the default
+> mode; the old warning below about the donor world is stale.
+
+---
+
+# Where we are — 2026-07-29 evening (read this first)
+
+**This section supersedes the stale parts of Parts I–III below.** The audit
+(`AUDIT-2026-07-29.md`) is the governing work order; its recommended order is
+being followed.
+
+Landed today, gate green, **uncommitted**:
+
+- **1.14.1 — rebuild seam + fliers.** Audit findings 1–5 all fixed: black
+  flora (`instanceTint` in `generated-flora/renderers.js`), species leak on
+  failed plant regrow, kin rebuild order (replacement compiled before the
+  original is let go), genome card closes on `world-ready`, `genomeHash`
+  travels with rebuilds, perched fliers no longer shoved off perches
+  (goal-host obstacle skip), and `chooseKinGoal` falls back past unanswerable
+  needs. Two wrong test pins corrected (`genome-card-static`, runtime ordinals
+  are unique+monotonic, not dense).
+- **1.15.0 — the tutorial's first track.** Layers 0–2 (Arrive/Notice/Follow)
+  of `TUTORIAL_PLAN.md`: seed-stamp cold open, margin notes with self-drawing
+  leaders, ring sights, one-word-per-layer vocabulary. New modules:
+  `src/tutorial/progress.js` + `src/tutorial/copy.js` (DOM-free, tested),
+  `src/ui/tutorial-notes.js` (renderer); wiring in `observatory.js`; markup in
+  `index.html`; animations in `style.css`; persisted as
+  `smallworld:tutorial:v1`.
+
+Pending verification (needs a human in a browser):
+
+- **The onboarding itself** — clear localStorage (or private window) at
+  `localhost:2001` to see the cold open.
+- **The genome card's appearance** (Part I task 0, still unseen).
+- **`0x0007` oddities, deferred:** user reports a yellow plant-part-shaped
+  thing orbiting the world and odd plant sway. Headless probes cleared the
+  living-world sim (no flora rotates, batches sane, fauna behavior sane).
+  Prime suspect: the legacy bird flock (`world.js:502-510`) — one flock of
+  5–9 birds circles the island in every world, 30% chance of the biome
+  accent, and Mosshollow's accent is amber `#f4a261`. Runner-up: pollen
+  particles. Next step is the user's in-game look (one solid object vs. a
+  flapping cluster) and the browser console. The headless probes used were
+  throwaway scripts (deleted); recreate from the test harness in
+  `tests/living-world-runtime.test.mjs` if the investigation resumes.
+
+Next up, in order:
+
+1. **Commit 1.14.1 + 1.15.0** (with the user's go-ahead).
+2. Resolve the `0x0007` orbiter once the user reports back.
+3. **Phase 2 — Layer 3 "Observe"** (the affordance lens + prediction scoring;
+   ⚑ design-heavy, see `TUTORIAL_PLAN.md` to-build #3). This also needs audit
+   finding 6 (the `variation scale range reordered` note routing + its wrong
+   pin at `tests/genome-draft.test.mjs:162`).
+4. Then audit finding 7 (determinism-gate gap) and finding 8 (shader-patch
+   anchors), then Layers 4–7 per `TUTORIAL_PLAN.md`.
+5. Part I task 1a (the dock's duplicate regen buttons) and 1b (card entry
+   points) are still open and still valid.
+
+House note from the user: **be token-aware** — no subagent swarms or parallel
+agents without asking first; verify with targeted reads and the existing
+gate.
 
 ---
 

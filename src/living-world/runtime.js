@@ -1186,6 +1186,13 @@ export function introduceLivingFlora(runtime, dna, authoring = {}) {
     );
   }
   if (!flora) {
+    // Take back the registration above: the species was compiled for a plant
+    // that never landed, and leaving it in the arrays leaks the batch root
+    // into the scene and the species/provider into every later walk.
+    runtime.worldState.world.remove(species.batchRoot);
+    runtime.species.splice(runtime.species.indexOf(species), 1);
+    runtime.floraProviders.splice(runtime.floraProviders.indexOf(provider), 1);
+    if (!species.disposed) species.dispose();
     throw new Error("There is no room near the clearing for another plant.");
   }
   const authoringRecord = Object.freeze({
@@ -1338,7 +1345,7 @@ function installPresentationReactions(runtime) {
  * is the steering half: deflect the intended direction along the tangent of
  * the nearest blocker ahead, on whichever side the actor is already favouring.
  */
-function deflectAroundObstacles(runtime, actor, toward) {
+function deflectAroundObstacles(runtime, actor, toward, skip) {
   const length = Math.hypot(toward.x, toward.z);
   if (length < 1e-4) return;
   const dirX = toward.x / length;
@@ -1348,6 +1355,7 @@ function deflectAroundObstacles(runtime, actor, toward) {
 
   let blocker = null;
   for (const obstacle of runtime.worldState.obstacles ?? []) {
+    if (isGoalHost(obstacle, skip)) continue;
     const toObstacleX = obstacle.x - actor.position.x;
     const toObstacleZ = obstacle.z - actor.position.z;
     const ahead = toObstacleX * dirX + toObstacleZ * dirZ;
@@ -1368,9 +1376,28 @@ function deflectAroundObstacles(runtime, actor, toward) {
   toward.z += dirX * push;
 }
 
-function resolveAgainstObstacles(runtime, actor, candidate) {
+/**
+ * Is this obstacle the plant the actor is trying to sit on?
+ *
+ * A hero's perch affordance sits directly above its trunk-centred collision
+ * circle, so a flier that has landed is standing inside the obstacle its own
+ * goal belongs to — resolving against it shoves the sitter off the crown for
+ * the whole dwell. The donor's `avoidObstacles` solved this with skipX/skipZ
+ * (the perch's mushroom is not an obstacle to the one landing on it); this is
+ * that skip, with the same 0.4 tolerance.
+ */
+function isGoalHost(obstacle, goal) {
+  if (!goal) return false;
+  return (
+    Math.abs((obstacle.x ?? 0) - goal.x) < 0.4 &&
+    Math.abs((obstacle.z ?? 0) - goal.z) < 0.4
+  );
+}
+
+function resolveAgainstObstacles(runtime, actor, candidate, skip) {
   const radius = Math.max(0.32, actor.agent.traits.radius * 0.68);
   for (const obstacle of runtime.worldState.obstacles ?? []) {
+    if (isGoalHost(obstacle, skip)) continue;
     const minDistance = finite(obstacle.r) + radius;
     let dx = candidate.x - obstacle.x;
     let dz = candidate.z - obstacle.z;
@@ -1511,9 +1538,15 @@ function stepLivingFauna(runtime, dt, time, camera) {
     const hover = updateFlight(runtime, actor, pursuit, dt, time);
 
     const toward = desired.sub(actor.position);
-    // A flier in the air is over the obstacles, not among them.
+    // A flier in the air is over the obstacles, not among them. A perched one
+    // is sitting on its goal's own plant — that plant is not an obstacle to
+    // it (see isGoalHost), but every other one still is.
+    const perchedGoal =
+      actor.flight && actor.landState === "perched" && actor.needs?.goal?.type === "perch"
+        ? actor.needs.goal
+        : null;
     if (!actor.flight || actor.landState === "perched") {
-      deflectAroundObstacles(runtime, actor, toward);
+      deflectAroundObstacles(runtime, actor, toward, perchedGoal);
     }
     // Ease off on arrival instead of vibrating on the spot.
     const arrivalEase = pursuit.arrived ? 0.35 : 1;
@@ -1522,7 +1555,7 @@ function stepLivingFauna(runtime, dt, time, camera) {
     if (toward.lengthSq() > maxSpeed * maxSpeed) toward.setLength(maxSpeed);
     candidate.copy(actor.position).addScaledVector(toward, dt);
     if (!actor.flight || actor.landState === "perched") {
-      resolveAgainstObstacles(runtime, actor, candidate);
+      resolveAgainstObstacles(runtime, actor, candidate, perchedGoal);
       resolveAgainstDynamicObstacles(runtime, actor, candidate, dt);
     }
 

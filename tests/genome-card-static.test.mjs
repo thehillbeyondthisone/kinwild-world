@@ -213,8 +213,10 @@ assert(
 
 assert(
   observatorySource.includes("removeLivingFlora(runtime, flora);")
-    && observatorySource.includes("introduceLivingFlora(runtime, dna, { prompt, repairs: [], at });"),
-  "An edited plant should be regrown on the spot it already occupies.",
+    && observatorySource.includes(
+      "introduceLivingFlora(runtime, dna, { prompt, repairs: [], at, genomeHash });",
+    ),
+  "An edited plant should be regrown on the spot it already occupies, carrying the edited genome's hash.",
 );
 assert(
   observatorySource.includes("next.place(position, heading);"),

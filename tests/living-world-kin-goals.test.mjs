@@ -114,6 +114,36 @@ const affordance = (ordinal, type, x, z, extra = {}) => ({
   assert.equal(pursuit.goal, null, "no goal means the orbit fallback takes over");
 }
 
+// The strongest need gets first refusal, not sole consideration. A flier on a
+// world with no nectar-bearing plant pins forage at 1.0 forever; without a
+// fallback it dithers goalless while a weaker, answerable need waits.
+{
+  const runtime = makeRuntime([affordance(0, "shelter", 5, 0)]);
+  const actor = makeActor(runtime, 0);
+  // forage answers ["forage", "nectar"] — nothing here matches it.
+  actor.needs.levels.forage = 0.95;
+  actor.needs.levels.shelter = 0.5;
+  actor.needs.levels.attend = 0.1;
+  const goal = chooseKinGoal(runtime, actor);
+  assert.ok(goal, "an answerable weaker need should produce a goal");
+  assert.equal(goal.need, "shelter", "the second-strongest need answers when the strongest cannot");
+  assert.equal(goal.ordinal, 0);
+}
+
+// The fallback keeps its manners: when the strongest need *can* be answered,
+// it still chooses first.
+{
+  const runtime = makeRuntime([
+    affordance(0, "forage", 5, 0),
+    affordance(1, "shelter", 4, 0),
+  ]);
+  const actor = makeActor(runtime, 0);
+  actor.needs.levels.forage = 0.9;
+  actor.needs.levels.shelter = 0.5;
+  const goal = chooseKinGoal(runtime, actor);
+  assert.equal(goal.need, "forage", "the strongest need still wins when it can be answered");
+}
+
 // A goal you are already standing on is not a journey. With hundreds of
 // affordances in a field the nearest match is almost always underfoot, and
 // without a floor a kin satisfies need after need without ever moving.

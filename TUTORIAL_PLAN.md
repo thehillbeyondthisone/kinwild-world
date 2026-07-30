@@ -1,7 +1,10 @@
 # Kinwild — the tutorial that teaches the machine
 
-Status: foundation landed (1.13.0); the genome card landed (1.14.0); the
-layers themselves not yet built.
+Status: foundation landed (1.13.0); the genome card landed (1.14.0); rebuild
+seam + flier fixes (1.14.1); **Layers 0–2 landed (1.15.0)** — the onboarding
+track below is real: seed-stamp cold open, margin notes, ring sights.
+Remaining layers are in "What is still to build" and in HANDOFF.md's
+"Where we are" section.
 
 ## The premise
 

@@ -229,64 +229,75 @@ function reachableRadius(runtime, actor, x, z, base) {
  * Nearer is better, and a roomier affordance breaks ties, but the score keeps
  * a little noise so a field of equivalent options does not send every kin to
  * the same one.
+ *
+ * "Strongest" is tried in order, not once: a flier whose forage need pins at
+ * 1.0 on a world with no nectar-bearing plant would otherwise scan, find
+ * nothing, and dither goalless even when a weaker need could be answered.
+ * The second-strongest need is a better goal than none.
  */
 export function chooseKinGoal(runtime, actor) {
   const needs = actor.needs;
-  let strongest = null;
+  const pressing = [];
   for (const need of needs.set ?? WALKER_NEEDS) {
     const level = needs.levels[need.key] ?? 0;
     if (level < NEED_THRESHOLD) continue;
-    if (!strongest || level > needs.levels[strongest.key]) strongest = need;
+    pressing.push(need);
   }
-  if (!strongest) return null;
+  pressing.sort(
+    (a, b) => (needs.levels[b.key] ?? 0) - (needs.levels[a.key] ?? 0),
+  );
+  if (pressing.length === 0) return null;
 
   const affordances = runtime.registrations?.affordances ?? [];
   if (affordances.length === 0) return null;
 
   const claims = claimCounts(runtime);
-  let best = null;
-  for (const affordance of affordances) {
-    const type = affordance.type;
-    if (!strongest.types.includes(type)) continue;
-    if (affordance.ordinal === needs.lastOrdinal) continue;
-    const distance = Math.hypot(
-      affordance.x - actor.position.x,
-      affordance.z - actor.position.z,
-    );
-    if (distance > (needs.maxTravel ?? MAX_TRAVEL.walker)) continue;
-    if (distance < (needs.minTravel ?? MIN_TRAVEL.walker)) continue;
-    if ((claims.get(affordance.ordinal) ?? 0) >= Math.max(1, affordance.capacity)) {
-      continue;
+  for (const strongest of pressing) {
+    let best = null;
+    for (const affordance of affordances) {
+      const type = affordance.type;
+      if (!strongest.types.includes(type)) continue;
+      if (affordance.ordinal === needs.lastOrdinal) continue;
+      const distance = Math.hypot(
+        affordance.x - actor.position.x,
+        affordance.z - actor.position.z,
+      );
+      if (distance > (needs.maxTravel ?? MAX_TRAVEL.walker)) continue;
+      if (distance < (needs.minTravel ?? MIN_TRAVEL.walker)) continue;
+      if ((claims.get(affordance.ordinal) ?? 0) >= Math.max(1, affordance.capacity)) {
+        continue;
+      }
+      const score =
+        1 / (1 + distance * (needs.distanceWeight ?? DISTANCE_WEIGHT.walker)) +
+        Math.min(affordance.capacity, 6) * 0.012 +
+        Math.random() * 0.06;
+      if (!best || score > best.score) {
+        best = {
+          score,
+          ordinal: affordance.ordinal,
+          need: strongest.key,
+          action: strongest.action,
+          // A flier needs both: the type to know a perch is a perch, and the
+          // height to land on the crown that offered it rather than guessing.
+          type,
+          x: affordance.x,
+          y: affordance.y,
+          z: affordance.z,
+          // Arrive somewhere on the plant, not inside its stem — and no closer
+          // than the plant's own collision envelope actually permits.
+          radius: reachableRadius(
+            runtime,
+            actor,
+            affordance.x,
+            affordance.z,
+            Math.max(0.55, affordance.radius * 0.85),
+          ),
+        };
+      }
     }
-    const score =
-      1 / (1 + distance * (needs.distanceWeight ?? DISTANCE_WEIGHT.walker)) +
-      Math.min(affordance.capacity, 6) * 0.012 +
-      Math.random() * 0.06;
-    if (!best || score > best.score) {
-      best = {
-        score,
-        ordinal: affordance.ordinal,
-        need: strongest.key,
-        action: strongest.action,
-        // A flier needs both: the type to know a perch is a perch, and the
-        // height to land on the crown that offered it rather than guessing.
-        type,
-        x: affordance.x,
-        y: affordance.y,
-        z: affordance.z,
-        // Arrive somewhere on the plant, not inside its stem — and no closer
-        // than the plant's own collision envelope actually permits.
-        radius: reachableRadius(
-          runtime,
-          actor,
-          affordance.x,
-          affordance.z,
-          Math.max(0.55, affordance.radius * 0.85),
-        ),
-      };
-    }
+    if (best) return best;
   }
-  return best;
+  return null;
 }
 
 /**

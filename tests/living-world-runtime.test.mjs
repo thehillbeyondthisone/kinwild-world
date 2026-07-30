@@ -191,13 +191,23 @@ for (const entry of affordances) {
   assert.ok(typeof entry.floraKey === "string" && entry.floraKey.length > 0);
   assert.ok(typeof entry.speciesId === "string" && entry.speciesId.length > 0);
 }
-// Ordinals are what a downstream consumer ties a deterministic layout to, so
-// they must stay a dense, stable sequence.
-assert.deepEqual(
-  affordances.map((entry) => entry.ordinal),
-  affordances.map((_, index) => index),
-  "affordance ordinals should be dense and placement-ordered",
-);
+// Ordinals are an identity a downstream consumer (a kin's claimed goal) ties
+// itself to, so they must be unique and monotonic with registration — never a
+// dense array index, which would silently renumber every later claim the
+// moment one affordance is removed.
+{
+  const ordinals = affordances.map((entry) => entry.ordinal);
+  assert.equal(
+    new Set(ordinals).size,
+    ordinals.length,
+    "affordance ordinals should be unique",
+  );
+  assert.deepEqual(
+    [...ordinals].sort((a, b) => a - b),
+    ordinals,
+    "affordance ordinals should be monotonic with placement order",
+  );
+}
 for (const creature of worldState.creatures) {
   assert.ok(Number.isFinite(creature.scale));
   assert.ok(creature.generatedAgent);

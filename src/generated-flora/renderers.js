@@ -43,13 +43,18 @@ function makeResourceTracker() {
 function makeMaterial(resources, color, {
   wind = 0,
   vertexColors = false,
+  // Base white so per-plant tint arrives via instanceColor alone. Used by
+  // organ materials: organ geometries bake no color attribute, so enabling
+  // vertexColors on them would bind an absent attribute and read GL's
+  // generic default (black). instanceColor needs no USE_COLOR in r185.
+  instanceTint = false,
   side = THREE.FrontSide,
   roughness = 0.88,
   emissive = 0x000000,
   emissiveIntensity = 0,
 } = {}) {
   const material = new THREE.MeshStandardMaterial({
-    color: vertexColors ? 0xffffff : color,
+    color: vertexColors || instanceTint ? 0xffffff : color,
     emissive,
     emissiveIntensity,
     roughness,
@@ -365,7 +370,7 @@ export function compileArchetype(dna, colors, { variantCount = 1 } = {}) {
     params: plan.params,
     material: makeMaterial(resources, colors[plan.material.colorSlot], {
       wind: dna.motion.wind * (plan.material.wind ?? 1),
-      vertexColors: plan.material.vertexColors ?? false,
+      instanceTint: plan.material.vertexColors ?? false,
       side: plan.material.doubleSide ? THREE.DoubleSide : THREE.FrontSide,
       roughness: plan.material.roughness ?? 0.88,
       emissive: plan.material.emissiveSlot ? colors[plan.material.emissiveSlot] : 0x000000,

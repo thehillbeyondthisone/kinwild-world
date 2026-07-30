@@ -491,6 +491,27 @@
     </div>
   </section>
 
+  <!-- The onboarding's paper (src/ui/tutorial-notes.js over
+       src/tutorial/progress.js + copy.js). A margin note with a leader that
+       draws itself onto a live subject, and the stamped seed sheet that opens
+       the first visit. Empty until the first world-ready. -->
+  <div class="tutorial-layer" id="tutorial-layer" aria-live="polite">
+    <svg class="tutorial-leaders" id="tutorial-leaders" aria-hidden="true"></svg>
+    <div class="tutorial-note" id="tutorial-note" hidden>
+      <p class="tutorial-note-text" id="tutorial-note-text"></p>
+      <small class="tutorial-note-hint" id="tutorial-note-hint" hidden></small>
+    </div>
+    <em class="tutorial-aside" id="tutorial-aside" hidden></em>
+    <div class="tutorial-stamp-sheet" id="tutorial-stamp-sheet" hidden>
+      <div class="tutorial-stamp-card" role="dialog" aria-label="a new island">
+        <div class="tutorial-stamp-seed" id="tutorial-stamp-seed"></div>
+        <div class="tutorial-stamp-name" id="tutorial-stamp-name"></div>
+        <div class="tutorial-stamp-caption" id="tutorial-stamp-caption"></div>
+        <div class="tutorial-stamp-dismiss" id="tutorial-stamp-dismiss"></div>
+      </div>
+    </div>
+  </div>
+
   <header class="hud hud-top">
     <div class="title-block">
       <div class="eyebrow">

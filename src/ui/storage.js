@@ -56,6 +56,7 @@ const PERSISTED_KEYS = [
 const BOOKMARKS_KEY = "smallworld:bookmarks:v1";
 const BIOME_FILTER_KEY = "smallworld:biomefilter:v1";
 const HELP_SEEN_KEY = "smallworld:help-seen:v1";
+const TUTORIAL_KEY = "smallworld:tutorial:v1";
 
 // SEC-004: persisted settings are allowlisted by key but were previously
 // trusted as-is. Clamp numeric settings to the range their slider allows
@@ -259,16 +260,47 @@ function saveBiomeFilter(set) {
   }
 }
 
+/**
+ * Load the tutorial walk-through progress (`src/tutorial/progress.js`).
+ * Returns the raw `{done, vocabulary}` object, or null when absent/invalid —
+ * null is how the onboarding knows this is a first arrival.
+ */
+function loadTutorial() {
+  try {
+    const raw = localStorage.getItem(TUTORIAL_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist tutorial progress. Silently ignores quota/private-mode errors —
+ * the walk-through simply runs again next visit.
+ */
+function saveTutorial(progress) {
+  try {
+    localStorage.setItem(TUTORIAL_KEY, JSON.stringify(progress));
+  } catch {
+    // ignore
+  }
+}
+
 export {
   SETTINGS_KEY,
   PERSISTED_KEYS,
   BOOKMARKS_KEY,
   BIOME_FILTER_KEY,
   HELP_SEEN_KEY,
+  TUTORIAL_KEY,
   shouldUseMobileHud,
   shouldShowFirstVisitHelp,
   loadBookmarks,
   saveBookmarks,
   loadBiomeFilter,
   saveBiomeFilter,
+  loadTutorial,
+  saveTutorial,
 };

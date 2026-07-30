@@ -42,6 +42,15 @@ import {
   studioMessage,
   studioProgress,
 } from "./studio-progress.js";
+import {
+  createTutorialProgress,
+  markLayerDone,
+  nextLayer,
+  serializeTutorial,
+} from "../tutorial/progress.js";
+import { INTRO_COPY, LAYER_COPY } from "../tutorial/copy.js";
+import { initTutorialNotes } from "./tutorial-notes.js";
+import { loadTutorial, saveTutorial } from "./storage.js";
 import { ctx } from "./context.js";
 
 const CYCLE_KEY = "living-field:observation-cycle:v1";
@@ -1152,6 +1161,7 @@ export function initObservatory() {
     updateSpecimen(runtime, selected, time);
     updateField(runtime, time);
     updateCallouts(runtime, selected);
+    tickOnboarding(runtime, selected);
   }
 
   function introduceReturningForms() {
@@ -1198,9 +1208,17 @@ export function initObservatory() {
     localStorage.setItem(CYCLE_KEY, String(cycle));
     selectedFacade = null;
     previousFollow = null;
+    // The field the card was editing no longer exists — a kin edit would
+    // silently no-op and a plant edit would land in the new world. Closing
+    // runs onClose, which clears cardSubject.
+    genomeCard.close();
+    // Notes pointing into the old field come down; the walk-through resumes
+    // at whichever layer the player had reached.
+    notes.clear();
     window.clearTimeout(brandPulseTimer);
     brandPulseTimer = window.setTimeout(emphasizeBrand, 240);
     window.setTimeout(introduceReturningForms, 0);
+    window.setTimeout(beginOnboarding, 600);
   });
 
   element("obs-focus").addEventListener("click", () => {
@@ -1304,8 +1322,9 @@ export function initObservatory() {
    * Grow an edited kin in place of the one standing there.
    *
    * The pose is carried across so the rebuild reads as *this animal changing*
-   * rather than one vanishing and another arriving, and the follow camera is
-   * handed to the replacement before the original is let go.
+   * rather than one vanishing and another arriving. The replacement is grown
+   * before the original is let go: if the compile throws, the kin that was
+   * standing there is untouched and the card still has something to edit.
    */
   function rebuildKin(facade, dna) {
     const runtime = state.livingWorld;
@@ -1316,8 +1335,13 @@ export function initObservatory() {
     const heading = facade.heading ?? 0;
     const followed = ctx.followTarget === facade;
     const prompt = facade.generatedAgent?.root?.userData?.authoring?.prompt ?? "";
+    let next;
+    try {
+      next = introduceLivingFauna(runtime, dna, { prompt, repairs: [] });
+    } catch {
+      return null;
+    }
     facade.dispose();
-    const next = introduceLivingFauna(runtime, dna, { prompt, repairs: [] });
     next.place(position, heading);
     selectedFacade = next;
     if (followed) ctx.setFollowTarget(next);
@@ -1325,7 +1349,7 @@ export function initObservatory() {
   }
 
   /** Regrow an edited plant on the spot it already occupies. */
-  function rebuildPlant(flora, dna) {
+  function rebuildPlant(flora, dna, genomeHash = "") {
     const runtime = state.livingWorld;
     if (!runtime || runtime.disposed) return null;
     const root = flora.instance?.root;
@@ -1334,14 +1358,14 @@ export function initObservatory() {
     const prompt = flora.authoring?.prompt ?? "";
     removeLivingFlora(runtime, flora);
     try {
-      return introduceLivingFlora(runtime, dna, { prompt, repairs: [], at });
+      return introduceLivingFlora(runtime, dna, { prompt, repairs: [], at, genomeHash });
     } catch {
       // Growing a plant can outgrow the spot it was standing in — a taller
       // hero needs more room than the one it replaces. Rather than let the
       // plant vanish out of a slider drag, walk it to the nearest ground that
       // will take it. Moving is a far better failure than disappearing.
       try {
-        return introduceLivingFlora(runtime, dna, { prompt, repairs: [] });
+        return introduceLivingFlora(runtime, dna, { prompt, repairs: [], genomeHash });
       } catch {
         return null;
       }
@@ -1356,7 +1380,7 @@ export function initObservatory() {
         const next = rebuildKin(cardSubject.facade, dna);
         if (next) cardSubject = { kind: "kin", facade: next };
       } else {
-        const next = rebuildPlant(cardSubject.flora, dna);
+        const next = rebuildPlant(cardSubject.flora, dna, genomeCard.genomeHash ?? "");
         // The old plant is gone either way. Without a replacement to point at,
         // the card has nothing left to edit and would fail on the next commit.
         if (next) cardSubject = { kind: "plant", flora: next };
@@ -1388,6 +1412,136 @@ export function initObservatory() {
   }
 
   element("obs-read-genome")?.addEventListener("click", openKinGenome);
+
+  // ── The onboarding (tutorial layers 0–2) ────────────────────────────────
+  //
+  // The walk-through is a state machine (`src/tutorial/progress.js`) over
+  // strings (`src/tutorial/copy.js`) rendered by `tutorial-notes.js`; this is
+  // only the wiring that watches the field and says when a thing was done.
+  // Layers gate prompting, never access — a player who outruns the track is
+  // simply done with it, because markLayerDone cascades.
+  const notes = initTutorialNotes();
+  const tutorial = createTutorialProgress(loadTutorial());
+  // The stamped sheet opens exactly once, on the first ever arrival.
+  let stampSeen = loadTutorial() !== null;
+  let noticeAnchor = null; // the last kin focused during "notice"
+  let followFacade = null; // the kin being followed through "follow"
+  let followHeld = 0; // ticks the same follow has held
+  let followGoalOrdinal; // last goal seen, for the one-off need aside
+  let needAsideShown = false;
+
+  function persistTutorial() {
+    saveTutorial(serializeTutorial(tutorial));
+  }
+
+  /** Screen-space anchor for a kin, or null when it leaves the frame. */
+  function facadeAnchor(facade) {
+    return () =>
+      facade?.generatedAgent?.root
+        ? projectToViewport(facade.generatedAgent.root, ctx.camera, calloutAnchor)
+        : null;
+  }
+
+  function speciesIdOf(facade) {
+    const actor = state.livingWorld?.fauna?.find((entry) => entry.facade === facade);
+    return actor?.agent?.dna?.speciesId ?? null;
+  }
+
+  /** Close a layer, say its word if it has one, and open the next. */
+  function completeLayer(id, sight) {
+    const earned = markLayerDone(tutorial, id);
+    persistTutorial();
+    sight?.();
+    const copy = LAYER_COPY[id];
+    const word = earned && copy?.vocabulary;
+    if (word) notes.showAside(`${word.word} — ${word.gloss}`);
+    window.setTimeout(beginOnboarding, earned ? 3400 : 600);
+  }
+
+  function beginOnboarding() {
+    notes.hideNote();
+    const layerId = nextLayer(tutorial);
+    if (!layerId || !state.livingWorld) return;
+    if (layerId === "arrive") {
+      if (!stampSeen) {
+        stampSeen = true;
+        notes.showSeedStamp({
+          seedText: formatSeed(state.currentSeed),
+          islandName: generateIslandName(state.currentSeed),
+          caption: INTRO_COPY.caption,
+          dismiss: INTRO_COPY.dismiss,
+          onDone: () =>
+            notes.showNote({ text: LAYER_COPY.arrive.prompt, hint: LAYER_COPY.arrive.hint }),
+        });
+      } else {
+        notes.showNote({ text: LAYER_COPY.arrive.prompt, hint: LAYER_COPY.arrive.hint });
+      }
+    } else if (layerId === "notice") {
+      noticeAnchor = null;
+      notes.showNote({
+        text: LAYER_COPY.notice.prompt,
+        anchor: facadeAnchor(currentSelection(state.livingWorld)),
+      });
+    } else if (layerId === "follow") {
+      followFacade = null;
+      followHeld = 0;
+      notes.showNote({
+        text: LAYER_COPY.follow.prompt,
+        anchor: facadeAnchor(currentSelection(state.livingWorld)),
+      });
+    }
+  }
+
+  /** The tick half: watch what the player does and close layers on the act. */
+  function tickOnboarding(runtime, selected) {
+    const layerId = nextLayer(tutorial);
+    if (!layerId || !runtime) return;
+    if (layerId === "notice" && selected) {
+      const speciesId = speciesIdOf(selected);
+      if (noticeAnchor && speciesId && noticeAnchor.facade !== selected) {
+        if (noticeAnchor.speciesId === speciesId) {
+          const first = noticeAnchor.facade;
+          notes.hideNote();
+          completeLayer("notice", () =>
+            notes.ringSubjects([facadeAnchor(first), facadeAnchor(selected)]),
+          );
+          return;
+        }
+      }
+      noticeAnchor = { facade: selected, speciesId };
+    } else if (layerId === "follow") {
+      const followed = ctx.followTarget?.generatedAgent ? ctx.followTarget : null;
+      if (followed && followed === followFacade) {
+        followHeld += 1;
+        // The need aside fires once, the first time the followed kin changes
+        // its mind — the pressure the player just watched become behaviour.
+        const actor = runtime.fauna?.find((entry) => entry.facade === followed);
+        const goalOrdinal = actor?.needs?.goal?.ordinal;
+        if (!needAsideShown && followGoalOrdinal !== undefined && goalOrdinal !== followGoalOrdinal) {
+          needAsideShown = true;
+          notes.showAside(LAYER_COPY.follow.aside);
+        }
+        followGoalOrdinal = goalOrdinal;
+        if (followHeld >= 33) {
+          // Six seconds of staying with one kin is "a while".
+          notes.hideNote();
+          completeLayer("follow", () => notes.ringSubjects([facadeAnchor(followed)]));
+        }
+      } else {
+        followFacade = followed;
+        followHeld = 0;
+        followGoalOrdinal = undefined;
+      }
+    }
+  }
+
+  // "look around." closes on the first orbit/zoom — the controls' own start
+  // signal, so any gesture counts and none is named in the prompt.
+  ctx.controls?.addEventListener("start", () => {
+    if (nextLayer(tutorial) === "arrive" && stampSeen) {
+      completeLayer("arrive");
+    }
+  });
 
   const studio = element("form-studio");
   const description = element("form-description");
@@ -1693,6 +1847,9 @@ export function initObservatory() {
   updateRelations(state.livingWorld);
   update();
   window.setInterval(update, 180);
+  // The world may already be standing (init after a ready field); otherwise
+  // the world-ready handler opens the walk-through when the first one lands.
+  if (state.livingWorld) beginOnboarding();
   // Panel geometry moves on resize without the tick knowing, and a stale
   // reserved rect places a callout on top of a panel.
   window.addEventListener("resize", refreshCalloutCaches);

@@ -1,5 +1,77 @@
 # Changelog
 
+## 1.15.0 - 2026-07-29
+
+The tutorial's first track: onboarding. Layers 0–2 of TUTORIAL_PLAN.md —
+Arrive, Notice, Follow — as a walk-through that teaches the machine by letting
+it act, in the notebook's own paper and ink.
+
+### Added
+
+- **The cold open.** On the first arrival the field is paper, and the world's
+  seed is stamped onto it digit by digit — flickering, then settling left to
+  right — above the island's name and the whole thesis in one line: *"this
+  island came from this number."* Any press steps onto the island.
+- **Margin notes with leaders that draw themselves.** Each layer is one note
+  in the margin, its pointer a pencil line drawn onto the live subject (the
+  same leader geometry the observatory's callouts use). Notes never ask to be
+  dismissed: they close when the player does the thing.
+- **Layer 0 — Arrive.** *"look around."* closes on the first orbit or zoom.
+- **Layer 1 — Notice.** *"find another like this one."* closes when a second
+  kin of the same species is focused, and ends on the sight of both kin ringed
+  in the margin's hand-drawn circles. It spends the track's first word:
+  **species** — *the same few lines, written twice.*
+- **Layer 2 — Follow.** *"stay with this one a while."* closes after six
+  seconds on the follow camera, and the first time the followed kin changes
+  its goal a margin line fires: *how fast these fill is one of the written
+  lines.* Second word: **need**.
+- `src/tutorial/progress.js`: the DOM-free state machine. Layers gate
+  prompting, never access — closing a layer cascades backward, so a player who
+  outruns the track is simply done with it. Persisted as
+  `smallworld:tutorial:v1`; a regen resumes at the layer the player reached.
+- `src/tutorial/copy.js`: every word the walk-through says, with the
+  one-word-per-layer budget and the banned-HUD-word list enforced by
+  `tests/tutorial-copy.test.mjs`.
+- All animations (ink-stamp, leader-draw, note-rise, page-press, seed-settle)
+  are CSS, and all of them collapse to instant under `prefers-reduced-motion`.
+
+## 1.14.1 - 2026-07-29
+
+The rebuild seam, closed. The audit found four ways an edit could outlive the
+thing it edited; all four are fixed.
+
+### Fixed
+
+- A failed plant introduction no longer leaks the compiled species: the batch
+  root, species, and provider registered before placement are taken back on
+  the throw path, and the species' GPU resources are disposed.
+- A failed kin rebuild no longer deletes the kin. The replacement is compiled
+  before the original is let go, so a throw leaves the standing animal — and
+  the card that edits it — untouched.
+- The genome card closes on `world-ready`. Its subject belonged to the old
+  world: a kin edit after regen silently no-oped, and a plant edit teleported
+  into the new field.
+- A rebuilt plant keeps its genome hash in its authoring record, so the
+  returning-forms shelf can still tell it is already standing in the field.
+- A perched flier is no longer shoved off its perch by the host plant's own
+  collision circle. A hero's perch sits directly above its trunk-centred
+  obstacle, so the sitter was pushed sideways for its whole dwell; the goal's
+  host plant is now skipped in both obstacle passes, the skip the donor's
+  `avoidObstacles` always had.
+- Goal choice falls back past an unanswerable need. A flier on a world with no
+  nectar-bearing plant pinned forage at 1.0 and dithered goalless after every
+  perch; needs are now tried strongest-first until one finds an affordance.
+
+### Changed
+
+- Two test pins that enshrined the bugs now pin the intent: the card-static
+  suite expects the hash to travel with a rebuild, and the runtime suite
+  asserts affordance ordinals are unique and monotonic — an identity, not a
+  dense array index that would renumber every claim on removal.
+- Black flora on the organ batches: instanced organ geometries bake no `color`
+  attribute, so their material now opts into instance tinting explicitly
+  instead of asking for per-vertex colours that are not there.
+
 ## 1.14.0 - 2026-07-29
 
 The genome card. The thing 1.13.0 was substrate for: every creature and plant

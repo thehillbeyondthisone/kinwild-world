@@ -5494,3 +5494,226 @@ body.genome-card-open .observatory-shell {
     width: 100%;
   }
 }
+
+/* ── The onboarding's paper (src/ui/tutorial-notes.js) ─────────────────────
+   Margin notes, leaders that draw themselves onto a live subject, and the
+   stamped seed sheet. Same register as the genome card: Cormorant Infant on
+   warm paper, ink #2b3238, nothing modal except the opening sheet. */
+
+.tutorial-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 92;
+  pointer-events: none;
+  font-family: "Cormorant Infant", Georgia, serif;
+  color: #2b3238;
+}
+
+.tutorial-layer [hidden] {
+  display: none;
+}
+
+.tutorial-leaders {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.tutorial-leader {
+  fill: none;
+  stroke: rgba(44, 52, 59, 0.78);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+/* leader-draw: the pointer draws itself onto the subject like a pencil line.
+   --leader-length is measured and set by tutorial-notes.js on the first
+   frame. */
+.tutorial-leader.drawing {
+  stroke-dasharray: var(--leader-length, 300);
+  stroke-dashoffset: var(--leader-length, 300);
+  animation: tutorial-leader-draw 0.9s cubic-bezier(0.33, 1, 0.68, 1) forwards;
+}
+
+@keyframes tutorial-leader-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.tutorial-ring {
+  fill: none;
+  stroke: rgba(44, 52, 59, 0.82);
+  /* A slightly uneven dash reads as a circled entry in a notebook margin. */
+  stroke-width: 1.6;
+  stroke-dasharray: 5 3 7 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: tutorial-ring-in 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+@keyframes tutorial-ring-in {
+  0% { transform: scale(1.35) rotate(-4deg); opacity: 0; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+.tutorial-ring.lifting {
+  opacity: 0;
+  transform: scale(0.94);
+}
+
+.tutorial-note {
+  position: absolute;
+  left: 26px;
+  bottom: 148px;
+  max-width: 240px;
+  padding: 10px 14px 9px;
+  background:
+    linear-gradient(174deg, rgba(247, 240, 222, 0.97), rgba(238, 228, 203, 0.97));
+  border: 1px solid rgba(44, 52, 59, 0.24);
+  border-radius: 3px;
+  box-shadow: 0 2px 10px rgba(28, 34, 40, 0.18);
+  transform: rotate(-0.6deg);
+  opacity: 0;
+}
+
+/* note-rise: the note rises 8px out of the margin as it inks in. */
+.tutorial-note.rising {
+  animation: tutorial-note-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes tutorial-note-rise {
+  0% { opacity: 0; translate: 0 8px; }
+  100% { opacity: 1; translate: 0 0; }
+}
+
+.tutorial-note-text {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.25;
+  letter-spacing: 0.015em;
+}
+
+.tutorial-note-hint {
+  display: block;
+  margin-top: 4px;
+  font-family: "DM Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(44, 52, 59, 0.6);
+}
+
+.tutorial-aside {
+  position: absolute;
+  left: 26px;
+  bottom: 108px;
+  max-width: 260px;
+  font-size: 14px;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  color: rgba(44, 52, 59, 0.86);
+  text-shadow: 0 1px 6px rgba(247, 240, 222, 0.9);
+  transition: opacity 1.2s ease;
+}
+
+.tutorial-aside.fading {
+  opacity: 0;
+}
+
+/* The opening sheet: paper over the field, the seed stamped onto it. The
+   only modal moment in the whole walk-through, and it lifts on any press. */
+.tutorial-stamp-sheet {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  cursor: pointer;
+  background:
+    radial-gradient(ellipse at 50% 42%, rgba(247, 240, 222, 0.94), rgba(232, 220, 192, 0.97));
+  opacity: 0;
+  transition: opacity 0.7s ease;
+}
+
+.tutorial-stamp-sheet.is-open {
+  opacity: 1;
+}
+
+.tutorial-stamp-card {
+  text-align: center;
+  padding: 34px 46px 26px;
+  transform: rotate(-1.4deg);
+}
+
+/* page-press: the card settles onto the sheet like a pressed study. */
+.tutorial-stamp-sheet.is-open .tutorial-stamp-card {
+  animation: tutorial-page-press 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes tutorial-page-press {
+  0% { transform: rotate(-1.4deg) scale(1.04); opacity: 0; }
+  60% { transform: rotate(-1.4deg) scale(0.985); opacity: 1; }
+  100% { transform: rotate(-1.4deg) scale(1); opacity: 1; }
+}
+
+.tutorial-stamp-seed {
+  font-family: "DM Mono", monospace;
+  font-size: 30px;
+  letter-spacing: 0.22em;
+  color: rgba(44, 52, 59, 0.9);
+  min-height: 1.3em;
+}
+
+/* ink-stamp: once the digits settle, the whole seed comes down like a stamp. */
+.tutorial-stamp-seed.settled {
+  animation: tutorial-ink-stamp 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes tutorial-ink-stamp {
+  0% { transform: scale(1.15); opacity: 0.4; }
+  55% { transform: scale(0.97); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.tutorial-stamp-name {
+  margin-top: 10px;
+  font-size: 24px;
+  letter-spacing: 0.04em;
+}
+
+.tutorial-stamp-caption {
+  margin-top: 6px;
+  font-size: 15px;
+  font-style: italic;
+  color: rgba(44, 52, 59, 0.72);
+}
+
+.tutorial-stamp-dismiss {
+  margin-top: 26px;
+  font-family: "DM Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(44, 52, 59, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-leader.drawing,
+  .tutorial-ring,
+  .tutorial-note.rising,
+  .tutorial-stamp-sheet.is-open .tutorial-stamp-card,
+  .tutorial-stamp-seed.settled {
+    animation: none;
+  }
+
+  .tutorial-note {
+    opacity: 1;
+  }
+
+  .tutorial-stamp-sheet,
+  .tutorial-ring,
+  .tutorial-aside {
+    transition-duration: 0.001s;
+  }
+}

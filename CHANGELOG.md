@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.15.1 - 2026-08-09
+
+Two things the suite could not see, found by driving the card and the
+onboarding in a browser rather than reading them.
+
+### Fixed
+
+- **The margin survives the drag.** Shortening a leg slims it, and the note
+  saying so — *"the legs came out sturdier than they were long — I slimmed
+  them."* — used to vanish the instant the pointer came up, along with the mark
+  on the field that moved by itself. A drag ends by firing `change` carrying
+  the value `input` already applied, and putting that back through as an edit
+  renormalized an already-canonical genome. That answer is silent *by design*
+  — idempotence is what lets a repair note be trusted — so the margin was
+  wiped at the exact moment the player stopped dragging and looked up. Settling
+  on a value the draft already holds is now a redraw rather than an edit. A
+  drag that ended past a ceiling still differs from the settled figure, so it
+  is still an edit, and the nib still snaps to truth.
+- **A margin note stays in the margin.** An anchored note is placed by script,
+  which writes `left` and `top`; the margin rule's `bottom` stayed behind, and
+  an absolutely positioned box holding both edges stretches to span them. One
+  line of prompting rendered as a blank page most of the viewport tall, parked
+  over the creature its own leader was pointing at — the first thing a new
+  player saw.
+
+### Changed
+
+- The relational-bound behaviour is pinned from both ends: `genome-draft`
+  asserts that re-applying a settled value answers with an empty margin (the
+  property that makes the card's guard necessary), and `genome-card-static`
+  asserts the guard exists.
+
 ## 1.15.0 - 2026-07-29
 
 The tutorial's first track: onboarding. Layers 0–2 of TUTORIAL_PLAN.md —

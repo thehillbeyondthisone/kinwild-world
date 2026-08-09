@@ -242,6 +242,16 @@ assert(
   "A drag in flight must not be fought by the value the normalizer settled on.",
 );
 
+// ...and the release must not re-apply what the drag already applied. A
+// canonical genome renormalizes silently, so putting the settled value through
+// as a fresh edit answers with an empty margin and erases the repair note and
+// the moved mark just as the player looks up. See the matching property in
+// genome-draft.test.mjs.
+assert(
+  cardSource.includes("if (settle && Object.is(readGenomePath(draft.dna, path), value))"),
+  "Settling on a value the draft already holds must be a redraw, not an edit.",
+);
+
 // --- the modal does not leak keys into the field -----------------------------
 
 assert(

@@ -33,7 +33,6 @@ function element(id) {
  * (`#tutorial-layer` and children), as with every other panel.
  */
 export function initTutorialNotes() {
-  const layer = element("tutorial-layer");
   const svg = element("tutorial-leaders");
   const note = element("tutorial-note");
   const noteText = element("tutorial-note-text");

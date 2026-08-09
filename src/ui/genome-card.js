@@ -35,6 +35,7 @@ import {
   spellNumber,
   trackFraction,
 } from "./genome-draft.js";
+import { readGenomePath } from "./genome-schema.js";
 
 /** How long the card waits after the last input before rebuilding the world. */
 const COMMIT_DELAY_MS = 120;
@@ -282,6 +283,22 @@ export function createGenomeCard({ onCommit, onClose } = {}) {
 
   function applyEdit(path, value, settle) {
     if (!editable || !draft) return;
+    // A drag ends by firing `change` carrying the value `input` already
+    // applied. Re-applying it would renormalize an already-canonical genome —
+    // silent by design, since idempotence is what lets marginalia be trusted —
+    // and the empty answer would take the repair notes and the moved marks down
+    // with it, erasing the relational-bound lesson at the exact moment the
+    // player stops dragging and looks up. Settling on an unchanged value is a
+    // redraw, not an edit.
+    //
+    // A drag that ended *past* a ceiling is a different case and still an edit:
+    // the native value is the overshoot, the draft holds the settled figure, so
+    // they differ and the normalizer gets asked again — which is what snaps the
+    // nib to truth and re-states why.
+    if (settle && Object.is(readGenomePath(draft.dna, path), value)) {
+      render();
+      return;
+    }
     draft = editGenomeDraft(draft, path, value);
     render({ holdingPath: settle ? null : path });
     scheduleCommit();

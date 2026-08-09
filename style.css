@@ -5578,6 +5578,15 @@ body.genome-card-open .observatory-shell {
   opacity: 0;
 }
 
+/* A note with a leader is placed by script, which writes `left` and `top`. The
+   margin rule's `bottom` has to come off with it: an absolutely positioned box
+   holding both edges stretches to span them, and a one-line note anchored near
+   the top of the frame became a blank slab most of the viewport tall, sitting
+   over the very creature it was pointing at. */
+.tutorial-note.has-leader {
+  bottom: auto;
+}
+
 /* note-rise: the note rises 8px out of the margin as it inks in. */
 .tutorial-note.rising {
   animation: tutorial-note-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;

@@ -125,6 +125,18 @@ assert(
 );
 assert(!shortLegs.marginalia.has("legs.length"), "the edited field itself was never repaired");
 
+// Applying that same settled value again answers with an empty margin — which
+// is idempotence working exactly as designed, and is precisely why the card
+// must not re-apply an edit when a drag ends. A pointer release fires `change`
+// carrying the value `input` already applied; if that went through as an edit,
+// the note and the moved mark would be wiped at the moment the player stops
+// dragging and looks up. `applyEdit` guards on this; the guard is pinned in
+// genome-card-static.
+const reapplied = editGenomeDraft(shortLegs, "legs.length", 0.24);
+assert.deepEqual(reapplied.dna, shortLegs.dna, "re-applying a settled value changes nothing");
+assert.deepEqual(reapplied.moved, [], "nothing moved, because nothing was asked for");
+assert.equal(reapplied.marginalia.size, 0, "and so there is nothing left to explain");
+
 // --- the notes are prose, never a validation error -------------------------
 
 const everyPhrase = [

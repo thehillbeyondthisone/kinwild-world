@@ -4192,6 +4192,26 @@ body.photo-mode .genome-card {
   backdrop-filter: blur(9px);
   -webkit-backdrop-filter: blur(9px);
   cursor: default;
+  transition: background 0.45s ease, backdrop-filter 0.45s ease;
+}
+
+/* ── Looking underneath ────────────────────────────────────────────────────
+   The card is modal, and the scrim is 74% black over a 9px blur — which is
+   right for reading a page and exactly wrong for the one thing the
+   underdrawing has to show, which is the animal in the field coming apart.
+
+   So the page stops being a page and becomes something held up to the light:
+   the scrim clears, the faces ghost back, and the field is simply there. The
+   dial itself stays solid, which is why it is a sibling of the faces and not
+   a row on one — opacity on a parent cannot be undone by a child. */
+.genome-card.looking-through .genome-card-scrim {
+  background: rgba(2, 8, 15, 0.12);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.genome-card.looking-through .genome-leaf-faces {
+  opacity: 0.14;
 }
 
 /* Perspective lives on the holder so the turn has depth. Without it the card
@@ -4201,18 +4221,105 @@ body.photo-mode .genome-card {
   width: min(760px, calc(100vw - 40px));
   height: min(840px, calc(100vh - 40px));
   perspective: 2000px;
+  /* A column so the underdrawing slip can sit under the faces and take its own
+     height out of the leaf, rather than overflowing it. */
+  display: flex;
+  flex-direction: column;
 }
 
 .genome-leaf-faces {
   position: relative;
   width: 100%;
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
   transform-style: preserve-3d;
-  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  /* The turn is the transform and stays first. Opacity rides along only for
+     looking-through, and it is on this container rather than on either face —
+     ghosting both together cannot become a cross-fade between them. */
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease;
 }
 
 .genome-leaf-faces.flipped {
   transform: rotateY(-180deg);
+}
+
+/* ── The underdrawing slip ─────────────────────────────────────────────────
+   A paper strip clipped under the page, carrying one drawn rule. Same idiom
+   as the genome's own rules — a track with a nib, and a real range input lying
+   invisibly on top so keyboard, touch and assistive tech all work — but
+   deliberately a different shape from a genome row, because it is not one. */
+.genome-underdraw {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 9px 16px 10px;
+  background: linear-gradient(174deg, rgba(247, 240, 222, 0.96), rgba(238, 228, 203, 0.96));
+  border: 1px solid rgba(44, 52, 59, 0.22);
+  border-radius: 3px;
+  box-shadow: 0 2px 10px rgba(28, 34, 40, 0.2);
+  /* A slip is clipped on, not typeset — a touch off-square. */
+  transform: rotate(-0.35deg);
+}
+
+.genome-underdraw[hidden] {
+  display: none;
+}
+
+.genome-underdraw-label {
+  flex: 0 0 auto;
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 13px;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  color: rgba(44, 52, 59, 0.82);
+  white-space: nowrap;
+}
+
+.genome-underdraw-rule {
+  position: relative;
+  flex: 1 1 auto;
+  height: 20px;
+  display: flex;
+  align-items: center;
+}
+
+/* The rule itself: a measuring line with end ticks, drawn rather than styled. */
+.genome-underdraw-rule::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(44, 52, 59, 0.42);
+}
+
+.genome-underdraw-fill {
+  position: absolute;
+  left: 0;
+  height: 3px;
+  background: rgba(44, 52, 59, 0.5);
+  transition: width 0.06s linear;
+}
+
+.genome-underdraw-nib {
+  position: absolute;
+  width: 2px;
+  height: 13px;
+  margin-left: -1px;
+  background: rgba(38, 45, 51, 0.9);
+  transition: left 0.06s linear;
+}
+
+/* Real control, invisible — the drawing above is what is seen. */
+.genome-underdraw-dial {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
 }
 
 .genome-face {

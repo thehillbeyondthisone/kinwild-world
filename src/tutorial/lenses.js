@@ -22,6 +22,7 @@
  *   carries a stable identity and the renderer patches nodes instead of
  *   rebuilding the overlay each frame.
  */
+import { GENERATED_FAUNA_EXPLODE } from "../generated-fauna/dna.js";
 
 /**
  * The coordinate frame a mark's points are written in.
@@ -119,25 +120,38 @@ export function gaitMarks(feet) {
  * @param {number[][]} influences one neighbour list per primitive
  * @returns {Array<object>} marks in actor space
  */
-export function underdrawingMarks(primitives, influences) {
+export function underdrawingMarks(primitives, influences, { apart = 1 } = {}) {
   const marks = [];
   const list = Array.isArray(primitives) ? primitives : [];
   const lists = Array.isArray(influences) ? influences : [];
+  const drift = Math.min(1, Math.max(0, Number(apart) || 0)) * GENERATED_FAUNA_EXPLODE;
 
-  for (let index = 0; index < list.length; index++) {
-    const primitive = list[index];
-    if (!primitive) continue;
-    const scale = primitive.scale ?? [1, 1, 1];
-    const spread = Math.max(Number(scale[0]) || 0, Number(scale[2]) || 0);
-    marks.push(
-      ring(`carrier:${index}`, primitive.position, {
-        space: "actor",
-        weight: 1,
-        // A carrier is drawn at its own size, so the body reads as the shapes
-        // it is rather than as a constellation of equal pips.
-        radius: Math.max(0.02, spread * 0.5),
-      }),
+  // Primitive 0 is the body — walker.js builds it first and hangs the head and
+  // every leg off it — so it is what the others draw away from. Measuring from
+  // the actor origin instead would lift the whole animal, since the origin sits
+  // on the ground at its feet. The shader measures from exactly the same place.
+  const root = list[0]?.position ?? [0, 0, 0];
+
+  /**
+   * Where a primitive's centre has drawn out to.
+   *
+   * These marks have to travel with the geometry or the graph would be drawn
+   * between shapes that are no longer there.
+   */
+  const centre = (primitive) => {
+    const at = primitive.position ?? [0, 0, 0];
+    return [0, 1, 2].map(
+      (axis) => Number(at[axis]) + (Number(at[axis]) - Number(root[axis])) * drift,
     );
+  };
+
+  // A dot, not a ring at the primitive's own radius. Once the shapes have drawn
+  // apart they are visible as themselves, and circles over the top of them read
+  // as a spirograph rather than as a drawing — ten overlapping outlines is the
+  // one thing on the glass that must not be busier than what it explains.
+  for (let index = 0; index < list.length; index++) {
+    if (!list[index]) continue;
+    marks.push(dot(`carrier:${index}`, centre(list[index]), { space: "actor", size: 3.5 }));
   }
 
   const drawn = new Set();
@@ -153,7 +167,7 @@ export function underdrawingMarks(primitives, influences) {
       if (drawn.has(key)) continue;
       drawn.add(key);
       marks.push(
-        link(`joint:${key}`, list[a].position, list[b].position, {
+        link(`joint:${key}`, centre(list[a]), centre(list[b]), {
           space: "actor",
           weight: 2,
         }),

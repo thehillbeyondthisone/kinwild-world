@@ -488,6 +488,29 @@
         </article>
 
       </div>
+
+      <!-- The underdrawing dial. Deliberately a sibling of the faces rather
+           than a row on one: shellMix is not a property of the creature, and a
+           rule sitting among the genome's own rules would say it was. It also
+           has to stay solid while the faces ghost out, which a child of a
+           faded parent cannot do. Kin only — a plant is not a blend shell. -->
+      <div class="genome-underdraw" id="genome-underdraw" hidden>
+        <span class="genome-underdraw-label" id="genome-underdraw-label"></span>
+        <div class="genome-underdraw-rule">
+          <span class="genome-underdraw-fill" id="genome-underdraw-fill"></span>
+          <span class="genome-underdraw-nib" id="genome-underdraw-nib"></span>
+          <input
+            class="genome-underdraw-dial"
+            id="genome-underdraw-dial"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value="0"
+            aria-label="take the body apart"
+          />
+        </div>
+      </div>
     </div>
   </section>
 

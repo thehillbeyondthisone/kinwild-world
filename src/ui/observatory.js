@@ -51,6 +51,7 @@ import {
 import { INTRO_COPY, LAYER_COPY } from "../tutorial/copy.js";
 import { initTutorialNotes } from "./tutorial-notes.js";
 import { initLensLayer } from "./lens-layer.js";
+import { underdrawingMarks } from "../tutorial/lenses.js";
 import { projectToViewport } from "./viewport-project.js";
 import { loadTutorial, saveTutorial } from "./storage.js";
 import { ctx } from "./context.js";
@@ -1199,8 +1200,9 @@ export function initObservatory() {
     // Notes pointing into the old field come down; the walk-through resumes
     // at whichever layer the player had reached.
     notes.clear();
-    // Every mark belonged to subjects that were just disposed.
-    lenses.clear();
+    // Every mark belonged to subjects that were just disposed — stop following
+    // them, not merely stop drawing them.
+    lenses.untrack();
     window.clearTimeout(brandPulseTimer);
     brandPulseTimer = window.setTimeout(emphasizeBrand, 240);
     window.setTimeout(introduceReturningForms, 0);
@@ -1364,7 +1366,13 @@ export function initObservatory() {
       if (!runtime || runtime.disposed || !cardSubject) return;
       if (cardSubject.kind === "kin") {
         const next = rebuildKin(cardSubject.facade, dna);
-        if (next) cardSubject = { kind: "kin", facade: next };
+        if (next) {
+          cardSubject = { kind: "kin", facade: next };
+          // The replacement is a fresh shell, standing whole. If the player was
+          // holding the body open while they moved a rule, hand the new one the
+          // same treatment rather than letting it snap shut under their hand.
+          applyUnderdraw(genomeCard.underdrawAmount);
+        }
       } else {
         const next = rebuildPlant(cardSubject.flora, dna, genomeCard.genomeHash ?? "");
         // The old plant is gone either way. Without a replacement to point at,
@@ -1379,15 +1387,62 @@ export function initObservatory() {
     onClose() {
       cardSubject = null;
     },
+    // ── Taking a body apart ────────────────────────────────────────────────
+    //
+    // The card only reports the dial; this is where it means something. Two
+    // things happen together, and they are the same statement made twice: the
+    // shell stops projecting its carriers onto the blended surface, so the
+    // animal separates into the shapes it is built from, and the lens draws
+    // those shapes with the blend graph over them.
+    //
+    // The graph is the half that is not obvious from looking. A primitive
+    // blends with the ones it is *jointed* to, never merely the ones it is
+    // near — which is why a foot swinging past a thigh does not weld to it.
+    onUnderdraw: applyUnderdraw,
   });
+
+  /**
+   * Take the card's subject apart by `amount`, 0 (whole) to 1 (bare carriers).
+   *
+   * Named rather than inline because a commit rebuilds the kin: the old agent
+   * is disposed and a new one stands in its place, so both the shell mix and
+   * the lens have to be re-aimed at the replacement or the marks would follow
+   * a body that no longer exists.
+   */
+  function applyUnderdraw(amount) {
+    const agent = cardSubject?.kind === "kin" ? cardSubject.facade?.generatedAgent : null;
+    if (!agent?.debug) {
+      lenses.untrack();
+      return;
+    }
+    agent.debug.setShellMix(1 - amount);
+    if (amount <= 0.001) {
+      lenses.untrack();
+      return;
+    }
+    // Produced per frame rather than once: the carriers ride a walking body,
+    // and a snapshot would slide off it within a step.
+    lenses.track(
+      () =>
+        underdrawingMarks(agent.debug.primitiveSnapshot(), agent.debug.influences(), {
+          apart: amount,
+        }),
+      { camera: ctx.camera, worldRoot: state.world, actorRoot: agent.root },
+    );
+  }
 
   function openKinGenome() {
     const runtime = state.livingWorld;
     const selected = currentSelection(runtime);
-    const dna = selected?.generatedAgent?.dna;
+    const agent = selected?.generatedAgent;
+    const dna = agent?.dna;
     if (!genomeCard || !dna) return;
     cardSubject = { kind: "kin", facade: selected };
-    genomeCard.show(dna, { kicker: "Specimen genome · kin" });
+    genomeCard.show(dna, {
+      kicker: "Specimen genome · kin",
+      // The real count, read off the body rather than written down here.
+      underdrawShapes: agent.debug?.primitiveSnapshot().length ?? 0,
+    });
   }
 
   function openPlantGenome(flora) {

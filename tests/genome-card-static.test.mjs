@@ -68,6 +68,44 @@ assert(
   faces.includes("transform-style: preserve-3d;") && faces.includes("transition: transform"),
   "The two faces should turn in 3D rather than cross-fade.",
 );
+
+// --- looking underneath ------------------------------------------------------
+
+// The card is modal over a 74%-black blurred scrim, which is right for reading
+// and exactly wrong for the one thing the underdrawing shows: the animal in the
+// field coming apart. Looking-through has to clear the scrim, or the dial moves
+// something nobody can see.
+const lookingScrim = ruleFor(".genome-card.looking-through .genome-card-scrim");
+assert(
+  lookingScrim.includes("backdrop-filter: none;"),
+  "Looking through the page must drop the scrim's blur, or the field stays hidden.",
+);
+assert(
+  /background:\s*rgba\([^)]*0\.1\d*\s*\)/.test(lookingScrim),
+  "Looking through the page must clear the scrim's darkness.",
+);
+
+// The ghosting is on the container that holds both faces. Per-face opacity
+// would be a cross-fade between them, which the turn above exists to avoid.
+assert(
+  ruleFor(".genome-card.looking-through .genome-leaf-faces").includes("opacity:"),
+  "Looking through should ghost the faces as one, not each face separately.",
+);
+
+// The dial is a sibling of the faces, never a row among the genome's own rules:
+// shellMix is not a property of the creature, and it also has to stay solid
+// while the faces fade, which a child of a faded parent cannot do.
+assert(
+  /<\/div>\s*(?:<!--[\s\S]*?-->\s*)*<div class="genome-underdraw"/.test(indexSource),
+  "The underdrawing dial should follow the faces block, not sit inside a face.",
+);
+
+// Same drawn-control idiom as every other rule on the card: a real range input,
+// invisible, over a drawing.
+assert(
+  ruleFor(".genome-underdraw-dial").includes("opacity: 0;"),
+  "The underdrawing dial should be a real input lying invisibly over the drawing.",
+);
 assert(
   ruleFor(".genome-leaf-faces.flipped").includes("transform: rotateY(-180deg);"),
   "Flipping should rotate the leaf.",

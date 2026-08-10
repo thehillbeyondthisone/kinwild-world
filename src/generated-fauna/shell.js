@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { replaceOrWarn } from "../shaders/patch.js";
 import {
+  GENERATED_FAUNA_EXPLODE,
   GENERATED_FAUNA_MAX_INFLUENCES,
   GENERATED_FAUNA_MAX_PRIMITIVES,
 } from "./dna.js";
@@ -150,6 +151,22 @@ void gfBlendShell(
     gfQRot(uPrimQuat[base], carrierPosition * uPrimScale[base].xyz)
     + uPrimPosK[base].xyz;
   vec3 point = carrier;
+
+  // Drawing apart. Unblending on its own does not read -- the primitives
+  // overlap heavily, which is exactly what makes them one animal, so ten
+  // same-coloured shapes staying put just look like one mass with harder
+  // seams.
+  //
+  // Measured from primitive 0, which is the body: walker.js builds the body
+  // first and hangs the head and every leg off it, so it is both the
+  // anatomical centre and the root of the blend graph. Spreading from the
+  // actor origin instead would lift the whole animal, because the origin is
+  // on the ground at its feet and the body sits well above it.
+  //
+  // The projection below still runs against the *unmoved* primitives, so what
+  // draws apart is the drawing and never the field.
+  float apart = 1.0 - uShellMix;
+  carrier += (uPrimPosK[base].xyz - uPrimPosK[0].xyz) * apart * ${GENERATED_FAUNA_EXPLODE};
   float burial = max(0.0, -gfOtherDistance(point, first, second));
   float tuckAmount = smoothstep(uTuck.y, uTuck.z, burial);
   // The tuck fades out with the blend: a buried vertex is only hidden under the

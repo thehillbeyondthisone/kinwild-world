@@ -76,6 +76,8 @@ export function initLensLayer() {
   const svg = document.getElementById("lens-marks");
   const nodes = new Map();
   let live = new Set();
+  let raf = 0;
+  let tracked = null;
 
   /** The largest axis of a root's world scale, for sizing world radii. */
   function rootScale(root) {
@@ -172,6 +174,40 @@ export function initLensLayer() {
       for (const [key, entry] of nodes) {
         if (!live.has(key)) entry.node.setAttribute("visibility", "hidden");
       }
+    },
+
+    /**
+     * Draw a lens that has to keep up with a moving subject.
+     *
+     * The marks themselves change every frame — a carrier rides a walking body,
+     * a planted foot stays put while the body leaves it — so the caller hands
+     * over a producer rather than a list, and the loop lives here instead of in
+     * every consumer. Tracking replaces whatever was tracked before; there is
+     * one glass and one lens on it at a time.
+     *
+     * @param {() => Array<object>} produce called once per frame
+     * @param {{camera: THREE.Camera, worldRoot?: THREE.Object3D,
+     *          actorRoot?: THREE.Object3D}} context
+     */
+    track(produce, context) {
+      tracked = { produce, context };
+      if (!raf) {
+        const loop = () => {
+          raf = 0;
+          if (!tracked) return;
+          this.draw(tracked.produce(), tracked.context);
+          raf = window.requestAnimationFrame(loop);
+        };
+        raf = window.requestAnimationFrame(loop);
+      }
+    },
+
+    /** Stop following, and take the marks down. */
+    untrack() {
+      tracked = null;
+      if (raf) window.cancelAnimationFrame(raf);
+      raf = 0;
+      this.clear();
     },
 
     /** Take every mark down — a regen, or the lens being switched off. */

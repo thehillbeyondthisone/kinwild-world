@@ -85,10 +85,27 @@ const influences = [[1, 2], [0], [0, 3], [2]];
 const under = underdrawingMarks(primitives, influences);
 assertDrawable(under, "underdrawing");
 
-// A carrier per primitive, drawn at its own size rather than as equal pips.
+// One centre per primitive. Deliberately a dot and not a ring at the
+// primitive's own radius: once the shapes have drawn apart they are visible as
+// themselves, and ten overlapping outlines on top of them read as a spirograph.
 const carriers = under.filter((m) => m.key.startsWith("carrier:"));
 assert.equal(carriers.length, 4);
-assert(carriers[0].radius > carriers[2].radius, "a bigger carrier draws bigger");
+assert(carriers.every((m) => m.kind === "dot"));
+
+// The marks travel with the shapes. The shader slides each carrier out along
+// its own offset from the body's centre as the blend comes off, so a mark left
+// at the original position would name a shape that is no longer there.
+const whole = underdrawingMarks(primitives, influences, { apart: 0 });
+const wholeHead = whole.find((m) => m.key === "carrier:1");
+const apartHead = under.find((m) => m.key === "carrier:1");
+assert.deepEqual(wholeHead.at, primitives[1].position, "unblended by nothing, nothing moves");
+assert(
+  apartHead.at[1] > wholeHead.at[1] && apartHead.at[2] > wholeHead.at[2],
+  "drawn fully apart, an off-centre primitive steps away from the body",
+);
+// The body sits at the centre it is measured from, so it is what everything
+// else steps away from rather than something that drifts itself.
+assert.deepEqual(under.find((m) => m.key === "carrier:0").at, [0, 0.5, 0]);
 
 // The blend graph is the point, and each join is drawn exactly once even though
 // both ends name each other.

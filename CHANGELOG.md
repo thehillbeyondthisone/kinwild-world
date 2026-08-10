@@ -1,5 +1,61 @@
 # Changelog
 
+## 1.17.0 - 2026-08-09
+
+**The underdrawing.** The first thing in the tutorial's second thread a player
+can actually reach: drag the slip under the genome card and the kin standing in
+the field comes apart into the shapes it is built from, with the blend graph
+drawn over them. Layer 4b of TUTORIAL_PLAN.md, as an instrument — the rung that
+prompts it lands with the rest of the progression.
+
+The genome card taught what a creature *is*: a short document. This says what
+the document builds, and the technique has no prior art worth hiding.
+
+### Added
+
+- **A dial on the card, `skin ⟷ shapes`.** A paper slip clipped under the page,
+  in the same drawn-control idiom as every genome rule — a measuring line with a
+  nib, a real range input lying invisibly over it so keyboard, touch and
+  assistive tech all work. Deliberately *not* a genome row and not inside either
+  face: `shellMix` is not a property of the creature, and a rule among the
+  creature's own rules would say that it was.
+- Its label is the real primitive count read off the body — "ten shapes
+  underneath" — never a number written down here.
+- **The blend graph, drawn.** Dots at each carrier's centre and a line along
+  every join. This is the half that cannot be seen by looking: a primitive
+  blends with the ones it is *jointed* to, never merely the ones it is near,
+  which is why a foot swinging past a thigh does not weld to it. It reads as an
+  armature — a body, a head hung off it, four legs of two segments each.
+
+### Changed
+
+- **The page becomes something to look through.** The card is modal over a
+  74%-black blurred scrim, which is right for reading and exactly wrong for the
+  one thing this shows. While the dial is off its rest the scrim clears and the
+  faces ghost back to a watermark, and the slip stays solid — a sheet held up to
+  the light. Derived from the dial's value rather than from the gesture, so a
+  keyboard arrow opens the page up exactly as a drag does.
+- **The carriers draw apart, not merely unblend.** Unblending alone did not
+  read: the primitives overlap heavily — that is what makes them one animal —
+  so ten same-coloured shapes staying put still looked like one mass with
+  harder seams. Each carrier now slides out along its offset from the body,
+  measured from primitive 0 rather than the actor origin, since the origin is on
+  the ground at the creature's feet and spreading from there would just lift the
+  whole animal. The projection still runs against the unmoved primitives: what
+  draws apart is the drawing, never the field.
+- The lens marks a carrier with a dot rather than a ring at its own radius. Once
+  the shapes are visible as themselves, ten outlines over the top of them read
+  as a spirograph — the glass must never be busier than what it explains.
+
+### Fixed
+
+- A commit made mid-scrub used to leave the lens following a disposed agent, and
+  the replacement kin snapped shut under the player's hand. The new body is
+  handed the same treatment and the marks re-aim at it.
+- Closing the card puts the body back together. A creature left scattered
+  because its page was shut would have been undoable only by finding the same
+  card again.
+
 ## 1.16.0 - 2026-08-09
 
 The dial the underdrawing turns. A body can now be scrubbed back to the shapes

@@ -13,6 +13,22 @@ export const GENERATED_FAUNA_SCHEMA_VERSION = 1;
 export const GENERATED_FAUNA_MAX_PRIMITIVES = 16;
 export const GENERATED_FAUNA_MAX_INFLUENCES = 8;
 
+/**
+ * How far the carriers draw apart when the blend is scrubbed off, as a
+ * fraction of each primitive's own offset from the body's centre.
+ *
+ * Unblending alone does not read. The primitives overlap heavily — that is
+ * what makes them one animal — so ten same-coloured shapes sitting exactly
+ * where they were, meeting at hard intersections instead of smooth ones, still
+ * looks like one mass. They have to come apart to be counted, the way an
+ * exploded diagram works.
+ *
+ * Lives here, in the module with no imports, because two places need the same
+ * number and must not drift: the shader moves the geometry, and the tutorial's
+ * underdrawing has to put its marks where the geometry went.
+ */
+export const GENERATED_FAUNA_EXPLODE = 0.45;
+
 export const CURATED_WALKER_DNA = deepFreeze({
   schemaVersion: GENERATED_FAUNA_SCHEMA_VERSION,
   locomotion: "walker",

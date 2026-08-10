@@ -235,7 +235,16 @@ function syncRow(parts, field, draft, holding) {
  *   debounced, with a settled genome whenever the player changes one
  * @param {() => void} [options.onClose]
  */
-export function createGenomeCard({ onCommit, onClose } = {}) {
+/**
+ * @param {object} [hooks]
+ * @param {(dna: object, draft: object) => void} [hooks.onCommit]
+ * @param {() => void} [hooks.onClose]
+ * @param {(amount: number) => void} [hooks.onUnderdraw] how far the body should
+ *   be taken apart, 0 (whole) to 1 (bare carriers). The card cannot do this
+ *   itself — it is forbidden the runtime, and taking a body apart means
+ *   reaching a live agent — so it only reports the dial and lets the host act.
+ */
+export function createGenomeCard({ onCommit, onClose, onUnderdraw } = {}) {
   const root = element("genome-card");
   if (!root) return null;
   const scrim = element("genome-card-scrim");
@@ -251,6 +260,11 @@ export function createGenomeCard({ onCommit, onClose } = {}) {
   const writingHost = element("genome-writing");
   const linesCaption = element("genome-lines-caption");
   const stamps = [element("genome-stamp-page"), element("genome-stamp-writing")];
+  const underdraw = element("genome-underdraw");
+  const underdrawLabel = element("genome-underdraw-label");
+  const underdrawFill = element("genome-underdraw-fill");
+  const underdrawNib = element("genome-underdraw-nib");
+  const underdrawDial = element("genome-underdraw-dial");
 
   let draft = null;
   let rows = new Map();
@@ -460,9 +474,47 @@ export function createGenomeCard({ onCommit, onClose } = {}) {
     if (!open) {
       window.clearTimeout(commitTimer);
       commitTimer = 0;
+      // Put the body back together before letting go of it. A creature left
+      // scattered because its page was closed would be a bug the player
+      // could not undo without finding the same card again.
+      resetUnderdraw();
       onClose?.();
     }
   }
+
+  // ── The underdrawing dial ────────────────────────────────────────────────
+  //
+  // The card reports the value and nothing else. Everything it means — which
+  // agent, what a carrier is, where the marks go — belongs to the host, which
+  // is why this is a callback and not an import.
+
+  /** Redraw the rule, and put the card into (or out of) looking-through. */
+  function syncUnderdraw(amount) {
+    const percent = `${(amount * 100).toFixed(1)}%`;
+    underdrawFill.style.width = percent;
+    underdrawNib.style.left = percent;
+    // Derived from the value rather than from the gesture, so a keyboard arrow
+    // opens the page up exactly as a drag does.
+    root.classList.toggle("looking-through", amount > 0.001);
+  }
+
+  function readUnderdraw() {
+    const amount = Number(underdrawDial.value);
+    return Number.isFinite(amount) ? Math.min(1, Math.max(0, amount)) : 0;
+  }
+
+  /** Put the body back together and close the slip. */
+  function resetUnderdraw() {
+    underdrawDial.value = "0";
+    syncUnderdraw(0);
+    onUnderdraw?.(0);
+  }
+
+  underdrawDial.addEventListener("input", () => {
+    const amount = readUnderdraw();
+    syncUnderdraw(amount);
+    onUnderdraw?.(amount);
+  });
 
   element("genome-flip-to-writing").addEventListener("click", () => setFlipped(true));
   element("genome-flip-to-page").addEventListener("click", () => setFlipped(false));
@@ -487,6 +539,10 @@ export function createGenomeCard({ onCommit, onClose } = {}) {
     get genomeHash() {
       return draft?.genomeHash ?? null;
     },
+    /** How far the body is currently taken apart, 0..1. */
+    get underdrawAmount() {
+      return readUnderdraw();
+    },
     /**
      * Put a genome on the card.
      *
@@ -509,6 +565,17 @@ export function createGenomeCard({ onCommit, onClose } = {}) {
         (editable
           ? "Everything this one is, written down. Move a rule and it changes where it stands."
           : "Everything this one is, written down.");
+      // The slip is offered only when there is a blend shell to take apart, and
+      // it names the real number of primitives — a plant has none, and an
+      // invented count would be the same mistake this document made once
+      // already about its own line count.
+      const shapes = Number(meta.underdrawShapes);
+      const hasShapes = Number.isInteger(shapes) && shapes > 0;
+      underdraw.hidden = !hasShapes || !editable;
+      if (hasShapes) {
+        underdrawLabel.textContent = `${spellNumber(shapes)} shapes underneath`;
+      }
+      resetUnderdraw();
       setFlipped(false);
       render();
       setOpen(true);

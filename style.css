@@ -5495,6 +5495,88 @@ body.genome-card-open .observatory-shell {
   }
 }
 
+/* ── The lenses' glass (src/ui/lens-layer.js) ──────────────────────────────
+   Dots, rings, lines and small words drawn over the live field by the
+   affordance, underdrawing and gait lenses. Pencil on glass, in the same ink
+   as the callouts' leaders — a lens is a drawing over the field, never an
+   inspector overlay, so groups are told apart by weight and never by colour.
+   z-index sits below .tutorial-layer (92) so a margin note stays legible. */
+
+.lens-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+}
+
+.lens-marks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  /* One filter for the whole layer rather than one per mark: a lens can carry
+     a few dozen marks and redraws every frame it is open. The shadow is what
+     keeps chalk legible over a pale noon field without darkening it. */
+  filter: drop-shadow(0 1px 1.6px rgba(24, 18, 30, 0.55));
+}
+
+/* The callouts' ink is near-black because it is drawn on cream panels. A lens
+   is drawn on the field itself, which runs from a bright verdant noon to a
+   violet night, so its marks are chalk rather than pencil — the notebook's own
+   paper colour, lifted onto the glass, with the layer's shadow under it. */
+.lens-mark {
+  stroke: rgba(247, 240, 222, 0.88);
+  stroke-linecap: round;
+  /* A mark appearing is a pencil touching down, not a UI element switching on. */
+  animation: lens-mark-in 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes lens-mark-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* A planted foot, a carrier centre, an offer on the field. */
+.lens-dot {
+  fill: rgba(247, 240, 222, 0.78);
+  stroke: none;
+}
+
+/* Where a swinging foot is going, and how far an offer reaches. */
+.lens-ring {
+  fill: none;
+  stroke-width: 1.3;
+  /* The same uneven dash the margin's circled entries use. */
+  stroke-dasharray: 5 3 7 2;
+}
+
+/* A joint in the blend graph, or a foot's flight. */
+.lens-link {
+  stroke-width: 1.2;
+  stroke-opacity: 0.6;
+}
+
+.lens-tag {
+  fill: rgba(250, 245, 232, 0.95);
+  stroke: none;
+  font-family: "Cormorant Infant", Georgia, serif;
+  font-size: 15px;
+  font-style: italic;
+  letter-spacing: 0.015em;
+}
+
+/* Groups read as ink weight. Three is as many as stay apart in pencil. */
+.lens-weight-1 { stroke-width: 1.1; }
+.lens-weight-2 { stroke-width: 1.6; }
+.lens-weight-3 { stroke-width: 2.2; }
+.lens-dot.lens-weight-2 { fill: rgba(249, 243, 228, 0.9); }
+.lens-dot.lens-weight-3 { fill: rgba(252, 248, 238, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .lens-mark { animation: none; }
+}
+
 /* ── The onboarding's paper (src/ui/tutorial-notes.js) ─────────────────────
    Margin notes, leaders that draw themselves onto a live subject, and the
    stamped seed sheet. Same register as the genome card: Cormorant Infant on

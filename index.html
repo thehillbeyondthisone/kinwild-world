@@ -491,6 +491,15 @@
     </div>
   </section>
 
+  <!-- The lenses' glass (src/ui/lens-layer.js over src/tutorial/lenses.js).
+       One overlay shared by the affordance, underdrawing and gait lenses —
+       each of them an engine debugging view handed to the player. Sits below
+       the onboarding's paper so a margin note is never drawn under a mark.
+       Empty until a lens is opened. -->
+  <div class="lens-layer" id="lens-layer">
+    <svg class="lens-marks" id="lens-marks" aria-hidden="true"></svg>
+  </div>
+
   <!-- The onboarding's paper (src/ui/tutorial-notes.js over
        src/tutorial/progress.js + copy.js). A margin note with a leader that
        draws itself onto a live subject, and the stamped seed sheet that opens

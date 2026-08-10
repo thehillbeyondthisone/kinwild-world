@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.15.2 - 2026-08-09
+
+The glass, before anything is drawn on it. Groundwork for the tutorial's
+lenses: the affordance view Layer 3 needs, and the two new rungs that teach
+how a genome becomes a body. Nothing here is reachable by a player yet — no
+lens opens, and the overlay stays empty.
+
+The thesis the three lenses share: **every one of them is a debugging view the
+engine needed anyway, handed to the player.** The ecology has wanted an
+affordance view since it was written and the body has wanted a carrier view
+since the shell was ported; making them player instruments is the difficulty
+curve, not an addition to it.
+
+### Added
+
+- `src/tutorial/lenses.js`: what a lens *says*, as plain data. Three builders —
+  gait, underdrawing, affordances — turn runtime data into one vocabulary of
+  marks (dot, ring, link, tag). DOM-free and three-free like `genome-draft.js`
+  under the card, so each lens's claim is asserted in node: a planted foot's
+  target is never ringed (it is its own position, and a ring under every dot
+  says nothing), a blend-graph join is drawn once though both ends name each
+  other, and only the affordance a kin is actually going to is ringed at its
+  reach — there are a couple of hundred on a world.
+- `src/ui/lens-layer.js`: the overlay. Marks are patched by key rather than
+  rebuilt, since a lens redraws every frame it is open. A world radius is
+  measured in pixels by projecting a point one radius to the camera's right,
+  because a fixed pixel size would make an affordance's reach a lie at every
+  distance but one — and reach is the whole content of that ring.
+- `src/ui/viewport-project.js`: world → CSS pixels, lifted out of
+  `observatory.js` now that the lenses need the same projection. It does not
+  live in `observatory-callouts.js`, which is deliberately free of three.js and
+  the DOM so its geometry can be asserted in node. Adds `projectPoint` for bare
+  world points — a planted foot and a carrier centre are positions the runtime
+  already knows, not scene nodes, and giving each one an `Object3D` to be
+  projected through would be a scene-graph node per mark per frame.
+
+### Changed
+
+- A lens's marks are **chalk, not pencil.** The callouts' near-black ink works
+  because it is drawn on cream panels; a lens is drawn on the field itself,
+  which runs from a bright verdant noon to a violet night, and there the marks
+  were all but invisible. They take the notebook's own paper colour with one
+  drop-shadow over the whole layer — one filter rather than one per mark, since
+  a lens can carry a few dozen. Groups stay ink weight and never colour.
+
 ## 1.15.1 - 2026-08-09
 
 Two things the suite could not see, found by driving the card and the

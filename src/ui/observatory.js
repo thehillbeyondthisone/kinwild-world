@@ -50,6 +50,8 @@ import {
 } from "../tutorial/progress.js";
 import { INTRO_COPY, LAYER_COPY } from "../tutorial/copy.js";
 import { initTutorialNotes } from "./tutorial-notes.js";
+import { initLensLayer } from "./lens-layer.js";
+import { projectToViewport } from "./viewport-project.js";
 import { loadTutorial, saveTutorial } from "./storage.js";
 import { ctx } from "./context.js";
 
@@ -336,24 +338,6 @@ function taxonomyRecords(runtime) {
     });
   }
   return observed;
-}
-
-/**
- * Project a world object into CSS-pixel viewport coordinates.
- *
- * Returns null when the subject is behind the camera or outside the depth
- * range, which is the caller's signal to hide the callout rather than draw a
- * line to a point that isn't on screen.
- */
-function projectToViewport(object, camera, out) {
-  if (!object || !camera) return null;
-  object.updateWorldMatrix(true, false);
-  object.getWorldPosition(vector);
-  vector.project(camera);
-  if (vector.z < -1 || vector.z > 1) return null;
-  out.x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-  out.y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
-  return out;
 }
 
 function blueprintMarkup(dna) {
@@ -1215,6 +1199,8 @@ export function initObservatory() {
     // Notes pointing into the old field come down; the walk-through resumes
     // at whichever layer the player had reached.
     notes.clear();
+    // Every mark belonged to subjects that were just disposed.
+    lenses.clear();
     window.clearTimeout(brandPulseTimer);
     brandPulseTimer = window.setTimeout(emphasizeBrand, 240);
     window.setTimeout(introduceReturningForms, 0);
@@ -1421,6 +1407,9 @@ export function initObservatory() {
   // Layers gate prompting, never access — a player who outruns the track is
   // simply done with it, because markLayerDone cascades.
   const notes = initTutorialNotes();
+  // The glass the lenses draw on. Shared by the affordance, underdrawing and
+  // gait lenses; empty until one of them is opened, and swept on every regen.
+  const lenses = initLensLayer();
   const tutorial = createTutorialProgress(loadTutorial());
   // The stamped sheet opens exactly once, on the first ever arrival.
   let stampSeen = loadTutorial() !== null;

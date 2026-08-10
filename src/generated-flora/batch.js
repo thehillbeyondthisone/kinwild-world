@@ -31,6 +31,7 @@
  * documents.
  */
 import * as THREE from "three";
+import { replaceOrWarn } from "../shaders/patch.js";
 
 /** Texels per row of the touch field. Height grows; width does not. */
 const TOUCH_FIELD_WIDTH = 64;
@@ -196,9 +197,22 @@ export function applyTouchBend(material, {
     shader.uniforms.uFloraSquash = squashUniform;
     shader.uniforms.uFloraLodDistance = lodUniform;
     shader.uniforms.uFloraViewer = viewer;
-    shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", `#include <common>${TOUCH_UNIFORM_DECLARATIONS}`)
-      .replace("#include <project_vertex>", TOUCH_PROJECT_VERTEX);
+    // Both anchors go through replaceOrWarn: a miss compiles cleanly and simply
+    // stops the touch bend, so a plant would quietly never react to being
+    // brushed again — the kind of nothing that is very hard to notice.
+    let vertex = replaceOrWarn(
+      shader.vertexShader,
+      "#include <common>",
+      `#include <common>${TOUCH_UNIFORM_DECLARATIONS}`,
+      "flora-touch/common",
+    );
+    vertex = replaceOrWarn(
+      vertex,
+      "#include <project_vertex>",
+      TOUCH_PROJECT_VERTEX,
+      "flora-touch/project_vertex",
+    );
+    shader.vertexShader = vertex;
   };
   material.userData.floraTouch = {
     lean: leanUniform,

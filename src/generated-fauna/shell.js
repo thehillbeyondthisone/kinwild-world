@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { replaceOrWarn } from "../shaders/patch.js";
 import {
   GENERATED_FAUNA_MAX_INFLUENCES,
   GENERATED_FAUNA_MAX_PRIMITIVES,
@@ -508,31 +509,51 @@ function makeToonGradient() {
   return texture;
 }
 
+/**
+ * Splice the blend shell into a three.js material's generated vertex shader.
+ *
+ * Every anchor goes through `replaceOrWarn`. A raw `String.replace` that misses
+ * is a silent no-op that still compiles: `begin_vertex` not matching would ship
+ * the raw carrier capsules, unprojected — the animal would come apart into the
+ * shapes it is made of, with no error anywhere. `beginnormal_vertex` missing
+ * would light a smooth body with primitive normals. Both are exactly the class
+ * of breakage a three.js upgrade causes, and the reason `replaceOrWarn` exists.
+ */
 function injectShell(material, uniforms, options) {
+  const label = options.cacheKey ?? "generated-fauna-shell";
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     const defines = (options.defines ?? [])
       .map((define) => `#define ${define}`)
       .join("\n");
-    shader.vertexShader = `${defines}\n${SHELL_GLSL}\n${shader.vertexShader}`
-      .replace(
-        "void main() {",
-        `void main() {\n${SHELL_COMPUTE_GLSL}`,
-      )
-      .replace(
-        "#include <beginnormal_vertex>",
-        "vec3 objectNormal = gfShellNormal;",
-      )
-      .replace(
-        "#include <begin_vertex>",
-        "vec3 transformed = gfShellPosition;",
-      );
+    let vertex = `${defines}\n${SHELL_GLSL}\n${shader.vertexShader}`;
+    vertex = replaceOrWarn(
+      vertex,
+      "void main() {",
+      `void main() {\n${SHELL_COMPUTE_GLSL}`,
+      `${label}/main`,
+    );
+    vertex = replaceOrWarn(
+      vertex,
+      "#include <beginnormal_vertex>",
+      "vec3 objectNormal = gfShellNormal;",
+      `${label}/beginnormal_vertex`,
+    );
+    vertex = replaceOrWarn(
+      vertex,
+      "#include <begin_vertex>",
+      "vec3 transformed = gfShellPosition;",
+      `${label}/begin_vertex`,
+    );
+    shader.vertexShader = vertex;
     if (options.colored) {
       shader.fragmentShader =
         "varying vec3 vGeneratedFaunaColor;\n" +
-        shader.fragmentShader.replace(
+        replaceOrWarn(
+          shader.fragmentShader,
           "#include <color_fragment>",
           "#include <color_fragment>\n  diffuseColor.rgb *= vGeneratedFaunaColor;",
+          `${label}/color_fragment`,
         );
     }
   };

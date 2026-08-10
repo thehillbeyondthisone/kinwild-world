@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.15.3 - 2026-08-09
+
+Audit 2026-07-29 finding 8. The three hottest shader patches had no anchor
+verification, and the test that looked like it guarded them could not see a
+real break.
+
+### Fixed
+
+- **The SDF shell, the flora touch bend and the wind sway all patch through
+  `replaceOrWarn` now.** Each one installs itself by finding a string in
+  three.js' generated shader source and replacing it, and each one was using a
+  raw `String.replace` — where a miss is not an error. The shader still
+  compiles; the effect is simply absent. A renamed chunk would have shipped the
+  raw carrier capsules unprojected, so an animal would come apart into the
+  shapes it is made of, with nothing logged anywhere.
+
+### Added
+
+- `tests/shader-patch-anchors.test.mjs`, the half `replaceOrWarn` cannot cover:
+  it reads **three's own shader source** rather than a mock, asserts every chunk
+  and anchor the patches name still exists across the five materials they touch,
+  and then runs a real `LocalBlendShell`'s `onBeforeCompile` against the
+  unmodified toon shader and inspects the result — the spliced compute step, the
+  two replaced lines, the absence of the originals, and the uniforms handed
+  over. The pre-existing guard in `generated-flora-renderer.test.mjs` patches a
+  mock string containing the anchors by construction, so it stayed green through
+  exactly the break it appeared to watch for.
+- The suite also pins the call sites, so a regression to raw `.replace` on a
+  shader include fails the build.
+
+### Changed
+
+- `replaceOrWarn` moves to `src/shaders/patch.js`, which imports nothing.
+  `src/util.js` re-exports it, so no caller changes. It had to move: `util.js`
+  imports `state.js`, which reads Vite's `__APP_VERSION__` define, and pulling
+  that into `generated-fauna/shell.js` made the whole generated-fauna module
+  graph un-importable in node — taking down the four headless suites that assert
+  fauna determinism and normalization. A pure string function should not drag a
+  browser runtime behind it.
+
 ## 1.15.2 - 2026-08-09
 
 The glass, before anything is drawn on it. Groundwork for the tutorial's

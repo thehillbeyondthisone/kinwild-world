@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
+import { replaceOrWarn } from "./shaders/patch.js";
 import { state } from "./state.js";
 
 /** Shared brown trunk/wood color used across flora builders. */
@@ -77,8 +78,12 @@ export function applyWindSway(material, strength = 1.0, { plantRelative = false 
     shader.uniforms.uTime = state.windUniforms.uTime;
     shader.uniforms.uWindStrength = { value: strength };
     shader.uniforms.uFoliageWind = state.windUniforms.uFoliageWind;
-    shader.vertexShader = shader.vertexShader
-      .replace(
+    // Both anchors go through replaceOrWarn — see its own note below. A miss
+    // here compiles fine and simply stills the wind, which reads as a calm day
+    // rather than as a break.
+    shader.vertexShader = replaceOrWarn(
+      replaceOrWarn(
+        shader.vertexShader,
         "#include <common>",
         `#include <common>
 uniform float uTime;
@@ -89,11 +94,11 @@ uniform float uFoliageWind;${plantRelative ? `
 #ifndef KW_PLANT_BASE_DECLARED
 #define KW_PLANT_BASE_DECLARED
 attribute vec4 aPlantBase;
-#endif` : ""}`
-      )
-      .replace(
-        "#include <begin_vertex>",
-        `#include <begin_vertex>
+#endif` : ""}`,
+        "wind-sway/common",
+      ),
+      "#include <begin_vertex>",
+      `#include <begin_vertex>
         {
           ${plantRelative ? "" : `float windY = max(transformed.y, 0.0);
           float windAmp = windY * windY * uWindStrength * uFoliageWind;`}
@@ -138,8 +143,9 @@ attribute vec4 aPlantBase;
           vec2 windWorld = vec2(w1 * windAmp * 0.06, w2 * windAmp * 0.05);
           transformed.x += dot(axW, windWorld) * invXZScaleSq;
           transformed.z += dot(azW, windWorld) * invXZScaleSq;
-        }`
-      );
+        }`,
+      "wind-sway/begin_vertex",
+    );
   };
   material.needsUpdate = true;
   return material;
@@ -157,23 +163,11 @@ export function randInt(lo, hi) {
   return lo + Math.floor(Math.random() * (hi - lo + 1));
 }
 
-/**
- * String.replace against three.js' generated shader source, but warns instead
- * of silently no-op'ing when the anchor doesn't match (e.g. after a three.js
- * upgrade changes an `#include` chunk's surrounding text).
- *
- * @param {string} source - shader source to patch
- * @param {string} anchor - exact substring to find
- * @param {string} replacement - replacement text (same shape as String.replace)
- * @param {string} label - short identifier for the warning message
- */
-export function replaceOrWarn(source, anchor, replacement, label) {
-  if (!source.includes(anchor)) {
-    console.warn(`[replaceOrWarn] anchor not found for "${label}" — shader patch skipped`);
-    return source;
-  }
-  return source.replace(anchor, replacement);
-}
+// Re-exported (and used above by applyWindSway) from its own dependency-free
+// module, so shader-patching code can reach it without pulling `state.js` — and
+// Vite's __APP_VERSION__ define — in behind it. See the note at the top of
+// `src/shaders/patch.js`.
+export { replaceOrWarn };
 
 /**
  * Build a curved leaf BufferGeometry from a parametric grid.

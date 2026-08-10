@@ -272,6 +272,12 @@ export class GeneratedFaunaWalker {
     this.debug = Object.freeze({
       phases: this._phase,
       primitiveSnapshot: () => this.shell.primitiveSnapshot(),
+      // The blend graph, and the scrub between the skin and the shapes under
+      // it. Both are here rather than reached for through `.shell` so the
+      // tutorial's underdrawing has one handle to hold, the same one the gait
+      // lens already reads `feet()` from.
+      influences: () => this.shell.influences,
+      setShellMix: (value) => this.shell.setShellMix(value),
       feet: () =>
         this._feet.map((foot) => ({
           planted: foot.position.toArray(),

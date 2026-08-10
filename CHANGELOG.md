@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.16.0 - 2026-08-09
+
+The dial the underdrawing turns. A body can now be scrubbed back to the shapes
+it is made of — still nothing a player can reach, but Layer 4b has everything
+it needs.
+
+### Added
+
+- **`uShellMix` on the blend shell.** At 1 every vertex sits on the smooth-min
+  surface of its influence set, which is the animal; at 0 every vertex stays on
+  its own carrier, which is the handful of overlapping capsules and spheres the
+  animal is actually built from. Scrubbing between them is the technique made
+  visible, and it costs one `mix` in the vertex stage.
+
+  Continuous rather than stepping `uIters`, because iteration count is an
+  integer and a scrub across it reads as a jump rather than as a body coming
+  together. Applied before the normal and the colour are taken, so all three
+  agree at every point of the scrub and the form separates as one coherent
+  drawing instead of shading sliding off its own geometry. Shadows follow: the
+  fast path is the depth and distance materials. The tuck depth fades with it —
+  a buried vertex is only hidden under the skin while there is a skin.
+
+  **The shipping path is unchanged, exactly.** The default is `1`, and
+  `mix(a, b, 1.0)` is `a * 0.0 + b * 1.0`, which is `b` — not nearly `b`. The
+  test asserts the default is precisely 1 for that reason.
+- **`LocalBlendShell.influences`**, frozen. The lists were packed into the
+  `uPrimInfl` uniform and nothing on the JS side could read them back, so the
+  underdrawing could draw carriers but not a single join between them — and the
+  joins are the lesson: a primitive blends with the ones it is *jointed* to,
+  never merely the ones it is near, which is why a foot passing a thigh does
+  not weld to it.
+- `agent.debug.influences()` and `agent.debug.setShellMix()`, so a lens holds
+  one handle rather than reaching through `.shell`.
+
+### Verified
+
+- Against a live ten-primitive walker: the blend graph reads back as **nine
+  joints over ten carriers** — a tree, which is what a skeleton is — body to
+  head and to each of four upper legs, each upper leg to its own lower. Every
+  join drawn once though both ends name each other.
+- `renderer.compile` builds the `generated-fauna-local-toon-v1` program with no
+  GLSL error, and the scrub reaches the uniform and returns to 1.
+
 ## 1.15.3 - 2026-08-09
 
 Audit 2026-07-29 finding 8. The three hottest shader patches had no anchor

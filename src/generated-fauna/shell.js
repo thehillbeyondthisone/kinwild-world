@@ -17,6 +17,11 @@ uniform ivec4 uPrimInfl[${GENERATED_FAUNA_MAX_PRIMITIVES * 2}];
 uniform vec3 uTuck;
 uniform float uGradEps;
 uniform int uIters;
+// How much of the blend is applied. 1.0 is the skin -- the shipping value, and
+// mix(carrier, point, 1.0) returns point exactly, so the default path is
+// unchanged. 0.0 leaves every vertex on its own carrier, which is the body as
+// the shapes it is actually made of. The tutorial's underdrawing scrubs this.
+uniform float uShellMix;
 
 varying vec3 vGeneratedFaunaColor;
 
@@ -141,12 +146,15 @@ void gfBlendShell(
   ivec4 second = uPrimInfl[base * 2 + 1];
   float selfBlend = uPrimPosK[base].w;
 
-  vec3 point =
+  vec3 carrier =
     gfQRot(uPrimQuat[base], carrierPosition * uPrimScale[base].xyz)
     + uPrimPosK[base].xyz;
+  vec3 point = carrier;
   float burial = max(0.0, -gfOtherDistance(point, first, second));
   float tuckAmount = smoothstep(uTuck.y, uTuck.z, burial);
-  float target = -uTuck.x * tuckAmount;
+  // The tuck fades out with the blend: a buried vertex is only hidden under the
+  // skin while there is a skin to hide under.
+  float target = -uTuck.x * tuckAmount * uShellMix;
 
 #ifdef GENERATED_FAUNA_FAST
   float fastFieldValue =
@@ -161,6 +169,12 @@ void gfBlendShell(
     point -= gfGradient(point, first, second, selfBlend) * fieldValue;
   }
 #endif
+
+  // Applied before the normal and colour are taken, so all three agree at every
+  // point of the scrub and the body separates as one coherent drawing rather
+  // than geometry sliding out from under its own shading. Shadows follow too:
+  // the fast path above is the depth and distance materials.
+  point = mix(carrier, point, uShellMix);
 
   shellPosition = point;
 #ifdef GENERATED_FAUNA_NO_NORMAL
@@ -220,6 +234,20 @@ export class LocalBlendShell {
     validateInfluences(options.influences, specs.length);
 
     this.specs = specs;
+    /**
+     * Which primitives each primitive blends with — the blend graph, frozen so
+     * a reader cannot mutate what has already been packed into `uPrimInfl`.
+     *
+     * Kept because the shader's copy is write-only: it lives in a uniform and
+     * nothing on the JS side can read it back. The tutorial's underdrawing
+     * draws these as the joins between carriers, which is the whole lesson —
+     * a primitive blends with the ones it is *jointed* to, never merely the
+     * ones it is near, and that is why a foot passing a thigh does not weld
+     * to it.
+     */
+    this.influences = Object.freeze(
+      options.influences.map((list) => Object.freeze([...list])),
+    );
     this.primitives = specs.map(() => ({
       position: new THREE.Vector3(),
       quaternion: new THREE.Quaternion(),
@@ -269,6 +297,7 @@ export class LocalBlendShell {
         ),
       },
       uTuck: { value: new THREE.Vector3(0.012, 0.003, 0.025) },
+      uShellMix: { value: 1 },
       uGradEps: { value: options.gradEps ?? 0.006 },
       uIters: {
         value: THREE.MathUtils.clamp(
@@ -343,6 +372,20 @@ export class LocalBlendShell {
   }
 
   /** Test/inspection snapshot; positions remain actor-local as root moves. */
+  /**
+   * How much of the blend to apply: 1 is the skin, 0 the bare carriers.
+   *
+   * Clamped rather than validated — this is driven by a drag, and a scrub that
+   * threw at its own endpoint would be worse than one that stops there.
+   */
+  setShellMix(value) {
+    const mix = Number(value);
+    this.uniforms.uShellMix.value = Number.isFinite(mix)
+      ? Math.min(1, Math.max(0, mix))
+      : 1;
+    return this.uniforms.uShellMix.value;
+  }
+
   primitiveSnapshot() {
     return this.primitives.map((primitive) => ({
       position: primitive.position.toArray(),

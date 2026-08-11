@@ -1,5 +1,86 @@
 # Changelog
 
+## 1.18.0 - 2026-08-09
+
+**Watch the feet.** The second half of the anatomy thread, and the other claim
+worth making about these animals: the walk is solved, not played. Layer 4c of
+TUTORIAL_PLAN.md as an instrument; its rung lands with the rest of the
+progression.
+
+### Added
+
+- **A gait lens**, from a second action on the specimen readout beside *Read the
+  genome*. One reads what a kin **is**; the other watches what it **does**.
+  Under a walking kin: a filled dot at each planted foot, a hollow ring where a
+  swinging foot is going, and a line for the one in flight.
+- The dots are the whole lesson, and the lesson is that **they do not move**. A
+  foot is planted in world space and stays exactly there while the body travels
+  away from it, until the error grows past what the genome allows and it swings
+  to a new home — which is `walker.js`'s step trigger, visible, with no clip
+  anywhere in the engine.
+- Phase groups read as ink weight, so a trot is two weights alternating. Only a
+  foot actually in flight gets a ring: a planted foot's target is its own
+  position, and ringing that would put a ring under every dot and say nothing.
+
+### Changed
+
+- The two lenses share one glass and now say so. Taking a body apart puts the
+  feet away — a scattered animal has no gait to read — and putting the feet up
+  closes the card, which reassembles the body through the card's own reset.
+- The gait lens resolves the selection per frame rather than capturing it, so
+  picking a different kin while watching simply moves the marks. Every gait mark
+  is in world space, so unlike the underdrawing there is no actor root to go
+  stale.
+
+### Deferred
+
+- **"Slow the field" is not here, deliberately.** The obvious version — scale
+  `dt` — would have been wrong: `_updateFeet` derives `gaitCycle` from
+  *absolute* time, not from `dt`, so scaling `dt` alone slows the body's travel
+  while the phase groups keep alternating at full speed. That does not slow a
+  gait, it breaks one. A correct version needs a scaled sim clock replacing `t`
+  throughout `animate()`, which also feeds `updateDayNight`, the wind uniforms
+  and every `stepX` — a change to time semantics that deserves its own pass
+  rather than a corner of this one. Manual pause (spacebar) already freezes the
+  field to look.
+
+---
+
+Also released here, from work that had been sitting uncommitted in the tree:
+
+### Fixed — kin no longer shuffle at the foot of a plant
+
+Two faults produced one artifact, and the new
+`tests/living-world-kin-judder.test.mjs` drives the real simulation to pin both.
+
+- **A two-frame limit cycle in `deflectAroundObstacles`.** Which way to walk
+  round a blocker was re-derived every frame from the sign of the blocker's
+  offset from the intended line. Walking straight at a trunk makes that offset
+  exactly zero, which picks one side; the resulting step puts the kin slightly
+  off-axis, which picks the other; that step returns it to the axis. The chosen
+  side is now remembered per obstacle, and a dead-on approach breaks the tie
+  from the actor's own ordinal rather than arbitrarily.
+- **An arrived kin steered at its goal for the whole dwell**, and a hero's
+  affordances sit at its trunk — which is a collision circle. So it walked into
+  the trunk every frame and was pushed back out every frame, which is also what
+  kept feeding the dead-on input to the fault above. `holdAt` now holds the kin
+  at the goal's own radius along its approach direction instead of at the
+  centre. Measured over three simulated minutes before the fix: a settled walker
+  drifted up to 0.9 units and was never once stationary.
+
+### Added — the studio's candidate cards offer the genome
+
+- Reading what the model actually proposed, and editing it before introducing
+  it, is the clearest statement of *model proposes, engine validates*.
+  `candidateCard` had to be restructured to allow it: a `<button>` cannot
+  legally contain another focusable control — the `button` role forbids
+  focusable descendants, and Chrome quietly drops such a child from the
+  accessibility tree rather than erroring — so the card is now a container with
+  a stretched select button and the genome control as its sibling, above it in
+  stacking order.
+- Goal claims are counted per plant as well as per affordance
+  (`PLANT_CAPACITY`), so a single plant cannot collect the whole roster.
+
 ## 1.17.0 - 2026-08-09
 
 **The underdrawing.** The first thing in the tutorial's second thread a player

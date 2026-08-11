@@ -143,6 +143,46 @@ const PURSUIT_TIMEOUT = 34;
 const SATISFIED = 0.08;
 
 /**
+ * Where a kin that has arrived should actually stand.
+ *
+ * Not the goal itself. A plant's affordances sit at the plant, and a hero also
+ * registers a trunk-sized collision circle, so steering at the goal for the
+ * whole dwell means walking into the trunk every frame and being pushed back
+ * out of it every frame. The kin never travels anywhere, but it never stops
+ * either — it presses, dead-on, against the one obstacle in the middle of the
+ * field, which is precisely the input that used to make the deflection flip
+ * sides frame to frame.
+ *
+ * So an arrived kin holds the ground it arrived on: the target is its own
+ * position, pulled no further out than the arrival radius. Being jostled off
+ * by another kin still walks it back to the edge of the radius rather than
+ * abandoning the visit, and standing at the trunk to shelter under a tree
+ * remains the correct reading.
+ *
+ * One kind of arrival is exempt: a flier going to a perch. It is not being
+ * held off by the plant — the plant it is landing on is explicitly not an
+ * obstacle to it (`isGoalHost` in the runtime) — and it takes its *height*
+ * from the crown it is sitting on, so holding station short of the trunk
+ * would leave it hovering at crown height beside the crown, in mid-air. That
+ * one homes all the way in, as it always did.
+ */
+function holdAt(goal, actor, out) {
+  if (actor.flight && goal.type === "perch") {
+    out.set(goal.x, 0, goal.z);
+    return;
+  }
+  const dx = actor.position.x - goal.x;
+  const dz = actor.position.z - goal.z;
+  const distance = Math.hypot(dx, dz);
+  if (distance < 1e-4) {
+    out.set(goal.x, 0, goal.z);
+    return;
+  }
+  const hold = Math.min(distance, goal.radius);
+  out.set(goal.x + (dx / distance) * hold, 0, goal.z + (dz / distance) * hold);
+}
+
+/**
  * Per-actor need state. Seeded off the ordinal so two kin created together do
  * not move in lockstep, then advanced purely by time.
  */
@@ -179,18 +219,39 @@ function needByKey(needs, key) {
 }
 
 /**
- * Which affordances are already spoken for. Capacity is declared per
- * affordance by the plant that offers it; honouring it is what stops every
- * kin converging on one bloom.
+ * How many kin may be at one plant at once, whatever it is offering them.
+ *
+ * Capacity is declared per *affordance*, which stops two kin grazing one
+ * bloom but not four kin converging on one plant — a hero advertises shelter,
+ * a landmark, pollen and a perch, so four kin can hold four uncontested
+ * claims and all walk to the same trunk. They then stand on the same arrival
+ * circle, and the separation that keeps them from interpenetrating grinds
+ * them against each other for the whole dwell. On screen it is a scrum at the
+ * foot of the central plant.
+ *
+ * Two is a pair at a plant, which reads as company. Four is a scrum.
+ */
+const PLANT_CAPACITY = 2;
+
+/**
+ * Which affordances, and which plants, are already spoken for.
+ *
+ * Capacity is declared per affordance by the plant that offers it; honouring
+ * it is what stops every kin converging on one bloom. The per-plant tally is
+ * what stops them converging on one plant by way of four different blooms.
  */
 function claimCounts(runtime) {
-  const counts = new Map();
+  const byOrdinal = new Map();
+  const byPlant = new Map();
   for (const actor of runtime.fauna) {
-    const ordinal = actor.needs?.goal?.ordinal;
-    if (ordinal === undefined) continue;
-    counts.set(ordinal, (counts.get(ordinal) ?? 0) + 1);
+    const goal = actor.needs?.goal;
+    if (!goal || goal.ordinal === undefined) continue;
+    byOrdinal.set(goal.ordinal, (byOrdinal.get(goal.ordinal) ?? 0) + 1);
+    if (goal.floraKey) {
+      byPlant.set(goal.floraKey, (byPlant.get(goal.floraKey) ?? 0) + 1);
+    }
   }
-  return counts;
+  return { byOrdinal, byPlant };
 }
 
 /**
@@ -264,7 +325,17 @@ export function chooseKinGoal(runtime, actor) {
       );
       if (distance > (needs.maxTravel ?? MAX_TRAVEL.walker)) continue;
       if (distance < (needs.minTravel ?? MIN_TRAVEL.walker)) continue;
-      if ((claims.get(affordance.ordinal) ?? 0) >= Math.max(1, affordance.capacity)) {
+      if (
+        (claims.byOrdinal.get(affordance.ordinal) ?? 0) >=
+        Math.max(1, affordance.capacity)
+      ) {
+        continue;
+      }
+      // Already busy, even if this particular bloom on it is free.
+      if (
+        affordance.floraKey &&
+        (claims.byPlant.get(affordance.floraKey) ?? 0) >= PLANT_CAPACITY
+      ) {
         continue;
       }
       const score =
@@ -280,6 +351,9 @@ export function chooseKinGoal(runtime, actor) {
           // A flier needs both: the type to know a perch is a perch, and the
           // height to land on the crown that offered it rather than guessing.
           type,
+          // Which plant this came from, so the next kin to choose can see the
+          // plant is busy rather than only that this one bloom is taken.
+          floraKey: affordance.floraKey,
           x: affordance.x,
           y: affordance.y,
           z: affordance.z,
@@ -337,7 +411,7 @@ export function stepKinGoal(runtime, actor, dt, time, out) {
       needs.goal = null;
       needs.dwellUntil = 0;
     } else {
-      out.set(needs.goal.x, 0, needs.goal.z);
+      holdAt(needs.goal, actor, out);
       return { action: need?.action ?? "arrive", arrived: true, goal: needs.goal };
     }
   }
@@ -374,7 +448,7 @@ export function stepKinGoal(runtime, actor, dt, time, out) {
     const span = need ? need.dwell : [3, 5];
     needs.dwellFrom = time;
     needs.dwellUntil = time + span[0] + Math.random() * (span[1] - span[0]);
-    out.set(goal.x, 0, goal.z);
+    holdAt(goal, actor, out);
     return { action: need?.action ?? "arrive", arrived: true, goal };
   }
 

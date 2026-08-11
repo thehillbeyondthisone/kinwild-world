@@ -342,4 +342,84 @@ const affordance = (ordinal, type, x, z, extra = {}) => ({
   );
 }
 
+// An arrived kin stands still instead of pressing into the plant it came for.
+//
+// A hero's affordances sit at its trunk, and the trunk is a collision circle.
+// Steering at the goal for the whole dwell walked the kin into that circle
+// every frame and the resolver pushed it back out every frame: it never went
+// anywhere, and it never stopped either. Measured over three simulated
+// minutes before the fix, a settled walker drifted up to 0.9 units; after, it
+// holds. The visible artifact was a kin shuffling left-right at the foot of
+// the central plant.
+{
+  const obstacle = { x: 6, z: 0, r: 0.65 };
+  const runtime = makeRuntime([affordance(0, "shelter", 6, 0, { radius: 1 })], [obstacle]);
+  const actor = makeActor(runtime, 0);
+  actor.needs.levels.shelter = 0.95;
+  stepKinGoal(runtime, actor, 1 / 60, 200, point);
+  const goal = actor.needs.goal;
+  assert.ok(goal, "a sheltering kin should take the hero's shelter affordance");
+  assert.ok(
+    goal.radius > obstacle.r + 0.32,
+    "the arrival radius must clear the trunk, or arrival is impossible",
+  );
+
+  // Stand where a kin actually would: just inside the arrival radius, which is
+  // outside the trunk it is not allowed into.
+  actor.position.x = 6 - goal.radius * 0.9;
+  actor.needs.dwellUntil = 0;
+  const arrival = stepKinGoal(runtime, actor, 1 / 60, 200.1, point);
+  assert.equal(arrival.arrived, true, "inside the radius is arrival");
+  assert.ok(
+    Math.hypot(point.x - actor.position.x, point.z - actor.position.z) < 1e-9,
+    `an arrived kin should hold its ground, not aim at the trunk ` +
+      `(aimed ${Math.hypot(point.x - goal.x, point.z - goal.z).toFixed(3)} from the goal, ` +
+      `standing ${(goal.radius * 0.9).toFixed(3)} away)`,
+  );
+
+  // And again on the dwell branch, which is the one that runs for the whole
+  // visit and so is the one that produced the judder.
+  const dwelling = stepKinGoal(runtime, actor, 1 / 60, 200.2, point);
+  assert.equal(dwelling.arrived, true, "still dwelling");
+  assert.ok(
+    Math.hypot(point.x - actor.position.x, point.z - actor.position.z) < 1e-9,
+    "a dwelling kin should hold its ground too",
+  );
+
+  // Jostled off by another kin, it walks back to the radius rather than
+  // abandoning the visit — the hold is a clamp, not a freeze.
+  actor.position.x = 6 - goal.radius * 2;
+  stepKinGoal(runtime, actor, 1 / 60, 200.3, point);
+  const aimed = Math.hypot(point.x - goal.x, point.z - goal.z);
+  assert.ok(
+    Math.abs(aimed - goal.radius) < 1e-9,
+    `a kin pushed out of its dwell should aim back to the radius, aimed at ${aimed}`,
+  );
+}
+
+// A flier landing on a perch is the one arrival that still homes all the way
+// in. Its host plant is deliberately not an obstacle to it, and it takes its
+// height from the crown — so holding station short of the trunk would leave it
+// hovering at crown height beside the crown, in mid-air.
+{
+  const runtime = makeRuntime(
+    [affordance(0, "perch", 9, 0, { radius: 1, y: 4 })],
+    [{ x: 9, z: 0, r: 0.65 }],
+  );
+  const actor = makeActor(runtime, 0);
+  actor.flight = { hover: 2.4, speed: 1 };
+  actor.needs = createKinNeeds(0, "flier");
+  actor.needs.levels.perch = 0.95;
+  stepKinGoal(runtime, actor, 1 / 60, 200, point);
+  const goal = actor.needs.goal;
+  assert.equal(goal?.type, "perch", "the flier should take the perch");
+  actor.position.x = 9 - goal.radius * 0.5;
+  const arrival = stepKinGoal(runtime, actor, 1 / 60, 200.1, point);
+  assert.equal(arrival.arrived, true);
+  assert.ok(
+    Math.hypot(point.x - goal.x, point.z - goal.z) < 1e-9,
+    "a perching flier should home onto the crown, not hold beside it",
+  );
+}
+
 console.log("living-world-kin-goals.test.mjs passed");

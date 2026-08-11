@@ -1051,6 +1051,10 @@ function addLivingFaunaActor(runtime, provider, dna, record, flight = null) {
     flight: flight ?? null,
     landState: flight ? "flying" : "landed",
     nextProximityAt: record.ordinal * 0.07,
+    // Which way this kin committed to walk around the obstacle currently in
+    // its way, held until that obstacle is out of the way. See
+    // `deflectAroundObstacles`.
+    deflect: null,
     intent: null,
     frame: null,
   };
@@ -1364,13 +1368,44 @@ function deflectAroundObstacles(runtime, actor, toward, skip) {
     const lateral = toObstacleX * -dirZ + toObstacleZ * dirX;
     const clearance = finite(obstacle.r) + radius + 0.3;
     if (Math.abs(lateral) >= clearance) continue;
-    if (!blocker || ahead < blocker.ahead) blocker = { ahead, lateral, clearance };
+    if (!blocker || ahead < blocker.ahead) {
+      blocker = { ahead, lateral, clearance, obstacle };
+    }
   }
-  if (!blocker) return;
+  if (!blocker) {
+    // Nothing in the way — the next obstacle is a fresh decision.
+    actor.deflect = null;
+    return;
+  }
 
-  // Push perpendicular, away from the obstacle's centre. A dead-on approach
-  // (lateral ~0) still resolves, deterministically, to one side.
-  const side = blocker.lateral >= 0 ? -1 : 1;
+  // Which way round. The side is *committed to* for as long as this obstacle
+  // keeps blocking, rather than being re-derived every frame from the sign of
+  // `lateral`.
+  //
+  // Re-deriving it is a two-frame limit cycle whenever the goal is the plant:
+  // walking straight at a trunk makes `lateral` exactly 0, which picks one
+  // side; the step that follows puts the kin slightly off-axis, which picks
+  // the other; that step returns it to the axis. Measured before this was
+  // committed: 10% of all deflections flipped side between consecutive
+  // frames, every one of them at `lateral === 0`. On screen it is a kin
+  // shuffling left-right on the spot at the foot of the hero plant, which is
+  // the biggest obstacle in the field and the one goals point into.
+  let side;
+  if (actor.deflect?.obstacle === blocker.obstacle) {
+    side = actor.deflect.side;
+  } else {
+    // Go the way the kin is already favouring. Dead on, `lateral` is 0 and
+    // carries no preference at all, so the tie breaks on the actor's own
+    // ordinal — arbitrary, but the same answer every frame, which is the
+    // whole point.
+    side =
+      blocker.lateral === 0
+        ? (actor.record.ordinal % 2 === 0 ? -1 : 1)
+        : blocker.lateral > 0
+          ? -1
+          : 1;
+    actor.deflect = { obstacle: blocker.obstacle, side };
+  }
   const push = (blocker.clearance - Math.abs(blocker.lateral)) * side;
   toward.x += -dirZ * push;
   toward.z += dirX * push;

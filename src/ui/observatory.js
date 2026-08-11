@@ -51,7 +51,7 @@ import {
 import { INTRO_COPY, LAYER_COPY } from "../tutorial/copy.js";
 import { initTutorialNotes } from "./tutorial-notes.js";
 import { initLensLayer } from "./lens-layer.js";
-import { underdrawingMarks } from "../tutorial/lenses.js";
+import { gaitMarks, underdrawingMarks } from "../tutorial/lenses.js";
 import { projectToViewport } from "./viewport-project.js";
 import { loadTutorial, saveTutorial } from "./storage.js";
 import { ctx } from "./context.js";
@@ -382,13 +382,31 @@ function blueprintMarkup(dna) {
   `;
 }
 
-function candidateCard(candidate, index) {
-  const button = document.createElement("button");
-  button.type = "button";
+// The whole card selects on click, and "read the genome" is a second,
+// independent control on it. A real <button> cannot contain another
+// focusable control — "button" role forbids focusable descendants, and
+// Chrome quietly drops such a child from the accessibility tree rather than
+// erroring — so the two live as siblings instead of nested. `select` is a
+// button stretched to cover the card (the standard "stretched link" card
+// pattern); `genome` sits above it in stacking order so its own small area
+// intercepts the click before it reaches the card underneath.
+function candidateCard(candidate, index, onReadGenome) {
+  const button = document.createElement("div");
   button.className = "form-candidate";
   button.dataset.index = String(index);
+
+  const select = document.createElement("button");
+  select.type = "button";
+  select.className = "form-candidate-select";
+  select.setAttribute("aria-label", `Select study — ${candidate.dna.name}`);
+  button.append(select);
+
   if (typeof candidate.dna.archetype !== "string") {
-    button.innerHTML = blueprintMarkup(candidate.dna);
+    // Parsed off to the side rather than written via `button.innerHTML=`,
+    // which would erase the select button just appended.
+    const parsed = document.createElement("template");
+    parsed.innerHTML = blueprintMarkup(candidate.dna);
+    button.append(parsed.content);
   }
   const title = document.createElement("h3");
   title.textContent = candidate.dna.name;
@@ -426,6 +444,17 @@ function candidateCard(candidate, index) {
     ? `${candidate.repairs.length} bounded adjustment${candidate.repairs.length === 1 ? "" : "s"} applied`
     : "canonical genome · no repair required";
   button.append(title, id, stats, repair);
+  if (onReadGenome) {
+    const genome = document.createElement("button");
+    genome.type = "button";
+    genome.className = "form-candidate-genome";
+    genome.textContent = "read the genome";
+    genome.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onReadGenome(index);
+    });
+    button.append(genome);
+  }
   return button;
 }
 
@@ -1202,6 +1231,7 @@ export function initObservatory() {
     notes.clear();
     // Every mark belonged to subjects that were just disposed — stop following
     // them, not merely stop drawing them.
+    setWatchingGait(false);
     lenses.untrack();
     window.clearTimeout(brandPulseTimer);
     brandPulseTimer = window.setTimeout(emphasizeBrand, 240);
@@ -1361,9 +1391,30 @@ export function initObservatory() {
   }
 
   const genomeCard = createGenomeCard({
-    onCommit(dna) {
+    onCommit(dna, draft) {
+      if (!cardSubject) return;
+      // A candidate is not standing in the field yet — editing it is writing
+      // back into the studio's own list, never a world rebuild. It is the one
+      // kind that doesn't need a live runtime to make sense of.
+      if (cardSubject.kind === "candidate") {
+        const { index } = cardSubject;
+        const existing = currentCandidates[index];
+        if (!existing) {
+          genomeCard.close();
+          return;
+        }
+        currentCandidates[index] = Object.freeze({
+          ...existing,
+          dna,
+          repairs: draft.repairs,
+          genomeHash: draft.genomeHash,
+          ...(draft.primitiveCount != null ? { primitiveCount: draft.primitiveCount } : {}),
+        });
+        refreshCandidateCard(index);
+        return;
+      }
       const runtime = state.livingWorld;
-      if (!runtime || runtime.disposed || !cardSubject) return;
+      if (!runtime || runtime.disposed) return;
       if (cardSubject.kind === "kin") {
         const next = rebuildKin(cardSubject.facade, dna);
         if (next) {
@@ -1420,6 +1471,9 @@ export function initObservatory() {
       lenses.untrack();
       return;
     }
+    // There is one glass. Taking a body apart puts the feet away rather than
+    // drawing both at once — a scattered animal has no gait to read anyway.
+    setWatchingGait(false);
     // Produced per frame rather than once: the carriers ride a walking body,
     // and a snapshot would slide off it within a step.
     lenses.track(
@@ -1453,6 +1507,45 @@ export function initObservatory() {
   }
 
   element("obs-read-genome")?.addEventListener("click", openKinGenome);
+
+  // ── Watching the feet ─────────────────────────────────────────────────────
+  //
+  // The claim is that nothing here was recorded. A foot is planted in the world
+  // and stays there while the body travels away from it, until the error grows
+  // past what the genome allows and the foot swings to a new home — so the dot
+  // that does not move is the whole lesson, and the ring is where the one in
+  // flight is going.
+  let watchingGait = false;
+  const gaitButton = element("obs-watch-gait");
+
+  function setWatchingGait(on) {
+    if (watchingGait === on) return;
+    watchingGait = on;
+    gaitButton?.setAttribute("aria-pressed", String(on));
+    if (!on) {
+      lenses.untrack();
+      return;
+    }
+    // The selection is resolved per frame rather than captured: the player can
+    // pick a different kin while watching, and the marks should simply follow.
+    // Every mark is in world space, so unlike the underdrawing there is no
+    // actor root to go stale.
+    lenses.track(
+      () => {
+        const agent = currentSelection(state.livingWorld)?.generatedAgent;
+        return agent?.debug ? gaitMarks(agent.debug.feet()) : [];
+      },
+      { camera: ctx.camera, worldRoot: state.world },
+    );
+  }
+
+  gaitButton?.addEventListener("click", () => {
+    const next = !watchingGait;
+    // Both lenses share one glass; putting the feet up puts the body back
+    // together, which the card does through its own reset.
+    if (next) genomeCard?.close();
+    setWatchingGait(next);
+  });
 
   // ── The onboarding (tutorial layers 0–2) ────────────────────────────────
   //
@@ -1680,6 +1773,10 @@ export function initObservatory() {
     } else {
       requestController?.abort();
       cancelProgress();
+      // A candidate's card has nothing left to point at once the studio that
+      // holds its list is gone; a kin's or a plant's card is unaffected, since
+      // both stand in the field independent of the studio.
+      if (cardSubject?.kind === "candidate") genomeCard.close();
     }
   }
 
@@ -1714,16 +1811,45 @@ export function initObservatory() {
     introduceButton.disabled = index < 0 || !currentCandidates[index];
   }
 
+  /**
+   * Open the card on a study that has never stood in the field. Reading what
+   * the model actually proposed, and editing it before introducing it, is the
+   * clearest statement the studio can make of "model proposes, engine
+   * validates" — the same claim the card already makes about a kin or a plant
+   * that is already growing.
+   */
+  function openCandidateGenome(index) {
+    const candidate = currentCandidates[index];
+    if (!genomeCard || !candidate) return;
+    cardSubject = { kind: "candidate", index };
+    genomeCard.show(candidate.dna, {
+      kicker: studioKind === "flora" ? "Field study · plant" : "Field study · creature",
+      caption:
+        "Not standing in the field yet. Move a rule and the study changes — introduce it to grow this one.",
+    });
+  }
+
+  function buildCandidateCard(index) {
+    const card = candidateCard(currentCandidates[index], index, openCandidateGenome);
+    card.addEventListener("click", () => selectCandidate(index));
+    card.classList.toggle("selected", index === candidateIndex);
+    return card;
+  }
+
+  /** Patch the one card a candidate edit changed, in place — never a rebuild. */
+  function refreshCandidateCard(index) {
+    const previous = candidateList.children[index];
+    if (!previous) return;
+    previous.replaceWith(buildCandidateCard(index));
+  }
+
   function renderCandidates(candidates, sourceLabel) {
+    // The list a candidate's card was pointing into is about to be replaced —
+    // its index would silently start naming a different study.
+    if (cardSubject?.kind === "candidate") genomeCard.close();
     currentCandidates = candidates;
     candidateIndex = -1;
-    candidateList.replaceChildren(
-      ...candidates.map((candidate, index) => {
-        const card = candidateCard(candidate, index);
-        card.addEventListener("click", () => selectCandidate(index));
-        return card;
-      }),
-    );
+    candidateList.replaceChildren(...candidates.map((_candidate, index) => buildCandidateCard(index)));
     selectCandidate(0);
     const modelCount = candidates.filter(
       (candidate) => candidate.source === "model",
@@ -1818,6 +1944,7 @@ export function initObservatory() {
     }
     // The studies on screen belong to the other schema — clear rather than
     // leave a kin card that the introduce button would plant as a shrub.
+    if (cardSubject?.kind === "candidate") genomeCard.close();
     currentCandidates = [];
     candidateList.replaceChildren();
     introduceButton.disabled = true;

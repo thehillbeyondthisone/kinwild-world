@@ -3098,6 +3098,19 @@ body.living-world-mode {
   cursor: default;
 }
 
+/* A held-down action. Styled off aria-pressed rather than a class, so the state
+   a screen reader announces and the state the ink shows cannot disagree. */
+.obs-paper-action[aria-pressed="true"] {
+  background: rgba(41, 49, 56, 0.82);
+  border-color: rgba(41, 49, 56, 0.82);
+  color: rgba(247, 240, 222, 0.95);
+}
+
+/* Two actions on one header sit together rather than at opposite ends. */
+.obs-paper-action + .obs-paper-action {
+  margin-left: 6px;
+}
+
 .obs-paper-caption {
   margin-top: 2px;
   font-family: "Cormorant Infant", Georgia, serif;
@@ -4053,11 +4066,28 @@ body.living-world-mode {
 .form-candidate.selected::after {
   content: "selected";
   position: absolute;
+  z-index: 2;
   top: 8px;
   right: 8px;
   font-size: 6px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+  pointer-events: none;
+}
+
+/* The "select" button is stretched over the whole card — the standard
+   card-as-link pattern — so a click anywhere lands on it. It sits at the
+   bottom of the stack (z-index 0); `.form-candidate-genome` sits above it so
+   its own small area intercepts first. */
+.form-candidate-select {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
 }
 
 .form-blueprint {
@@ -4125,6 +4155,32 @@ body.living-world-mode {
   font-size: 9px;
   font-style: italic;
   color: rgba(216, 170, 98, 0.56);
+}
+
+.form-candidate-genome {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 0 0;
+  border: none;
+  border-top: 1px solid rgba(216, 170, 98, 0.16);
+  background: none;
+  color: rgba(216, 170, 98, 0.6);
+  font-family: "DM Mono", monospace;
+  font-size: 6px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.form-candidate-genome:hover,
+.form-candidate-genome:focus-visible {
+  color: var(--obs-gold-hot);
+  border-color: rgba(216, 170, 98, 0.4);
 }
 
 .form-studio-footer {

@@ -1,10 +1,19 @@
 # Kinwild — the tutorial that teaches the machine
 
-Status: foundation landed (1.13.0); the genome card landed (1.14.0); rebuild
-seam + flier fixes (1.14.1); **Layers 0–2 landed (1.15.0)** — the onboarding
-track below is real: seed-stamp cold open, margin notes, ring sights.
-Remaining layers are in "What is still to build" and in HANDOFF.md's
-"Where we are" section.
+Status at **1.18.0**: foundation landed (1.13.0); the genome card landed
+(1.14.0); rebuild seam + flier fixes (1.14.1); **Layers 0–2 landed (1.15.0)**
+and verified in a browser on 2026-08-12 — the onboarding track below is real:
+seed-stamp cold open, margin notes, ring sights. Since then the tutorial has
+grown a second thread, **the lenses**: the glass (1.15.2), the underdrawing
+(1.17.0) and the gait lens (1.18.0) are all reachable instruments, ahead of the
+rungs that are meant to prompt them. Remaining layers are in "What is still to
+build" and in HANDOFF.md's "Where we are" section.
+
+**The track and the instruments have come apart, and closing that is the next
+job.** Prompting stops at Layer 2. Layer 3's artifact (the card) and Layers
+4b/4c's instruments (underdrawing, gait) are all built and openable; Layer 3's
+own instrument — the affordance lens — is written as data
+(`affordanceMarks`) and tested, and nothing opens it.
 
 ## The premise
 
@@ -55,6 +64,25 @@ validator is never named — only felt.
 
 **Layers are not levels.** Nothing locks; the layers gate *prompting*, not
 access. An experienced player outruns the track.
+
+### Layer 1 asks for a verb the player does not have yet
+
+Found by walking the track in a browser, 2026-08-12. *Notice* closes when two
+different individuals sharing a `speciesId` are selected in turn — and the only
+way to select a second individual of a species is to open the locator (`L`),
+click its species row, and press **`Tab`** to cycle instances. The Field
+Taxonomy medallions cannot do it (one medallion always resolves to the same
+individual, and two medallions are two different species), and the kin-group
+dots on the specimen readout are indicators, not controls. So the layer that is
+supposed to need nothing but noticing in fact needs the panel Layer 2 is meant
+to introduce.
+
+Two honest fixes, and they are not exclusive: give *notice* a verb the player
+already has, or let a layer teach the instrument it depends on. Related, and
+worse on a phone: with `LOWFX` the world carries **two** kin rather than five,
+which can leave no two of a species in the field at all — the layer is then
+unsatisfiable, and since prompting advances in order, nothing after it prompts
+either. A layer needs a way past a world that cannot answer it.
 
 ### Why the card belongs at Layer 3
 
@@ -119,6 +147,22 @@ The ordinal fix was a latent bug, not a refactor: `ordinal` is an identity that
 kin hold as claims, but it was assigned from array length — safe only while
 nothing ever removed an affordance.
 
+## What landed in 1.15.0–1.18.0
+
+| | |
+|---|---|
+| `src/tutorial/progress.js`, `copy.js` | the track: layers 0–2 as a pure state machine over strings, both tested in node |
+| `src/ui/tutorial-notes.js` | the notebook margin — seed stamp, notes with self-drawing leaders, asides, ring sights |
+| `src/tutorial/lenses.js` | what a lens *says*, as data: gait, underdrawing, affordances → one vocabulary of marks (dot, ring, link, tag). Weight, never colour |
+| `src/ui/lens-layer.js` | the glass they are drawn on. Marks patched by key, since a lens redraws every frame it is open; a reach radius is projected, never a fixed pixel size |
+| `src/ui/viewport-project.js` | world → CSS pixels, lifted out of `observatory.js` once the lenses needed it too |
+| the shell-mix dial + `GENERATED_FAUNA_EXPLODE` | a body scrubbed back to its carriers, with the blend graph over them — Layer 4b as an instrument |
+| the gait lens | planted feet that do not move while the body travels away from them — Layer 4c as an instrument, and `walker.js`'s step trigger made visible |
+
+The three lenses agree on one claim, and it is the reason they are the
+difficulty curve rather than an addition to it: **each is a debugging view the
+engine needed anyway, handed to the player.**
+
 ## What is still to build
 
 Dependency-ordered. Items marked ⚑ are design-heavy enough to want a dedicated
@@ -127,15 +171,23 @@ pass rather than being folded into a larger session.
 1. ~~The genome editor~~ — **landed in 1.14.0** as `src/ui/genome-card.js`
    over `src/ui/genome-draft.js`. Read-only mode exists (`show(dna, {editable:
    false})`) but nothing calls it yet.
-2. Wider entry points. Today the card opens from the specimen readout (kin)
-   and the flora medallion (plants). The studio's candidate cards should offer
-   it too — reading what the model actually proposed, and editing it before
-   introducing it, is the clearest possible statement of "model proposes,
-   engine validates". Palette editing is also still absent: swatches are shown
+2. ~~Wider entry points~~ — **landed in 1.18.0**; the studio's candidate cards
+   offer the genome. **Palette editing is still absent**: swatches are shown
    but not offered, because a colour picker is an OS panel and this is a page.
-3. ⚑ **The affordance lens + prediction scoring** (Layer 3). Independently
-   valuable — it is also the debugging view the ecology has never had, and the
-   one that would have made the simulation-only bugs visible.
+   It needs a drawn control in the card's own idiom — a design task, not a
+   wiring one.
+3. **The affordance lens** (Layer 3's instrument) — **half landed**. The glass
+   (`src/ui/lens-layer.js`) and the marks (`affordanceMarks` in
+   `src/tutorial/lenses.js`) exist and are tested; **nothing opens them.** This
+   is the cheapest item on the list: a toggle beside *Read the genome* and
+   *Watch the feet*, sourcing `state.livingWorld.registrations.affordances` and
+   the followed kin's `needs.goal.ordinal`. Do it behind a single
+   `setLens(name | null)` arbiter — three lenses now share one glass and the
+   exclusivity between them is pairwise and ad-hoc.
+3b. ⚑ **Prediction scoring** — Layer 3's *verb*, and a separate thing from the
+   lens. Nothing exists. How a guess is stated, when it resolves, and what
+   right and wrong look like when a layer must end on a sight and never a
+   confirmation, are all still open.
 4. `src/genome-mutate.js` — bounded mutation over `numericFields`. Do not
    pre-clamp: letting a mutation overshoot means the player sees a repair note
    fire, which teaches that the bounds are the world's rules and not the UI's.
@@ -145,8 +197,15 @@ pass rather than being folded into a larger session.
 7. Studio paste-import and the Layer 7a inherit entry points.
 8. The player-affordance placement verb (Layer 4).
 9. ⚑ **Relationship edges** (Layer 6).
-10. Tutorial progression state — a thin orchestration layer over 1–9, DOM-free
-    like `src/ui/studio-progress.js`, persisted beside the catalog. Do last.
+10. Tutorial progression state — **exists** as `src/tutorial/progress.js`,
+    DOM-free and persisted at `smallworld:tutorial:v1`, carrying layers 0–2.
+    It is no longer a "do last" item: **each new layer's rung lands with the
+    layer**, and appending to `TUTORIAL_LAYERS` needs no migration because
+    `createTutorialProgress` filters restored ids against `ORDER`. One thing to
+    settle before Layer 3: this document budgets Layer 3 two words (affordance
+    + genome), but `vocabulary` is a single string per layer and
+    `markLayerDone` returns one. Widen it to an array, or the budget quietly
+    becomes one word.
 
 ## Notes for whoever picks this up
 

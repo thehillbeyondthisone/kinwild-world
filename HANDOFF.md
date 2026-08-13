@@ -8,8 +8,9 @@
 > **nothing pushed**. The parent repo is a separate project (Creature Creator,
 > port 5173) and is not touched by this work.
 >
-> Version **1.15.0**. Gate per commit: `npm run check` (**110 tests** + lint +
-> build) **plus** `node tests/determinism-seed.test.mjs` explicitly.
+> Version **1.18.0**. Gate per commit: `npm run check` (**114 tests** + lint +
+> build) **plus** `node tests/determinism-seed.test.mjs` explicitly. Both were
+> green on a clean tree at 2026-08-12.
 >
 > Dev server: **`npm run dev`** → :2001. Do *not* use the `make` targets —
 > `make` on this machine resolves to Embarcadero MAKE, not GNU make, and fails
@@ -22,58 +23,123 @@
 
 ---
 
-# Where we are — 2026-07-29 evening (read this first)
+# Where we are — 2026-08-12 (read this first)
 
-**This section supersedes the stale parts of Parts I–III below.** The audit
-(`AUDIT-2026-07-29.md`) is the governing work order; its recommended order is
-being followed.
+**This section supersedes the stale parts of Parts I–III below.** Everything
+the 2026-07-29 audit ordered has landed; the audit is no longer the work
+order. `TUTORIAL_PLAN.md` is.
 
-Landed today, gate green, **uncommitted**:
+Tree is **clean at 1.18.0**, everything below committed, gate green.
 
-- **1.14.1 — rebuild seam + fliers.** Audit findings 1–5 all fixed: black
-  flora (`instanceTint` in `generated-flora/renderers.js`), species leak on
-  failed plant regrow, kin rebuild order (replacement compiled before the
-  original is let go), genome card closes on `world-ready`, `genomeHash`
-  travels with rebuilds, perched fliers no longer shoved off perches
-  (goal-host obstacle skip), and `chooseKinGoal` falls back past unanswerable
-  needs. Two wrong test pins corrected (`genome-card-static`, runtime ordinals
-  are unique+monotonic, not dense).
-- **1.15.0 — the tutorial's first track.** Layers 0–2 (Arrive/Notice/Follow)
-  of `TUTORIAL_PLAN.md`: seed-stamp cold open, margin notes with self-drawing
-  leaders, ring sights, one-word-per-layer vocabulary. New modules:
-  `src/tutorial/progress.js` + `src/tutorial/copy.js` (DOM-free, tested),
-  `src/ui/tutorial-notes.js` (renderer); wiring in `observatory.js`; markup in
-  `index.html`; animations in `style.css`; persisted as
-  `smallworld:tutorial:v1`.
+## Landed since the last handoff
 
-Pending verification (needs a human in a browser):
+| | |
+|---|---|
+| 1.15.0 | onboarding layers 0–2, and 1.14.1's rebuild-seam + flier fixes |
+| 1.15.1 | two faults found only by driving the card and the onboarding in a browser: the margin no longer wipes on drag-release, and an anchored note no longer stretches into a full-page blank |
+| 1.15.2 | **the glass** — `src/tutorial/lenses.js` (what a lens *says*, as data) and `src/ui/lens-layer.js` (the overlay), plus `viewport-project.js`. Nothing opened a lens yet |
+| 1.15.3 | audit finding 8 — every shader patch installs through `replaceOrWarn`, with `tests/shader-patch-anchors.test.mjs` reading three's own source |
+| 1.16.0 | the shell-mix dial under the hood — a body can be scrubbed back to its carriers |
+| 1.17.0 | **the underdrawing** (Layer 4b as an instrument): the dial on the card, the blend graph drawn, the page opening up to be looked through |
+| 1.18.0 | **the gait lens** (Layer 4c as an instrument), the kin-judder fix (two faults, one artifact — see `tests/living-world-kin-judder.test.mjs`), and the studio's candidate cards now offer the genome |
 
-- **The onboarding itself** — clear localStorage (or private window) at
-  `localhost:2001` to see the cold open.
-- **The genome card's appearance** (Part I task 0, still unseen).
-- **`0x0007` oddities, deferred:** user reports a yellow plant-part-shaped
-  thing orbiting the world and odd plant sway. Headless probes cleared the
-  living-world sim (no flora rotates, batches sane, fauna behavior sane).
-  Prime suspect: the legacy bird flock (`world.js:502-510`) — one flock of
-  5–9 birds circles the island in every world, 30% chance of the biome
-  accent, and Mosshollow's accent is amber `#f4a261`. Runner-up: pollen
+Audit findings 1–8 are all closed. Part I task 0 (look at the genome card) was
+done — 1.15.1 is what came of it. Task 1b (wider card entry points) landed in
+1.18.0. **Task 1a — the dock's two identical regen buttons — is still open and
+still valid.**
+
+## Onboarding verified in a browser, 2026-08-12
+
+The whole of layers 0–2 was walked end to end at
+`localhost:2001/?livingWorld=1&lowfx=0&seed=0x0007` with
+`smallworld:tutorial:v1` cleared. It works: the stamp settles digit by digit,
+"look around." closes on the first orbit gesture, "find another like this one."
+closes on the second kin with the *species* aside, and "stay with this one a
+while." closes after six seconds of held follow with the *need* aside. Final
+state `{"done":["arrive","notice","follow"],"vocabulary":["species","need"]}`.
+
+Three things the walk turned up. None is a crash and none was visible from
+reading the code.
+
+**1. Layer 1 has exactly one satisfying path, and it is `Tab`.** `tickOnboarding`
+closes *notice* when two **different facades sharing a `speciesId`** are
+selected in turn. Only three things ever set the selection:
+
+- **Field Taxonomy medallions** — keyed `speciesId/phenotype`, resolved with
+  `runtime.fauna.find(...)`, so one medallion always returns the *same*
+  individual. Two medallions are two different keys. On seed `0x0007` the three
+  fauna medallions are three distinct species, so no pair of clicks can ever
+  satisfy the layer.
+- **The kin-group dots** on the specimen readout are `<i>` elements —
+  `renderKinFilter` says so in its own comment ("an indicator this pass").
+  They look like the obvious control and are not one.
+- **The locator panel** (`L`), whose rows are grouped *by species with a count*
+  ("boulderkin 2"). Clicking the row follows one; **`Tab` cycles to the next
+  instance of that type**, and that second individual is what closes the layer.
+
+So the prompt "find another like this one." is answered only by: press `L`,
+click a species row, press `Tab`. Nothing in the prompting says so, and the
+locator is what Layer 2 is meant to introduce. Either give *notice* a verb the
+player already has, or teach the locator before asking for it.
+
+**2. Under LOWFX the track can hard-stall at layer 1.** `runtime.js:288` is
+`const faunaCount = lowfx ? 2 : 5;`. With two kin there may be no two of a
+species at all — on `0xefe3` they came out `boulderkin, kinling`, so *notice*
+could not close, and because layers gate prompting in order, layers 2+ never
+prompt either. LOWFX triggers on `dpr < 1.5 && shortSide < 768`, which is a real
+device and not only a small pane. The track needs a way past a layer the world
+cannot satisfy.
+
+**3. The margin ignores the observatory's own panels.** `.tutorial-layer` is
+`z-index: 92`, above the paper panels. With the specimen readout open — the
+default state coming out of the dock — the aside is laid out at its fixed
+lower-left margin (26, 523) and lands across the *emergent traits* and *kin
+activity* rows, and a ring sight drawn at a followed kin's screen position sits
+on the panel's paper rather than on the animal, which is behind it. The note,
+the aside and the sights all want to know what is currently covering the field.
+
+## Next up, in order
+
+1. **Wire the affordance lens.** `affordanceMarks` (`src/tutorial/lenses.js`)
+   is written and tested and **has no callers** — Layer 3's instrument is a
+   toggle away. Copy the `setWatchingGait` shape. Two cautions: the three
+   lenses share one glass and the exclusivity between them is currently
+   pairwise and ad-hoc (`applyUnderdraw` calls `setWatchingGait(false)`, the
+   gait button calls `genomeCard.close()`) — replace it with a single
+   `setLens(name | null)` arbiter *before* adding a third; and do not call it
+   `lens` in the markup, since `data-obs-lens` already means a rail panel.
+   Measure frame time with it open: a world carries a couple of hundred
+   affordances, and `types` is the pressure valve.
+2. ⚑ **Prediction scoring** — Layer 3's verb, and the only design-heavy item
+   here. Nothing exists. Three open questions, all design: how the player
+   states a guess (clicking a plant is the obvious gesture and it collides with
+   nothing today, since the living world has no click-to-pick), when it
+   resolves (goal change, or arrival), and what right and wrong *look* like
+   given that a layer ends on a sight and never a confirmation.
+3. **Extend the progression to layers 3–4.** Appending to `TUTORIAL_LAYERS` is
+   save-compatible — `createTutorialProgress` filters by `ORDER`, so an
+   existing save resumes at the new layer with no migration. One real conflict
+   to settle first: the plan budgets Layer 3 **two** words (affordance +
+   genome), but `vocabulary` is a single string and `markLayerDone` returns
+   one. Widen it to an array or the budget quietly becomes one word.
+4. **The player-affordance placement verb** (Layer 4). Cheaper than it looks:
+   `introduceLivingFlora({at})` and the card's rebuild-in-place both exist;
+   what is missing is the gesture and the rung.
+5. Then Layers 5–7 per `TUTORIAL_PLAN.md`: catalog v2 provenance, ⚑
+   relationship edges, `genome-mutate.js`. 7b is largely done.
+6. The three verification findings above, and task 1a.
+
+## Still unresolved
+
+- **`0x0007` oddities, deferred:** the user reported a yellow
+  plant-part-shaped thing orbiting the world and odd plant sway. Headless
+  probes cleared the living-world sim (no flora rotates, batches sane, fauna
+  behaviour sane). Prime suspect: the legacy bird flock (`world.js:502-510`) —
+  one flock of 5–9 birds circles the island in every world, 30% chance of the
+  biome accent, and Mosshollow's accent is amber `#f4a261`. Runner-up: pollen
   particles. Next step is the user's in-game look (one solid object vs. a
-  flapping cluster) and the browser console. The headless probes used were
-  throwaway scripts (deleted); recreate from the test harness in
-  `tests/living-world-runtime.test.mjs` if the investigation resumes.
-
-Next up, in order:
-
-1. **Commit 1.14.1 + 1.15.0** (with the user's go-ahead).
-2. Resolve the `0x0007` orbiter once the user reports back.
-3. **Phase 2 — Layer 3 "Observe"** (the affordance lens + prediction scoring;
-   ⚑ design-heavy, see `TUTORIAL_PLAN.md` to-build #3). This also needs audit
-   finding 6 (the `variation scale range reordered` note routing + its wrong
-   pin at `tests/genome-draft.test.mjs:162`).
-4. Then audit finding 7 (determinism-gate gap) and finding 8 (shader-patch
-   anchors), then Layers 4–7 per `TUTORIAL_PLAN.md`.
-5. Part I task 1a (the dock's duplicate regen buttons) and 1b (card entry
-   points) are still open and still valid.
+  flapping cluster). The probes were throwaway scripts (deleted); recreate from
+  `tests/living-world-runtime.test.mjs` if it resumes.
 
 House note from the user: **be token-aware** — no subagent swarms or parallel
 agents without asking first; verify with targeted reads and the existing
@@ -81,18 +147,20 @@ gate.
 
 ---
 
-# Part I — the work order
+# Part I — the work order, as it stood on 2026-07-29
 
-This is what the next session is for. Ordered; 0 and 1 are cheap and should
-land before 2.
+**Historical, except task 1a.** Tasks 0, 1b and 2 have all landed; the section
+is kept because the *reasoning* under each — what to look at on the card, what
+a dock change costs, why 0–2 was the right slice — is still the best record of
+why things are shaped as they are. The live work order is in "Where we are"
+above.
 
-## 0. Look at the genome card
+## 0. Look at the genome card — **done (1.15.1)**
 
-**Do this first.** The card shipped in 1.14.0 fully tested but **visually
-unverified** — the Chrome extension failed to connect across two sessions
-("Browser extension is not connected"), so its content and logic are proven
-and its *appearance* is not. Everything in task 2 points at this card, so
-building on top of something unseen is the wrong order.
+The card shipped in 1.14.0 fully tested but **visually unverified**, so its
+content and logic were proven and its *appearance* was not. It has since been
+driven in a browser; 1.15.1 is what came of it. The checklist below is what was
+looked at, and is worth rerunning after any change to the card.
 
 `http://localhost:2001/?livingWorld=1&lowfx=0&seed=0x0007`, then click a
 flora medallion in Field Taxonomy, or select a kin and press **Read the
@@ -167,7 +235,10 @@ discoverability problem in its own right.
 
 So a dock change is three coordinated edits, not one. That is the whole risk.
 
-### 1b. Widen the card's entry points
+### 1b. Widen the card's entry points — **done (1.18.0)**
+
+The studio's candidate cards offer the genome now. Palette editing is still
+absent, and the design problem below is unchanged.
 
 Today the card opens from exactly two places: the specimen readout (kin) and
 the flora medallion (plants). The obvious third is **the Form Studio's
@@ -186,14 +257,14 @@ Also still absent: **palette editing.** Swatches are shown read-only because
 be editable, it needs a drawn control in the card's own idiom — a real design
 task, not a wiring one.
 
-## 2. Tutorial layers 0–2, and stop before 3
+## 2. Tutorial layers 0–2, and stop before 3 — **done (1.15.0)**
 
-**There is currently no tutorial. Zero of the eight layers exist.**
-`TUTORIAL_PLAN.md` is a design document, not a description of the build. What
-exists is the *instrument set* the tutorial will teach with: observatory,
-studio, catalog, roster, kin goals, genome card.
+Written when **there was no tutorial and zero of the eight layers existed**.
+Layers 0–2 have since landed and been verified in a browser; the argument for
+why that was the right slice, and the two rules at the bottom, still hold and
+still bind every layer added after.
 
-Worse, the one piece of onboarding the codebase has is switched off here:
+The one piece of onboarding the codebase already had is switched off here:
 
 ```js
 // src/ui/help-panel.js:51
@@ -366,10 +437,14 @@ while the others have 90" is how the above were found.
 
 From `TUTORIAL_PLAN.md`. ⚑ = wants a dedicated pass at raised effort.
 
-1. Wider card entry points + palette editing — **task 1b above**
+1. ~~Wider card entry points~~ landed 1.18.0. **Palette editing** is still
+   absent and is still a design task — see task 1b above.
 2. ⚑ **Affordance lens + prediction scoring** (Layer 3). Independently
    valuable: it is also the debugging view the ecology has never had, and the
-   one that would have made the simulation-only bugs above visible.
+   one that would have made the simulation-only bugs above visible. **Half
+   landed:** the glass (`src/ui/lens-layer.js`) and the marks
+   (`affordanceMarks` in `src/tutorial/lenses.js`) exist and are tested; no
+   toggle opens them, and the scoring does not exist at all.
 3. `src/genome-mutate.js` — bounded mutation over `numericFields`. **Do not
    pre-clamp**: letting a mutation overshoot means the player sees a repair
    note fire, which teaches that the bounds are the world's rules and not the
@@ -401,6 +476,13 @@ too.
   handle; `state.livingWorld.registrations` holds the affordance data.
 - Seeds worth using: `0x0007` (verdant, canopy hero), `0x0012` (ashen, spire
   hero).
+- **Always pass `lowfx=0`.** The pane is usually short enough to trip LOWFX's
+  own detection (`dpr < 1.5 && shortSide < 768`), and LOWFX is not a visual
+  setting — it drops the world from five kin to two (`runtime.js:288`), which
+  silently changes what any behaviour or onboarding test is looking at.
+- `state.livingWorld.fauna[i].agent.dna.speciesId` is the quickest read on who
+  is standing in the field; there is no live handle for the observatory's
+  selection, which is module-private to `observatory.js`.
 
 ## House rules
 

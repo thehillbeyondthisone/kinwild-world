@@ -5663,12 +5663,21 @@ body.genome-card-open .observatory-shell {
    affordance, underdrawing and gait lenses. Pencil on glass, in the same ink
    as the callouts' leaders — a lens is a drawing over the field, never an
    inspector overlay, so groups are told apart by weight and never by colour.
-   z-index sits below .tutorial-layer (92) so a margin note stays legible. */
+
+   The glass sits over the field and *under* the paper (.observatory-shell is
+   z-index 8), which is the honest arrangement and not merely a tidy one: a
+   lens draws every mark whose subject is on camera, and a subject standing
+   behind the specimen readout is still on camera. At 90 the affordance lens
+   put a couple of hundred dots across the readout and the field card — marks
+   with nothing under them, which reads as a broken overlay rather than as
+   something seen through glass. Panels occlude the drawing exactly as they
+   occlude the animals. Margin notes (.tutorial-layer, 92) stay above
+   everything on purpose: a note is written on the page, not seen through it. */
 
 .lens-layer {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 6;
   pointer-events: none;
 }
 

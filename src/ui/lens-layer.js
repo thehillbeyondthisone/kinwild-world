@@ -23,6 +23,9 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 /** Marks smaller than this are not worth the ink; a lens at distance fades out. */
 const MIN_PIXEL_RADIUS = 1.5;
 
+/** Slack around the frame, so a mark half in view is not clipped at its edge. */
+const OFF_FRAME_MARGIN = 24;
+
 const scratchPoint = new THREE.Vector3();
 const scratchEdge = new THREE.Vector3();
 const scratchRight = new THREE.Vector3();
@@ -60,6 +63,33 @@ function radiusInPixels(worldCentre, worldRadius, camera, scale) {
   if (!projectPoint(worldCentre, camera, projected)) return null;
   if (!projectPoint(scratchEdge, camera, projectedEdge)) return null;
   return Math.hypot(projectedEdge.x - projected.x, projectedEdge.y - projected.y);
+}
+
+/**
+ * Is a mark's whole drawn extent outside the frame?
+ *
+ * `projectPoint` rejects on depth alone, so a subject that is beside the
+ * camera rather than in front of it still projects — to a real coordinate some
+ * thousands of pixels off to one side. That was invisible while a lens carried
+ * a dozen marks about one animal, and stopped being invisible with the
+ * affordance lens, which draws the whole island: most of a couple of hundred
+ * marks are off frame at any moment, each costing a node and an attribute
+ * write for nobody.
+ *
+ * A ring is the case that is not merely wasteful. Its radius is the subject's
+ * real reach measured in pixels, so an affordance a little way off frame is
+ * drawn as a large arc sweeping across the field with nothing at its centre.
+ * The extent is what decides this, not the centre — a ring whose subject is
+ * off frame but whose reach crosses into it should still be drawn.
+ */
+function offFrame(at, extent) {
+  const margin = extent + OFF_FRAME_MARGIN;
+  return (
+    at.x < -margin ||
+    at.y < -margin ||
+    at.x > window.innerWidth + margin ||
+    at.y > window.innerHeight + margin
+  );
 }
 
 function makeNode(kind) {
@@ -154,6 +184,7 @@ export function initLensLayer() {
           if (radius === null || radius < MIN_PIXEL_RADIUS) continue;
         }
         if (!projectPoint(scratchPoint, camera, projected)) continue;
+        if (offFrame(projected, radius ?? mark.size ?? 0)) continue;
 
         const node = nodeFor(mark);
         if (mark.kind === "tag") {

@@ -51,7 +51,7 @@ import {
 import { INTRO_COPY, LAYER_COPY } from "../tutorial/copy.js";
 import { initTutorialNotes } from "./tutorial-notes.js";
 import { initLensLayer } from "./lens-layer.js";
-import { gaitMarks, underdrawingMarks } from "../tutorial/lenses.js";
+import { affordanceMarks, gaitMarks, underdrawingMarks } from "../tutorial/lenses.js";
 import { projectToViewport } from "./viewport-project.js";
 import { loadTutorial, saveTutorial } from "./storage.js";
 import { ctx } from "./context.js";
@@ -1231,8 +1231,7 @@ export function initObservatory() {
     notes.clear();
     // Every mark belonged to subjects that were just disposed — stop following
     // them, not merely stop drawing them.
-    setWatchingGait(false);
-    lenses.untrack();
+    setLens(null);
     window.clearTimeout(brandPulseTimer);
     brandPulseTimer = window.setTimeout(emphasizeBrand, 240);
     window.setTimeout(introduceReturningForms, 0);
@@ -1452,6 +1451,45 @@ export function initObservatory() {
     onUnderdraw: applyUnderdraw,
   });
 
+  // ── One glass, one lens ───────────────────────────────────────────────────
+  //
+  // The underdrawing, the gait and the field's offerings are all drawn on the
+  // same overlay, so which one is up is a single value here rather than each
+  // lens remembering to close the others. The pairwise version was already
+  // awkward at two — the dial closed the feet, the feet closed the card — and
+  // does not survive a third.
+  //
+  // `openLens` is assigned *before* the outgoing lens is closed, and that
+  // ordering is load-bearing: closing the underdrawing runs the card's own
+  // reset, which calls straight back in here with a dial of zero. That
+  // callback has to be able to see that something else has since taken the
+  // glass, or it would take down the lens that just replaced it.
+  let openLens = null;
+  // Declared with the arbiter rather than with the handlers that use them:
+  // `setLens` reflects the open lens back into both buttons, and the card can
+  // call it through `onUnderdraw` before either handler's own section is
+  // reached.
+  const gaitButton = element("obs-watch-gait");
+  const offeredButton = element("obs-see-offered");
+
+  function setLens(name, produce, context) {
+    const outgoing = openLens;
+    openLens = name ?? null;
+    if (outgoing && outgoing !== openLens) closeLens(outgoing);
+    if (openLens) lenses.track(produce, context);
+    else lenses.untrack();
+    gaitButton?.setAttribute("aria-pressed", String(openLens === "gait"));
+    offeredButton?.setAttribute("aria-pressed", String(openLens === "offered"));
+  }
+
+  /** Put a lens away — whatever that particular lens means by "away". */
+  function closeLens(name) {
+    // A scattered body is a state of the card, not of the glass: dropping its
+    // marks without bringing the dial back to rest would leave the kin in
+    // pieces with nothing drawn to explain it. Closing the card resets it.
+    if (name === "underdrawing") genomeCard?.close();
+  }
+
   /**
    * Take the card's subject apart by `amount`, 0 (whole) to 1 (bare carriers).
    *
@@ -1463,20 +1501,18 @@ export function initObservatory() {
   function applyUnderdraw(amount) {
     const agent = cardSubject?.kind === "kin" ? cardSubject.facade?.generatedAgent : null;
     if (!agent?.debug) {
-      lenses.untrack();
+      if (openLens === "underdrawing") setLens(null);
       return;
     }
     agent.debug.setShellMix(1 - amount);
     if (amount <= 0.001) {
-      lenses.untrack();
+      if (openLens === "underdrawing") setLens(null);
       return;
     }
-    // There is one glass. Taking a body apart puts the feet away rather than
-    // drawing both at once — a scattered animal has no gait to read anyway.
-    setWatchingGait(false);
     // Produced per frame rather than once: the carriers ride a walking body,
     // and a snapshot would slide off it within a step.
-    lenses.track(
+    setLens(
+      "underdrawing",
       () =>
         underdrawingMarks(agent.debug.primitiveSnapshot(), agent.debug.influences(), {
           apart: amount,
@@ -1515,36 +1551,55 @@ export function initObservatory() {
   // past what the genome allows and the foot swings to a new home — so the dot
   // that does not move is the whole lesson, and the ring is where the one in
   // flight is going.
-  let watchingGait = false;
-  const gaitButton = element("obs-watch-gait");
-
-  function setWatchingGait(on) {
-    if (watchingGait === on) return;
-    watchingGait = on;
-    gaitButton?.setAttribute("aria-pressed", String(on));
-    if (!on) {
-      lenses.untrack();
+  gaitButton?.addEventListener("click", () => {
+    if (openLens === "gait") {
+      setLens(null);
       return;
     }
     // The selection is resolved per frame rather than captured: the player can
     // pick a different kin while watching, and the marks should simply follow.
     // Every mark is in world space, so unlike the underdrawing there is no
     // actor root to go stale.
-    lenses.track(
+    setLens(
+      "gait",
       () => {
         const agent = currentSelection(state.livingWorld)?.generatedAgent;
         return agent?.debug ? gaitMarks(agent.debug.feet()) : [];
       },
       { camera: ctx.camera, worldRoot: state.world },
     );
+  });
+
+  // ── What the field is offering ───────────────────────────────────────────
+  //
+  // The other two lenses look at the animal. This one turns around and draws
+  // what the field is holding out to it — and every dot is one string out of a
+  // plant's own genome, since an archetype advertises `["nectar", "perch"]`
+  // and this renders exactly those. That is why it is a genome being drawn
+  // rather than a legend being consulted.
+  //
+  // Only the one the selected kin has decided on is ringed at its real reach
+  // and named. Ringing all of them would put a couple of hundred circles on
+  // the island and say nothing; the single heavy mark is the claim, and it is
+  // the claim Layer 3 will eventually ask the player to make first.
+
+  function offeredMarks() {
+    const runtime = state.livingWorld;
+    if (!runtime || runtime.disposed) return [];
+    const selected = currentSelection(runtime);
+    const actor = runtime.fauna?.find((entry) => entry.facade === selected);
+    const predicted = actor?.needs?.goal?.ordinal;
+    return affordanceMarks(runtime.registrations?.affordances, {
+      predicted: Number.isInteger(predicted) ? predicted : null,
+    });
   }
 
-  gaitButton?.addEventListener("click", () => {
-    const next = !watchingGait;
-    // Both lenses share one glass; putting the feet up puts the body back
-    // together, which the card does through its own reset.
-    if (next) genomeCard?.close();
-    setWatchingGait(next);
+  offeredButton?.addEventListener("click", () => {
+    if (openLens === "offered") {
+      setLens(null);
+      return;
+    }
+    setLens("offered", offeredMarks, { camera: ctx.camera, worldRoot: state.world });
   });
 
   // ── The onboarding (tutorial layers 0–2) ────────────────────────────────

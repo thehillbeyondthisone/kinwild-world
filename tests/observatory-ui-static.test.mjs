@@ -261,6 +261,38 @@ assert.ok(
   ui.includes("BRAND_PULSE_SETTLE_MS"),
   "the pulse needs a fallback that clears the class when animationend never fires",
 );
+// ── One glass, one lens ─────────────────────────────────────────────────────
+//
+// Three lenses draw on the same overlay and only one may be up at a time. That
+// used to be arranged pairwise — the dial closed the feet, the feet closed the
+// card — which is quadratic in the number of lenses and was already awkward at
+// two. `setLens` is the single place that may put a producer on the glass, and
+// this pins that: a fourth lens added by reaching for `lenses.track` directly
+// would compile, run, and quietly draw over whatever was already there.
+for (const id of ["obs-read-genome", "obs-watch-gait", "obs-see-offered"]) {
+  assert.ok(html.includes(`id="${id}"`), `the specimen readout should offer #${id}`);
+}
+// Both lens toggles are pressable state, not plain actions. `Read the genome`
+// is deliberately not in this list: it opens a page rather than holding a lens.
+for (const id of ["obs-watch-gait", "obs-see-offered"]) {
+  const button = html.match(new RegExp(`<button[^>]*id="${id}"[^>]*>`, "s"));
+  assert.ok(button, `#${id} should be a button`);
+  assert.ok(
+    button[0].includes('aria-pressed="false"'),
+    `#${id} holds a lens open, so it should start unpressed and say so`,
+  );
+}
+const trackCalls = ui.match(/lenses\.track\(/g) ?? [];
+assert.equal(
+  trackCalls.length,
+  1,
+  "only setLens may put a lens on the glass — found another lenses.track call",
+);
+assert.ok(
+  /function setLens\([\s\S]*?lenses\.track\(/.test(ui),
+  "the one lenses.track call should be the arbiter's",
+);
+
 assert.ok(entry.includes("initObservatory()"), "the public UI entry should initialize the observatory");
 assert.ok(
   vite.includes('host: "0.0.0.0"'),

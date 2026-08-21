@@ -1,5 +1,72 @@
 # Changelog
 
+## 1.19.0 - 2026-08-20
+
+**What the field is offering.** Layer 3's instrument, and the last of the three
+lenses to become something a player can reach. The other two look at the
+animal; this one turns around and draws what the field is holding out to it,
+and which of those it has decided on.
+
+### Added
+
+- **The affordance lens**, from a third action on the specimen readout: *See
+  what it's offered*. Every dot is one string out of a plant's own genome — an
+  archetype advertises `["nectar", "perch"]` and the lens draws exactly those —
+  which is why toggling it is a genome being rendered rather than a legend
+  being consulted. On seed `0x0007` the field carries **293 affordances** in
+  five kinds.
+- Only the one the selected kin has decided on is inked heaviest, **ringed at
+  its real reach and named**. Ringing all of them would put a couple of hundred
+  circles on one island and say nothing; the single heavy mark is the claim,
+  and it is the claim Layer 3 will ask the player to make before the kin gets
+  there. The selection resolves per frame, so picking a different kin moves the
+  heavy ink rather than needing the lens reopened.
+- Cost, measured rather than assumed: **0.26 ms per frame** of lens work at 293
+  affordances — 0.05 to produce the marks, 0.11 to project them, 0.10 to write
+  the attributes. Against a 16.8 ms frame that is not worth a filter, so the
+  `types` argument stays available and unused.
+
+### Changed
+
+- **One glass, one lens.** Which lens is up is a single value now. It used to
+  be arranged pairwise — the dial closed the feet, the feet closed the card —
+  which is quadratic in the number of lenses and was already awkward at two.
+  `setLens` is the only place that may put a producer on the glass, and
+  `observatory-ui-static` pins that: a fourth lens reaching for `lenses.track`
+  directly would compile, run, and quietly draw over whatever was already up.
+- The arbiter assigns the open lens *before* closing the outgoing one, and that
+  ordering is load-bearing: closing the underdrawing runs the card's own reset,
+  which calls straight back in with a dial of zero, and that callback has to be
+  able to see that something else has since taken the glass.
+- **The glass moved under the paper** (z-index 90 → 6, below
+  `.observatory-shell`). A lens draws every mark whose subject is on camera,
+  and a subject behind the specimen readout is still on camera — so at 90 the
+  affordance lens put a couple of hundred dots across the readout and the field
+  card, marks with nothing under them, which reads as a broken overlay rather
+  than as something seen through glass. Panels occlude the drawing exactly as
+  they occlude the animals. Margin notes stay above everything on purpose: a
+  note is written on the page, not seen through it.
+
+### Fixed
+
+- **Marks entirely off frame are no longer drawn.** `projectPoint` rejects on
+  depth alone, so a subject beside the camera rather than in front of it still
+  projects — to a real coordinate some thousands of pixels off to one side.
+  That was invisible while a lens carried a dozen marks about one animal. A
+  ring is the case that is not merely wasteful: its radius is the subject's
+  reach in pixels, so an affordance a little way off frame was drawn as a large
+  arc sweeping across the field with nothing at its centre. The test is the
+  mark's extent, not its centre, so a ring whose reach crosses into frame is
+  still drawn. On `0x0007` this took a full field from 293 nodes to 109.
+
+### Verified
+
+- Driven in a browser at `?livingWorld=1&lowfx=0&seed=0x0007`: the three lenses
+  are mutually exclusive in both directions, a second click on either toggle
+  clears the glass, a regen sweeps it and un-presses both buttons, and the
+  ringed affordance tracks the followed kin's current goal. No console errors.
+
+
 ## 1.18.0 - 2026-08-09
 
 **Watch the feet.** The second half of the anatomy thread, and the other claim

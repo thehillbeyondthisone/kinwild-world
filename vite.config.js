@@ -5,6 +5,11 @@ import { readFileSync } from "fs";
 const pkg = JSON.parse(readFileSync(new URL("package.json", import.meta.url), "utf8"));
 
 export default {
+  // GitHub Pages serves this repo at https://<user>.github.io/kinwild-world/,
+  // so assets must resolve under that subpath in production. Local dev
+  // (`vite`/`vite preview`) still runs at /.
+  base: process.env.GITHUB_ACTIONS ? "/kinwild-world/" : "/",
+
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },

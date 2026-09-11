@@ -3,11 +3,16 @@
 An original procedural living world where generated plants and creatures share
 one visual language, one physical surface, and one pulse.
 
+**Live test** https://thehillbeyondthisone.github.io/kinwild-world
+
 This repository contains the first integrated vertical slice: reactive
 FloraDNA species, seamless primitive-bodied Kinlings, deterministic
 composition, terrain-aware procedural motion, and a Kinwild-owned presentation
 layer. The target is authored-feeling generative art—not a pile of randomized
 parts.
+
+For a much more in depth technical description, check the legacy repo:
+https://github.com/thehillbeyondthisone/Kinwild
 
 ## Run it
 
